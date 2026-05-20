@@ -8,9 +8,11 @@ node_modules
 dist
 build
 coverage
-markdown.md
 *.log
 
 .vscode/settings.json
 
 backend/package-lock.json
+
+markdown.md
+ui_reference
