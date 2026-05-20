@@ -1,6 +1,6 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-CREATE TABLE tbl_roles (
+CREATE TABLE IF NOT EXISTS tbl_roles (
     id_role UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     role_name VARCHAR(50) NOT NULL UNIQUE,
