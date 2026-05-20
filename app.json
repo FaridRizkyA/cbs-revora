@@ -3,7 +3,7 @@
     "name": "cbs-revora",
     "slug": "cbs-revora",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "landscape",
     "icon": "./assets/images/icon.png",
     "scheme": "cbsrevora",
     "userInterfaceStyle": "automatic",
