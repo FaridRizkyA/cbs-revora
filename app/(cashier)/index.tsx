@@ -1,9 +1,12 @@
 import Constants from "expo-constants";
 import { Image } from "expo-image";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -19,8 +22,6 @@ const PRODUCT_PLACEHOLDER = require("../../assets/images/placeholders/default-pr
 const CASHIER_ID = "2b8c7d6e-5f4a-43b2-a1c0-e9f8a7b6c512";
 const CASHIER_NAME = "Rizky Pratama";
 
-const CATEGORY_TABS = ["Semua", "Minuman", "Makanan", "Snack"] as const;
-type ProductCategory = (typeof CATEGORY_TABS)[number];
 
 type AppIconName =
   | "monitor"
@@ -34,38 +35,44 @@ type AppIconName =
   | "search"
   | "hash"
   | "shopping-bag"
-  | "gift";
-
-const ICON_GLYPHS: Record<AppIconName, string> = {
-  monitor: "◫",
-  grid: "▦",
-  package: "⬡",
-  activity: "〽",
-  "file-text": "☰",
-  users: "◎",
-  "dollar-sign": "$",
-  "chevron-down": "▾",
-  search: "⌕",
-  hash: "#",
-  "shopping-bag": "🛍",
-  gift: "🎁",
-};
+  | "cart"
+  | "trash"
+  | "cash"
+  | "qr";
 
 const AppIcon = ({
   name,
   size = 16,
   color = "#475569",
-  style,
 }: {
   name: AppIconName;
   size?: number;
   color?: string;
   style?: StyleProp<TextStyle>;
-}) => (
-  <Text style={[{ fontSize: size, color, lineHeight: size + 2, fontWeight: "600" }, style]}>
-    {ICON_GLYPHS[name]}
-  </Text>
-);
+}) => {
+  if (name === "package" || name === "cash") {
+    const iconName = name === "package" ? "package-variant-closed" : "cash";
+    return <MaterialCommunityIcons name={iconName} size={size} color={color} />;
+  }
+
+  const iconMap: Record<Exclude<AppIconName, "package" | "cash">, React.ComponentProps<typeof Feather>["name"]> = {
+    monitor: "monitor",
+    grid: "grid",
+    activity: "activity",
+    "file-text": "file-text",
+    users: "users",
+    "dollar-sign": "dollar-sign",
+    "chevron-down": "chevron-down",
+    search: "search",
+    hash: "hash",
+    "shopping-bag": "shopping-bag",
+    cart: "shopping-cart",
+    trash: "trash-2",
+    qr: "maximize-2",
+  };
+
+  return <Feather name={iconMap[name as Exclude<AppIconName, "package" | "cash">]} size={size} color={color} />;
+};
 
 const NAV_ITEMS: {
   label: string;
@@ -73,7 +80,7 @@ const NAV_ITEMS: {
   active?: boolean;
   chevron?: boolean;
 }[] = [
-  { label: "Kasir", icon: "monitor", active: true },
+  { label: "Cashier", icon: "monitor", active: true },
   { label: "Dashboard", icon: "grid" },
   { label: "Inventori", icon: "package", chevron: true },
   { label: "Movement Product", icon: "activity", chevron: true },
@@ -85,12 +92,12 @@ const NAV_ITEMS: {
 type Product = {
   id_product: string;
   product_code: string;
+  barcode: string | null;
   product_name: string;
   description: string | null;
   selling_price: number;
   minimum_stock: number;
   product_image: string | null;
-  has_inventory_units: boolean;
   available_stock: number;
   nearest_expired_date: string | null;
 };
@@ -107,6 +114,15 @@ type CartItem = Product & {
 };
 
 type PaymentMethod = "CASH" | "QRIS";
+
+type CheckoutResult = {
+  sale_number: string;
+  sale_date: string;
+  total_amount: number;
+  payment_method: PaymentMethod;
+  amount_paid: number;
+  change_amount: number;
+};
 
 const getApiBaseUrl = () => {
   const envUrl = process.env.EXPO_PUBLIC_API_URL;
@@ -136,33 +152,6 @@ const formatRupiah = (value: number) =>
     .format(value)
     .replace(/\s/g, " ");
 
-const getProductCategory = (product: Product): ProductCategory => {
-  const source = `${product.product_name} ${product.description ?? ""}`.toLowerCase();
-
-  if (
-    source.includes("air") ||
-    source.includes("teh") ||
-    source.includes("kopi") ||
-    source.includes("jus") ||
-    source.includes("drink") ||
-    source.includes("susu")
-  ) {
-    return "Minuman";
-  }
-
-  if (
-    source.includes("mie") ||
-    source.includes("nasi") ||
-    source.includes("ayam") ||
-    source.includes("dimsum") ||
-    source.includes("goreng")
-  ) {
-    return "Makanan";
-  }
-
-  return "Snack";
-};
-
 export default function Index() {
   const [products, setProducts] = useState<Product[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -171,11 +160,17 @@ export default function Index() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
   const [search, setSearch] = useState("");
   const [barcode, setBarcode] = useState("");
-  const [activeCategory, setActiveCategory] = useState<ProductCategory>("Semua");
   const [memberPickerOpen, setMemberPickerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isCashModalOpen, setIsCashModalOpen] = useState(false);
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [cashAmountInput, setCashAmountInput] = useState("");
+  const [submittedCashAmount, setSubmittedCashAmount] = useState(0);
+  const [checkoutResult, setCheckoutResult] = useState<CheckoutResult | null>(null);
+  const [receiptPaymentMethod, setReceiptPaymentMethod] = useState<PaymentMethod>("CASH");
+  const successScale = useRef(new Animated.Value(0.7)).current;
 
   const selectedMember = useMemo(
     () => members.find((member) => member.id_member === selectedMemberId) ?? null,
@@ -187,6 +182,13 @@ export default function Index() {
     [cart]
   );
 
+  const parsedCashAmount = useMemo(
+    () => Number((cashAmountInput || "0").replace(/[^\d]/g, "")),
+    [cashAmountInput]
+  );
+
+  const cashChangePreview = Math.max(parsedCashAmount - subtotal, 0);
+
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLowerCase();
 
@@ -194,20 +196,16 @@ export default function Index() {
       const searchable = [product.product_name, product.product_code, product.description ?? ""]
         .join(" ")
         .toLowerCase();
-      const searchMatch = !query || searchable.includes(query);
-      const categoryMatch =
-        activeCategory === "Semua" || getProductCategory(product) === activeCategory;
-
-      return searchMatch && categoryMatch;
+      return !query || searchable.includes(query);
     });
-  }, [activeCategory, products, search]);
+  }, [products, search]);
 
   const fetchProducts = useCallback(async () => {
     const response = await fetch(`${API_BASE_URL}/api/products`);
     const payload = await response.json();
 
     if (!response.ok) {
-      throw new Error(payload.message || "Gagal mengambil produk.");
+      throw new Error(payload.message || "Failed to fetch products.");
     }
 
     setProducts(payload.data ?? []);
@@ -218,7 +216,7 @@ export default function Index() {
     const payload = await response.json();
 
     if (!response.ok) {
-      throw new Error(payload.message || "Gagal mengambil member.");
+      throw new Error(payload.message || "Failed to fetch members.");
     }
 
     setMembers(payload.data ?? []);
@@ -231,7 +229,7 @@ export default function Index() {
     try {
       await Promise.all([fetchProducts(), fetchMembers()]);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Gagal memuat data kasir.");
+      setErrorMessage(error instanceof Error ? error.message : "Failed to load cashier data.");
     } finally {
       setLoading(false);
     }
@@ -240,6 +238,20 @@ export default function Index() {
   useEffect(() => {
     loadCashierData();
   }, [loadCashierData]);
+
+  useEffect(() => {
+    if (!checkoutResult || !isReceiptModalOpen) {
+      return;
+    }
+
+    successScale.setValue(0.7);
+    Animated.spring(successScale, {
+      toValue: 1,
+      tension: 65,
+      friction: 6,
+      useNativeDriver: true,
+    }).start();
+  }, [checkoutResult, isReceiptModalOpen, successScale]);
 
   const getProductSource = (product: Product) => {
     if (product.product_image) {
@@ -250,8 +262,8 @@ export default function Index() {
   };
 
   const addToCart = (product: Product) => {
-    if (product.has_inventory_units && product.available_stock <= 0) {
-      Alert.alert("Stok kosong", `${product.product_name} tidak punya stok tersedia.`);
+    if (product.available_stock <= 0) {
+      Alert.alert("Out of stock", `${product.product_name} has no available stock.`);
       return;
     }
 
@@ -262,8 +274,8 @@ export default function Index() {
         return [...currentCart, { ...product, quantity: 1 }];
       }
 
-      if (product.has_inventory_units && existingItem.quantity >= product.available_stock) {
-        Alert.alert("Stok tidak cukup", `Stok tersedia hanya ${product.available_stock}.`);
+      if (existingItem.quantity >= product.available_stock) {
+        Alert.alert("Insufficient stock", `Only ${product.available_stock} item(s) available.`);
         return currentCart;
       }
 
@@ -288,8 +300,8 @@ export default function Index() {
           return [];
         }
 
-        if (item.has_inventory_units && nextQuantity > item.available_stock) {
-          Alert.alert("Stok tidak cukup", `Stok tersedia hanya ${item.available_stock}.`);
+        if (nextQuantity > item.available_stock) {
+          Alert.alert("Insufficient stock", `Only ${item.available_stock} item(s) available.`);
           return [item];
         }
 
@@ -305,9 +317,13 @@ export default function Index() {
       return;
     }
 
-    const localMatch = products.find(
-      (product) => product.product_code.toLowerCase() === query.toLowerCase()
-    );
+    const localMatch = products.find((product) => {
+      const normalized = query.toLowerCase();
+      return (
+        product.product_code.toLowerCase() === normalized ||
+        (product.barcode ? product.barcode.toLowerCase() === normalized : false)
+      );
+    });
 
     if (localMatch) {
       addToCart(localMatch);
@@ -322,15 +338,19 @@ export default function Index() {
       const payload = await response.json();
 
       if (!response.ok) {
-        throw new Error(payload.message || "Produk tidak ditemukan.");
+        throw new Error(payload.message || "Product not found.");
       }
 
-      const apiMatch = (payload.data ?? []).find(
-        (product: Product) => product.product_code.toLowerCase() === query.toLowerCase()
-      );
+      const apiMatch = (payload.data ?? []).find((product: Product) => {
+        const normalized = query.toLowerCase();
+        return (
+          product.product_code.toLowerCase() === normalized ||
+          (product.barcode ? product.barcode.toLowerCase() === normalized : false)
+        );
+      });
 
       if (!apiMatch) {
-        Alert.alert("Produk tidak ditemukan", "Kode barcode tidak cocok dengan produk aktif.");
+        Alert.alert("Product not found", "Barcode does not match any active product.");
         return;
       }
 
@@ -338,17 +358,13 @@ export default function Index() {
       setBarcode("");
     } catch (error) {
       Alert.alert(
-        "Gagal mencari barcode",
-        error instanceof Error ? error.message : "Terjadi kesalahan saat mencari produk."
+        "Barcode search failed",
+        error instanceof Error ? error.message : "An error occurred while searching product."
       );
     }
   };
 
-  const handleCheckout = async () => {
-    if (cart.length === 0 || checkoutLoading) {
-      return;
-    }
-
+  const submitCheckout = async (amountPaid: number, method: PaymentMethod) => {
     setCheckoutLoading(true);
 
     try {
@@ -360,8 +376,8 @@ export default function Index() {
         body: JSON.stringify({
           id_cashier: CASHIER_ID,
           id_member: selectedMemberId,
-          payment_method: paymentMethod,
-          amount_paid: subtotal,
+          payment_method: method,
+          amount_paid: amountPaid,
           discount_amount: 0,
           notes: null,
           items: cart.map((item) => ({
@@ -374,20 +390,68 @@ export default function Index() {
       const payload = await response.json();
 
       if (!response.ok) {
-        throw new Error(payload.error || payload.message || "Checkout gagal.");
+        throw new Error(payload.error || payload.message || "Checkout failed.");
       }
 
-      Alert.alert("Transaksi berhasil", `Nomor transaksi: ${payload.data.sale_number}`);
+      setCheckoutResult({
+        sale_number: payload.data.sale_number,
+        sale_date: payload.data.sale_date,
+        total_amount: payload.data.total_amount,
+        payment_method: method,
+        amount_paid: payload.data.amount_paid,
+        change_amount: payload.data.change_amount,
+      });
+
       setCart([]);
       await fetchProducts();
+      return true;
     } catch (error) {
-      Alert.alert(
-        "Checkout gagal",
-        error instanceof Error ? error.message : "Terjadi kesalahan saat checkout."
-      );
+      Alert.alert("Checkout failed", error instanceof Error ? error.message : "Checkout failed.");
+      return false;
     } finally {
       setCheckoutLoading(false);
     }
+  };
+
+  const handleCheckoutPress = async () => {
+    if (cart.length === 0 || checkoutLoading) {
+      return;
+    }
+
+    if (paymentMethod === "CASH") {
+      setCashAmountInput("");
+      setSubmittedCashAmount(0);
+      setReceiptPaymentMethod("CASH");
+      setCheckoutResult(null);
+      setIsCashModalOpen(true);
+      return;
+    }
+
+    setSubmittedCashAmount(subtotal);
+    setReceiptPaymentMethod("QRIS");
+    setCheckoutResult(null);
+    setIsReceiptModalOpen(true);
+  };
+
+  const handleCashContinue = () => {
+    if (parsedCashAmount < subtotal) {
+      Alert.alert("Insufficient cash", "Cash amount must be greater than or equal to total.");
+      return;
+    }
+
+    setSubmittedCashAmount(parsedCashAmount);
+    setReceiptPaymentMethod("CASH");
+    setIsCashModalOpen(false);
+    setCheckoutResult(null);
+    setIsReceiptModalOpen(true);
+  };
+
+  const handleSubmitCashTransaction = async () => {
+    if (submittedCashAmount < subtotal || checkoutLoading) {
+      return;
+    }
+
+    await submitCheckout(submittedCashAmount, receiptPaymentMethod);
   };
 
   return (
@@ -431,7 +495,7 @@ export default function Index() {
           </View>
           <View>
             <Text style={styles.profileName}>{CASHIER_NAME}</Text>
-            <Text style={styles.profileRole}>Kasir</Text>
+            <Text style={styles.profileRole}>Cashier</Text>
           </View>
         </View>
       </View>
@@ -439,13 +503,13 @@ export default function Index() {
       <View style={styles.mainArea}>
         <View style={styles.productsPanel}>
           <View style={styles.productsHeader}>
-            <Text style={styles.sectionTitle}>Produk</Text>
+            <Text style={styles.sectionTitle}>Products</Text>
             <View style={styles.searchBox}>
               <AppIcon name="search" size={16} color="#64748b" />
               <TextInput
                 value={search}
                 onChangeText={setSearch}
-                placeholder="Cari produk..."
+                placeholder="Search products..."
                 placeholderTextColor="#64748b"
                 style={styles.searchInput}
               />
@@ -463,42 +527,16 @@ export default function Index() {
             </View>
           </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryRow}
-          >
-            {CATEGORY_TABS.map((category) => (
-              <Pressable
-                key={category}
-                style={[
-                  styles.categoryChip,
-                  activeCategory === category && styles.categoryChipActive,
-                ]}
-                onPress={() => setActiveCategory(category)}
-              >
-                <Text
-                  style={[
-                    styles.categoryChipText,
-                    activeCategory === category && styles.categoryChipTextActive,
-                  ]}
-                >
-                  {category}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-
           {loading ? (
             <View style={styles.centerState}>
               <ActivityIndicator color="#2563eb" />
-              <Text style={styles.stateText}>Memuat produk...</Text>
+              <Text style={styles.stateText}>Loading products...</Text>
             </View>
           ) : errorMessage ? (
             <View style={styles.centerState}>
               <Text style={styles.errorText}>{errorMessage}</Text>
               <Pressable style={styles.retryButton} onPress={loadCashierData}>
-                <Text style={styles.retryText}>Muat Ulang</Text>
+                <Text style={styles.retryText}>Reload</Text>
               </Pressable>
             </View>
           ) : (
@@ -513,31 +551,46 @@ export default function Index() {
                     style={({ pressed }) => [
                       styles.productCard,
                       (pressed || inCartQuantity > 0) && styles.productCardActive,
-                      product.has_inventory_units &&
-                        product.available_stock <= 0 &&
-                        styles.productCardDisabled,
+                      product.available_stock <= 0 && styles.productCardDisabled,
                     ]}
                     onPress={() => addToCart(product)}
+                    disabled={product.available_stock <= 0}
                   >
-                    {inCartQuantity > 0 ? (
-                      <View style={styles.quantityBadge}>
-                        <Text style={styles.quantityBadgeText}>{inCartQuantity}</Text>
+                    <View style={styles.cardTopSpacer} />
+                    <View style={styles.cardContent}>
+                      <View style={styles.productImageWrap}>
+                        <Image
+                          source={getProductSource(product)}
+                          style={styles.productImage}
+                          contentFit="contain"
+                        />
                       </View>
-                    ) : null}
-                    <View style={styles.productImageWrap}>
-                      <Image
-                        source={getProductSource(product)}
-                        style={styles.productImage}
-                        contentFit="contain"
-                      />
+                      <Text style={styles.productName} numberOfLines={2}>
+                        {product.product_name}
+                      </Text>
+                      <Text style={styles.productPrice}>{formatRupiah(product.selling_price)}</Text>
+                      <Text style={styles.stockText}>
+                        Stock: {product.available_stock}
+                      </Text>
+                      {inCartQuantity > 0 ? (
+                        <View style={styles.quantityBadge}>
+                          <Pressable
+                            style={styles.quantityBadgeButton}
+                            onPress={() => updateQuantity(product.id_product, -1)}
+                          >
+                            <Text style={styles.quantityBadgeButtonText}>-</Text>
+                          </Pressable>
+                          <Text style={styles.quantityBadgeText}>{inCartQuantity}</Text>
+                          <Pressable
+                            style={styles.quantityBadgeButton}
+                            onPress={() => updateQuantity(product.id_product, 1)}
+                          >
+                            <Text style={styles.quantityBadgeButtonText}>+</Text>
+                          </Pressable>
+                        </View>
+                      ) : null}
                     </View>
-                    <Text style={styles.productName} numberOfLines={2}>
-                      {product.product_name}
-                    </Text>
-                    <Text style={styles.productPrice}>{formatRupiah(product.selling_price)}</Text>
-                    <Text style={styles.stockText}>
-                      Stok: {product.has_inventory_units ? product.available_stock : "Non-unit"}
-                    </Text>
+                    <View style={styles.cardBottomSpacer} />
                   </Pressable>
                 );
               })}
@@ -547,18 +600,17 @@ export default function Index() {
 
         <View style={styles.cartPanel}>
           <View style={styles.cartHeader}>
-            <Text style={styles.cartTitle}>Keranjang</Text>
-            <Pressable onPress={() => setCart([])}>
-              <Text style={styles.clearText}>Hapus Semua</Text>
+            <View style={styles.cartTitleWrap}>
+              <AppIcon name="cart" size={16} color="#0f172a" />
+              <Text style={styles.cartTitle}>Cart</Text>
+            </View>
+            <Pressable style={styles.clearButton} onPress={() => setCart([])}>
+              <AppIcon name="trash" size={14} color="#ef4444" />
             </Pressable>
           </View>
 
           <View style={styles.contextCard}>
-            <Text style={styles.metaLabel}>KASIR BERTUGAS</Text>
-            <View style={styles.cashierInput}>
-              <View style={styles.onlineDot} />
-              <Text style={styles.cashierInputText}>{CASHIER_NAME}</Text>
-            </View>
+            <Text style={styles.cashierLabel}>Cashier: {CASHIER_NAME}</Text>
 
             <Text style={styles.metaLabel}>MEMBER</Text>
             <Pressable
@@ -566,7 +618,7 @@ export default function Index() {
               onPress={() => setMemberPickerOpen((current) => !current)}
             >
               <Text style={styles.memberSelectText} numberOfLines={1}>
-                {selectedMember ? selectedMember.full_name : "Umum (Non-member)"}
+                {selectedMember ? selectedMember.full_name : "General (Non-member)"}
               </Text>
               <AppIcon name="chevron-down" size={16} color="#475569" />
             </Pressable>
@@ -584,7 +636,7 @@ export default function Index() {
                     setMemberPickerOpen(false);
                   }}
                 >
-                  <Text style={styles.memberDropdownText}>Umum (Non-member)</Text>
+                  <Text style={styles.memberDropdownText}>General (Non-member)</Text>
                 </Pressable>
                 {members.map((member) => (
                   <Pressable
@@ -601,18 +653,13 @@ export default function Index() {
               </ScrollView>
             ) : null}
 
-            {selectedMember ? (
-              <Text style={styles.memberHint}>
-                {selectedMember.member_code} - Saldo {formatRupiah(selectedMember.shopping_balance)}
-              </Text>
-            ) : null}
           </View>
 
           <ScrollView style={styles.cartList} contentContainerStyle={styles.cartListContent}>
             {cart.length === 0 ? (
               <View style={styles.emptyCart}>
                 <AppIcon name="shopping-bag" size={28} color="#94a3b8" />
-                <Text style={styles.emptyText}>Belum ada produk</Text>
+                <Text style={styles.emptyText}>No products yet</Text>
               </View>
             ) : (
               cart.map((item) => (
@@ -658,28 +705,35 @@ export default function Index() {
               <Text style={styles.totalValue}>{formatRupiah(subtotal)}</Text>
             </View>
 
-            <Text style={styles.payLabel}>Metode Bayar</Text>
+            <Text style={styles.payLabel}>Payment Method</Text>
             <View style={styles.paymentRow}>
               <Pressable
                 style={[styles.paymentButton, paymentMethod === "CASH" && styles.paymentButtonActive]}
                 onPress={() => setPaymentMethod("CASH")}
               >
+                <AppIcon
+                  name="cash"
+                  size={11}
+                  color={paymentMethod === "CASH" ? "#ffffff" : "#475569"}
+                />
                 <Text
                   style={[
                     styles.paymentText,
                     paymentMethod === "CASH" && styles.paymentTextActive,
                   ]}
                 >
-                  Tunai
+                  Cash
                 </Text>
               </Pressable>
-              <View style={[styles.paymentButton, styles.paymentButtonDisabled]}>
-                <Text style={styles.paymentTextDisabled}>Saldo</Text>
-              </View>
               <Pressable
                 style={[styles.paymentButton, paymentMethod === "QRIS" && styles.paymentButtonActive]}
                 onPress={() => setPaymentMethod("QRIS")}
               >
+                <AppIcon
+                  name="qr"
+                  size={11}
+                  color={paymentMethod === "QRIS" ? "#ffffff" : "#475569"}
+                />
                 <Text
                   style={[
                     styles.paymentText,
@@ -696,15 +750,132 @@ export default function Index() {
                 styles.checkoutButton,
                 (cart.length === 0 || checkoutLoading) && styles.checkoutButtonDisabled,
               ]}
-              onPress={handleCheckout}
+              onPress={handleCheckoutPress}
               disabled={cart.length === 0 || checkoutLoading}
             >
-              <AppIcon name="gift" size={18} color="#ffffff" />
-              <Text style={styles.checkoutText}>{checkoutLoading ? "Memproses..." : "Bayar"}</Text>
+              <Text style={styles.checkoutText}>{checkoutLoading ? "Processing..." : "Pay"}</Text>
             </Pressable>
           </View>
         </View>
       </View>
+
+      <Modal visible={isCashModalOpen} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Cash Payment</Text>
+            <Text style={styles.modalLabel}>Total Amount</Text>
+            <Text style={styles.modalValue}>{formatRupiah(subtotal)}</Text>
+            <Text style={styles.modalLabel}>Cash Amount</Text>
+            <TextInput
+              value={cashAmountInput}
+              onChangeText={setCashAmountInput}
+              keyboardType="numeric"
+              style={styles.cashInput}
+              placeholder="Enter cash amount"
+              placeholderTextColor="#94a3b8"
+            />
+            <Text style={styles.modalLabel}>Change</Text>
+            <Text style={styles.modalValue}>{formatRupiah(cashChangePreview)}</Text>
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalSecondaryButton} onPress={() => setIsCashModalOpen(false)}>
+                <Text style={styles.modalSecondaryText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={styles.modalPrimaryButton} onPress={handleCashContinue}>
+                <Text style={styles.modalPrimaryText}>Continue</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isReceiptModalOpen} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, styles.receiptCard]}>
+            {checkoutResult ? (
+              <Animated.View style={[styles.sweetAlertCard, { transform: [{ scale: successScale }] }]}>
+                <View style={styles.sweetIconCircle}>
+                  <MaterialCommunityIcons name="check" size={42} color="#84cc16" />
+                </View>
+                <Text style={styles.sweetTitle}>Payment Successful!</Text>
+                <Text style={styles.sweetMeta}>Transaction No.: {checkoutResult.sale_number}</Text>
+                <View style={styles.modalActions}>
+                  <Pressable
+                    style={[styles.modalSecondaryButton, styles.successSecondaryButton]}
+                    onPress={() => {
+                      setIsReceiptModalOpen(false);
+                      setCheckoutResult(null);
+                      setSubmittedCashAmount(0);
+                    }}
+                  >
+                    <Text style={[styles.modalSecondaryText, styles.successButtonText]}>Done</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.modalPrimaryButton, styles.successPrimaryButton]}
+                    onPress={() => Alert.alert("Print", "Receipt printing will be connected to printer.")}
+                  >
+                    <Text style={[styles.modalPrimaryText, styles.successButtonText]}>Print Receipt</Text>
+                  </Pressable>
+                </View>
+              </Animated.View>
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>Receipt Preview</Text>
+                <Text style={styles.receiptMeta}>Cashier: {CASHIER_NAME}</Text>
+                <Text style={styles.receiptMeta}>Time: {new Date().toLocaleString("id-ID")}</Text>
+                <Text style={styles.receiptMeta}>
+                  Payment: {receiptPaymentMethod === "CASH" ? "Cash" : "QRIS"}
+                </Text>
+
+                <View style={styles.receiptItems}>
+                  {cart.map((item) => (
+                    <View key={item.id_product} style={styles.receiptRow}>
+                      <Text style={styles.receiptItemName}>{item.product_name} x{item.quantity}</Text>
+                      <Text style={styles.receiptItemPrice}>{formatRupiah(item.selling_price * item.quantity)}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <View style={styles.receiptTotals}>
+                  <Text style={styles.receiptMeta}>Total: {formatRupiah(subtotal)}</Text>
+                  {receiptPaymentMethod === "CASH" ? (
+                    <>
+                      <Text style={styles.receiptMeta}>Cash: {formatRupiah(submittedCashAmount)}</Text>
+                      <Text style={styles.receiptMeta}>
+                        Change: {formatRupiah(Math.max(submittedCashAmount - subtotal, 0))}
+                      </Text>
+                    </>
+                  ) : null}
+                </View>
+
+                <View style={styles.modalActions}>
+                  <Pressable
+                    style={styles.modalSecondaryButton}
+                    onPress={() => {
+                      if (receiptPaymentMethod === "CASH") {
+                        setIsReceiptModalOpen(false);
+                        setIsCashModalOpen(true);
+                      } else {
+                        setIsReceiptModalOpen(false);
+                      }
+                    }}
+                  >
+                    <Text style={styles.modalSecondaryText}>Back</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.modalPrimaryButton, checkoutLoading && styles.checkoutButtonDisabled]}
+                    onPress={handleSubmitCashTransaction}
+                    disabled={checkoutLoading}
+                  >
+                    <Text style={styles.modalPrimaryText}>
+                      {checkoutLoading ? "Processing..." : "Submit"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -874,31 +1045,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     paddingVertical: 0,
   },
-  categoryRow: {
-    gap: 8,
-    paddingBottom: 10,
-  },
-  categoryChip: {
-    height: 28,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#ffffff",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-  },
-  categoryChipActive: {
-    backgroundColor: "#2563eb",
-    borderColor: "#2563eb",
-  },
-  categoryChipText: {
-    color: "#475569",
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  categoryChipTextActive: {
-    color: "#ffffff",
-  },
   centerState: {
     flex: 1,
     alignItems: "center",
@@ -938,6 +1084,7 @@ const styles = StyleSheet.create({
   productCard: {
     width: "18.4%",
     minWidth: 150,
+    height: 232,
     borderWidth: 1.5,
     borderColor: "#e2e8f0",
     borderRadius: 14,
@@ -945,6 +1092,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     alignItems: "center",
     position: "relative",
+  },
+  cardTopSpacer: {
+    flex: 1,
+  },
+  cardBottomSpacer: {
+    flex: 1,
+  },
+  cardContent: {
+    alignItems: "center",
   },
   productCardActive: {
     borderColor: "#3b82f6",
@@ -954,19 +1110,35 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   quantityBadge: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    minWidth: 96,
+    height: 34,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#2563eb",
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: 6,
+    marginTop: 8,
+  },
+  quantityBadgeButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#3b82f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quantityBadgeButtonText: {
+    color: "#3b82f6",
+    fontSize: 16,
+    fontWeight: "800",
+    lineHeight: 18,
   },
   quantityBadgeText: {
-    color: "#ffffff",
-    fontSize: 14,
+    color: "#3b82f6",
+    fontSize: 13,
     fontWeight: "700",
   },
   productImageWrap: {
@@ -974,6 +1146,8 @@ const styles = StyleSheet.create({
     height: 70,
     borderRadius: 14,
     backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#dbe3ee",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 12,
@@ -988,7 +1162,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     lineHeight: 20,
     textAlign: "center",
-    minHeight: 44,
   },
   productPrice: {
     color: "#2563eb",
@@ -1017,15 +1190,25 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 10,
   },
+  cartTitleWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   cartTitle: {
     color: "#0f172a",
-    fontSize: 34,
+    fontSize: 22,
     fontWeight: "700",
   },
-  clearText: {
-    color: "#ef4444",
-    fontSize: 13,
-    fontWeight: "500",
+  clearButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    backgroundColor: "#fff1f2",
+    alignItems: "center",
+    justifyContent: "center",
   },
   contextCard: {
     borderWidth: 1,
@@ -1035,33 +1218,17 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 6,
   },
+  cashierLabel: {
+    color: "#334155",
+    fontSize: 13,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
   metaLabel: {
     color: "#64748b",
     fontSize: 12,
     fontWeight: "600",
     marginTop: 2,
-  },
-  cashierInput: {
-    height: 46,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    backgroundColor: "#ffffff",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-  },
-  onlineDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#16a34a",
-  },
-  cashierInputText: {
-    color: "#0f172a",
-    fontSize: 14,
-    fontWeight: "600",
   },
   memberSelect: {
     height: 46,
@@ -1099,11 +1266,6 @@ const styles = StyleSheet.create({
   memberDropdownText: {
     color: "#1e293b",
     fontSize: 13,
-  },
-  memberHint: {
-    color: "#64748b",
-    fontSize: 12,
-    marginTop: 2,
   },
   cartList: {
     flex: 1,
@@ -1241,15 +1403,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e2e8f0",
     backgroundColor: "#ffffff",
+    flexDirection: "row",
+    gap: 6,
     alignItems: "center",
     justifyContent: "center",
   },
   paymentButtonActive: {
     backgroundColor: "#2563eb",
     borderColor: "#2563eb",
-  },
-  paymentButtonDisabled: {
-    backgroundColor: "#f8fafc",
   },
   paymentText: {
     color: "#475569",
@@ -1258,11 +1419,6 @@ const styles = StyleSheet.create({
   },
   paymentTextActive: {
     color: "#ffffff",
-  },
-  paymentTextDisabled: {
-    color: "#94a3b8",
-    fontSize: 13,
-    fontWeight: "500",
   },
   checkoutButton: {
     height: 54,
@@ -1281,4 +1437,157 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "700",
   },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
+    padding: 16,
+    gap: 8,
+  },
+  receiptCard: {
+    maxWidth: 520,
+    maxHeight: "90%",
+  },
+  modalTitle: {
+    color: "#0f172a",
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  sweetAlertCard: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 18,
+    gap: 10,
+  },
+  sweetIconCircle: {
+    width: 108,
+    height: 108,
+    borderRadius: 54,
+    borderWidth: 5,
+    borderColor: "#d9f99d",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f7fee7",
+  },
+  sweetTitle: {
+    color: "#1f2937",
+    fontSize: 32,
+    fontWeight: "700",
+  },
+  sweetMeta: {
+    color: "#475569",
+    fontSize: 13,
+  },
+  modalLabel: {
+    color: "#64748b",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  modalValue: {
+    color: "#0f172a",
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  cashInput: {
+    height: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    paddingHorizontal: 12,
+    color: "#0f172a",
+    fontSize: 14,
+    backgroundColor: "#ffffff",
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 8,
+  },
+  modalSecondaryButton: {
+    flex: 1,
+    height: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+  },
+  modalSecondaryText: {
+    color: "#334155",
+    fontWeight: "600",
+    fontSize: 13,
+  },
+  modalPrimaryButton: {
+    flex: 1,
+    height: 42,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#2563eb",
+  },
+  modalPrimaryText: {
+    color: "#ffffff",
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  successPrimaryButton: {
+    minWidth: 178,
+    height: 46,
+    flex: 0,
+    paddingHorizontal: 18,
+  },
+  successSecondaryButton: {
+    minWidth: 110,
+    height: 46,
+    flex: 0,
+    paddingHorizontal: 14,
+  },
+  successButtonText: {
+    fontSize: 14,
+    lineHeight: 18,
+    textAlign: "center",
+  },
+  receiptMeta: {
+    color: "#334155",
+    fontSize: 12,
+  },
+  receiptItems: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "#e2e8f0",
+    paddingVertical: 8,
+    gap: 6,
+  },
+  receiptRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  receiptItemName: {
+    color: "#1e293b",
+    fontSize: 12,
+    flex: 1,
+  },
+  receiptItemPrice: {
+    color: "#0f172a",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  receiptTotals: {
+    marginTop: 6,
+    gap: 3,
+  },
 });
+
