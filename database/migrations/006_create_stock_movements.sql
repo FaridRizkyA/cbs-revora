@@ -3,7 +3,6 @@ CREATE TABLE tbl_stock_movements (
 
     id_product UUID NOT NULL,
     id_product_batch UUID,
-    id_inventory_unit UUID,
 
     movement_type VARCHAR(30) NOT NULL,
     quantity INTEGER NOT NULL DEFAULT 1,
@@ -27,10 +26,6 @@ CREATE TABLE tbl_stock_movements (
     CONSTRAINT fk_stock_movements_product_batch
         FOREIGN KEY (id_product_batch)
         REFERENCES tbl_product_batches(id_product_batch),
-
-    CONSTRAINT fk_stock_movements_inventory_unit
-        FOREIGN KEY (id_inventory_unit)
-        REFERENCES tbl_inventory_units(id_inventory_unit),
 
     CONSTRAINT fk_stock_movements_created_by
         FOREIGN KEY (created_by)

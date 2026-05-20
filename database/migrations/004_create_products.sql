@@ -2,6 +2,7 @@ CREATE TABLE tbl_products (
     id_product UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     product_code VARCHAR(50) NOT NULL UNIQUE,
+    barcode VARCHAR(100) UNIQUE,
     product_name VARCHAR(150) NOT NULL,
     description TEXT,
 

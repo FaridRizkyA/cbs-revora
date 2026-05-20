@@ -4,7 +4,6 @@ CREATE TABLE tbl_sale_items (
     id_sale UUID NOT NULL,
     id_product UUID NOT NULL,
     id_product_batch UUID,
-    id_inventory_unit UUID,
 
     quantity INTEGER NOT NULL DEFAULT 1,
     unit_price NUMERIC(15, 2) NOT NULL DEFAULT 0,
@@ -28,10 +27,6 @@ CREATE TABLE tbl_sale_items (
     CONSTRAINT fk_sale_items_product_batch
         FOREIGN KEY (id_product_batch)
         REFERENCES tbl_product_batches(id_product_batch),
-
-    CONSTRAINT fk_sale_items_inventory_unit
-        FOREIGN KEY (id_inventory_unit)
-        REFERENCES tbl_inventory_units(id_inventory_unit),
 
     CONSTRAINT chk_sale_items_quantity
         CHECK (quantity > 0),
