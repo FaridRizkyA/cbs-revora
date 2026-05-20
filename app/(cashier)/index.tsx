@@ -19,8 +19,11 @@ import {
 } from "react-native";
 
 const PRODUCT_PLACEHOLDER = require("../../assets/images/placeholders/default-product.png");
+const PROFILE_PLACEHOLDER = require("../../assets/images/placeholders/default-profile.png");
+const SIDEBAR_LOGO = require("../../assets/images/ui/logo_horizontal.png");
 const CASHIER_ID = "2b8c7d6e-5f4a-43b2-a1c0-e9f8a7b6c512";
 const CASHIER_NAME = "Rizky Pratama";
+const CASHIER_PICTURE: string | null = null;
 
 
 type AppIconName =
@@ -74,19 +77,32 @@ const AppIcon = ({
   return <Feather name={iconMap[name as Exclude<AppIconName, "package" | "cash">]} size={size} color={color} />;
 };
 
-const NAV_ITEMS: {
+type NavItem = {
+  key: string;
   label: string;
   icon: AppIconName;
   active?: boolean;
-  chevron?: boolean;
-}[] = [
-  { label: "Cashier", icon: "monitor", active: true },
-  { label: "Dashboard", icon: "grid" },
-  { label: "Inventori", icon: "package", chevron: true },
-  { label: "Movement Product", icon: "activity", chevron: true },
-  { label: "Laporan & Riwayat", icon: "file-text" },
-  { label: "Member", icon: "users" },
-  { label: "Pendapatan", icon: "dollar-sign" },
+  children?: string[];
+};
+
+const NAV_ITEMS: NavItem[] = [
+  { key: "cashier", label: "Cashier", icon: "monitor", active: true },
+  { key: "dashboard", label: "Dashboard", icon: "grid" },
+  {
+    key: "inventory",
+    label: "Inventory",
+    icon: "package",
+    children: ["Producers", "Products", "Product Batches"],
+  },
+  {
+    key: "stock-movements",
+    label: "Stock Movements",
+    icon: "activity",
+    children: ["Stock In", "Stock Out", "Stock Adjustment"],
+  },
+  { key: "reports-history", label: "Reports & History", icon: "file-text" },
+  { key: "members", label: "Members", icon: "users" },
+  { key: "income", label: "Income", icon: "dollar-sign" },
 ];
 
 type Product = {
@@ -171,6 +187,10 @@ export default function Index() {
   const [checkoutResult, setCheckoutResult] = useState<CheckoutResult | null>(null);
   const [receiptPaymentMethod, setReceiptPaymentMethod] = useState<PaymentMethod>("CASH");
   const successScale = useRef(new Animated.Value(0.7)).current;
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({
+    inventory: false,
+    "stock-movements": false,
+  });
 
   const selectedMember = useMemo(
     () => members.find((member) => member.id_member === selectedMemberId) ?? null,
@@ -458,32 +478,50 @@ export default function Index() {
     <View style={styles.appShell}>
       <View style={styles.sidebar}>
         <View style={styles.brandRow}>
-          <View style={styles.logoBox}>
-            <Text style={styles.logoText}>K</Text>
-          </View>
-          <View>
-            <Text style={styles.brandName}>Kopkampus</Text>
-            <Text style={styles.brandSubtitle}>POS System</Text>
-          </View>
+          <Image source={SIDEBAR_LOGO} style={styles.sidebarLogo} contentFit="contain" />
         </View>
 
         <View style={styles.navList}>
           {NAV_ITEMS.map((item) => (
-            <View key={item.label} style={[styles.navItem, item.active && styles.navItemActive]}>
-              <AppIcon
-                name={item.icon}
-                size={18}
-                color={item.active ? "#2563eb" : "#475569"}
-                style={styles.navIcon}
-              />
-              <Text style={[styles.navText, item.active && styles.navTextActive]}>{item.label}</Text>
-              {item.chevron ? (
+            <View key={item.key}>
+              <Pressable
+                style={[styles.navItem, item.active && styles.navItemActive]}
+                onPress={() => {
+                  if (item.children?.length) {
+                    setExpandedMenus((current) => ({
+                      ...current,
+                      [item.key]: !current[item.key],
+                    }));
+                  }
+                }}
+              >
                 <AppIcon
-                  name="chevron-down"
-                  size={14}
-                  color="#64748b"
-                  style={styles.navChevron}
+                  name={item.icon}
+                  size={18}
+                  color={item.active ? "#2563eb" : "#475569"}
+                  style={styles.navIcon}
                 />
+                <Text style={[styles.navText, item.active && styles.navTextActive]}>{item.label}</Text>
+                {item.children?.length ? (
+                  <AppIcon
+                    name="chevron-down"
+                    size={14}
+                    color="#64748b"
+                    style={[
+                      styles.navChevron,
+                      expandedMenus[item.key] ? styles.navChevronExpanded : null,
+                    ]}
+                  />
+                ) : null}
+              </Pressable>
+              {item.children?.length && expandedMenus[item.key] ? (
+                <View style={styles.submenuList}>
+                  {item.children.map((child) => (
+                    <Pressable key={child} style={styles.submenuItem}>
+                      <Text style={styles.submenuText}>{child}</Text>
+                    </Pressable>
+                  ))}
+                </View>
               ) : null}
             </View>
           ))}
@@ -491,7 +529,11 @@ export default function Index() {
 
         <View style={styles.cashierProfile}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>RP</Text>
+            <Image
+              source={CASHIER_PICTURE ? { uri: CASHIER_PICTURE } : PROFILE_PLACEHOLDER}
+              style={styles.avatarImage}
+              contentFit="cover"
+            />
           </View>
           <View>
             <Text style={styles.profileName}>{CASHIER_NAME}</Text>
@@ -896,35 +938,13 @@ const styles = StyleSheet.create({
     height: 84,
     borderBottomColor: "#f1f5f9",
     borderBottomWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 16,
-  },
-  logoBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 8,
-    backgroundColor: "#2563eb",
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 16,
   },
-  logoText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  brandName: {
-    color: "#0f172a",
-    fontSize: 15,
-    fontWeight: "700",
-    lineHeight: 20,
-  },
-  brandSubtitle: {
-    color: "#64748b",
-    fontSize: 11,
-    marginTop: 2,
-    lineHeight: 16,
+  sidebarLogo: {
+    width: "100%",
+    height: 56,
   },
   navList: {
     flex: 1,
@@ -959,6 +979,26 @@ const styles = StyleSheet.create({
   navChevron: {
     marginLeft: "auto",
   },
+  navChevronExpanded: {
+    transform: [{ rotate: "180deg" }],
+  },
+  submenuList: {
+    marginTop: 2,
+    marginBottom: 6,
+    marginLeft: 38,
+    gap: 2,
+  },
+  submenuItem: {
+    minHeight: 30,
+    borderRadius: 8,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  submenuText: {
+    color: "#64748b",
+    fontSize: 13,
+    fontWeight: "500",
+  },
   cashierProfile: {
     height: 66,
     borderTopColor: "#f1f5f9",
@@ -972,14 +1012,16 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#2563eb",
+    backgroundColor: "#e2e8f0",
+    borderWidth: 1.5,
+    borderColor: "#94a3b8",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
-  avatarText: {
-    color: "#ffffff",
-    fontWeight: "700",
-    fontSize: 14,
+  avatarImage: {
+    width: "100%",
+    height: "100%",
   },
   profileName: {
     color: "#1e293b",
