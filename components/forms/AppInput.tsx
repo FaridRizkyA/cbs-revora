@@ -18,8 +18,8 @@ const styles = StyleSheet.create({
   label: { color: "#53657f", fontSize: 12, fontWeight: "800" },
   input: {
     height: 44,
-    backgroundColor: "#ffffff",
-    borderColor: "#dbe4ef",
+    backgroundColor: "rgba(255, 255, 255, 0.72)",
+    borderColor: "rgba(147, 172, 206, 0.42)",
     borderRadius: 8,
     borderWidth: 1,
     color: "#061329",
