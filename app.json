@@ -8,7 +8,7 @@
     "scheme": "cbsrevora",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/images/icon.png"
     },
     "android": {
       "adaptiveIcon": {
@@ -28,10 +28,16 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#000000",
+          "image": "./assets/images/ui/logo_all.png",
+          "imageWidth": 220,
           "android": {
-            "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
+            "image": "./assets/images/ui/logo_all.png",
+            "imageWidth": 220
+          },
+          "ios": {
+            "image": "./assets/images/ui/logo_all.png",
+            "imageWidth": 220
           }
         }
       ]
