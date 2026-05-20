@@ -8,7 +8,7 @@ node_modules
 dist
 build
 coverage
-
+markdown.md
 *.log
 
 .vscode/settings.json
