@@ -27,47 +27,54 @@ const getProducts = async (req, res) => {
   try {
     const result = await pool.query(
       `
+      WITH stock AS (
+        SELECT
+          sm.id_product,
+          SUM(
+            CASE
+              WHEN sm.movement_type = 'OUT' THEN -sm.quantity
+              ELSE sm.quantity
+            END
+          )::int AS available_stock
+        FROM tbl_stock_movements sm
+        WHERE sm.is_active = 'Y'
+        GROUP BY sm.id_product
+      )
       SELECT
         p.id_product,
         p.product_code,
+        p.barcode,
         p.product_name,
         p.description,
         p.selling_price::float AS selling_price,
         p.minimum_stock,
         p.product_image,
-        EXISTS (
-          SELECT 1
-          FROM tbl_product_batches pb
-          WHERE pb.id_product = p.id_product
-            AND pb.is_active = 'Y'
-        ) AS has_inventory_units,
-        COUNT(iu.id_inventory_unit)::int AS available_stock,
-        MIN(pb.expired_date) FILTER (
-          WHERE iu.id_inventory_unit IS NOT NULL
-        ) AS nearest_expired_date
+        GREATEST(COALESCE(s.available_stock, 0), 0)::int AS available_stock,
+        MIN(pb.expired_date) AS nearest_expired_date
       FROM tbl_products p
+      LEFT JOIN stock s
+        ON s.id_product = p.id_product
       LEFT JOIN tbl_product_batches pb
         ON pb.id_product = p.id_product
         AND pb.is_active = 'Y'
-      LEFT JOIN tbl_inventory_units iu
-        ON iu.id_product_batch = pb.id_product_batch
-        AND iu.unit_status = 'AVAILABLE'
-        AND iu.is_active = 'Y'
       WHERE p.is_active = 'Y'
         AND (
           $1 = ''
           OR p.product_code ILIKE $2
+          OR p.barcode ILIKE $2
           OR p.product_name ILIKE $2
           OR p.description ILIKE $2
         )
       GROUP BY
         p.id_product,
         p.product_code,
+        p.barcode,
         p.product_name,
         p.description,
         p.selling_price,
         p.minimum_stock,
-        p.product_image
+        p.product_image,
+        s.available_stock
       ORDER BY p.product_name ASC;
       `,
       [search, `%${search}%`]
@@ -154,107 +161,30 @@ const lockProduct = async (client, idProduct) => {
   return result.rows[0];
 };
 
-const productHasInventoryUnits = async (client, idProduct) => {
+const getAvailableStock = async (client, idProduct) => {
   const result = await client.query(
     `
-    SELECT EXISTS (
-      SELECT 1
-      FROM tbl_product_batches
-      WHERE id_product = $1
-        AND is_active = 'Y'
-    ) AS has_inventory_units;
+    SELECT
+      GREATEST(
+        COALESCE(
+          SUM(
+            CASE
+              WHEN movement_type = 'OUT' THEN -quantity
+              ELSE quantity
+            END
+          ),
+          0
+        ),
+        0
+      )::int AS available_stock
+    FROM tbl_stock_movements
+    WHERE id_product = $1
+      AND is_active = 'Y';
     `,
     [idProduct]
   );
 
-  return result.rows[0].has_inventory_units;
-};
-
-const lockSpecificInventoryUnit = async (client, idProduct, idInventoryUnit) => {
-  const result = await client.query(
-    `
-    SELECT
-      iu.id_inventory_unit,
-      iu.id_product,
-      iu.id_product_batch,
-      iu.barcode,
-      pb.expired_date
-    FROM tbl_inventory_units iu
-    JOIN tbl_product_batches pb
-      ON pb.id_product_batch = iu.id_product_batch
-    WHERE iu.id_inventory_unit = $1
-      AND iu.id_product = $2
-      AND iu.is_active = 'Y'
-    FOR UPDATE OF iu;
-    `,
-    [idInventoryUnit, idProduct]
-  );
-
-  if (result.rowCount === 0) {
-    throw new Error(`Inventory unit not found for product: ${idInventoryUnit}`);
-  }
-
-  const unit = result.rows[0];
-
-  const statusResult = await client.query(
-    `
-    SELECT unit_status
-    FROM tbl_inventory_units
-    WHERE id_inventory_unit = $1;
-    `,
-    [idInventoryUnit]
-  );
-
-  if (statusResult.rows[0].unit_status !== "AVAILABLE") {
-    throw new Error(`Inventory unit is not available: ${unit.barcode}`);
-  }
-
-  return unit;
-};
-
-const lockAvailableInventoryUnits = async (client, idProduct, quantity) => {
-  const result = await client.query(
-    `
-    SELECT
-      iu.id_inventory_unit,
-      iu.id_product,
-      iu.id_product_batch,
-      iu.barcode,
-      pb.expired_date
-    FROM tbl_inventory_units iu
-    JOIN tbl_product_batches pb
-      ON pb.id_product_batch = iu.id_product_batch
-    WHERE iu.id_product = $1
-      AND iu.unit_status = 'AVAILABLE'
-      AND iu.is_active = 'Y'
-      AND pb.is_active = 'Y'
-    ORDER BY pb.expired_date ASC, iu.created_date ASC
-    LIMIT $2
-    FOR UPDATE OF iu SKIP LOCKED;
-    `,
-    [idProduct, quantity]
-  );
-
-  if (result.rowCount < quantity) {
-    throw new Error(`Insufficient stock for product: ${idProduct}`);
-  }
-
-  return result.rows;
-};
-
-const markInventoryUnitSold = async (client, idInventoryUnit, idCashier) => {
-  await client.query(
-    `
-    UPDATE tbl_inventory_units
-    SET
-      unit_status = 'SOLD',
-      sold_date = NOW(),
-      last_modify_date = NOW(),
-      last_modify_by = $2
-    WHERE id_inventory_unit = $1;
-    `,
-    [idInventoryUnit, idCashier]
-  );
+  return result.rows[0].available_stock;
 };
 
 const checkoutSale = async (req, res) => {
@@ -320,7 +250,6 @@ const checkoutSale = async (req, res) => {
     }
 
     const saleItems = [];
-    let subtotal = 0;
 
     for (const item of items) {
       if (!item.id_product) {
@@ -330,65 +259,29 @@ const checkoutSale = async (req, res) => {
       const product = await lockProduct(client, item.id_product);
       const requestedQuantity = validatePositiveInteger(item.quantity || 1, "quantity");
       const unitPrice = toNumber(item.unit_price ?? product.selling_price);
-      const hasInventoryUnits = await productHasInventoryUnits(client, item.id_product);
 
       if (unitPrice < 0) {
         throw new Error(`unit_price cannot be negative for product: ${item.id_product}`);
       }
 
-      if (item.id_inventory_unit) {
-        if (requestedQuantity !== 1) {
-          throw new Error("quantity must be 1 when id_inventory_unit is provided.");
-        }
+      const availableStock = await getAvailableStock(client, item.id_product);
 
-        const unit = await lockSpecificInventoryUnit(
-          client,
-          item.id_product,
-          item.id_inventory_unit
+      if (requestedQuantity > availableStock) {
+        throw new Error(
+          `Insufficient stock for product ${product.product_name}. Available: ${availableStock}.`
         );
-
-        saleItems.push({
-          id_product: product.id_product,
-          id_product_batch: unit.id_product_batch,
-          id_inventory_unit: unit.id_inventory_unit,
-          quantity: 1,
-          unit_price: unitPrice,
-          subtotal: unitPrice,
-        });
-
-        await markInventoryUnitSold(client, unit.id_inventory_unit, id_cashier);
-      } else if (hasInventoryUnits) {
-        const units = await lockAvailableInventoryUnits(
-          client,
-          item.id_product,
-          requestedQuantity
-        );
-
-        for (const unit of units) {
-          saleItems.push({
-            id_product: product.id_product,
-            id_product_batch: unit.id_product_batch,
-            id_inventory_unit: unit.id_inventory_unit,
-            quantity: 1,
-            unit_price: unitPrice,
-            subtotal: unitPrice,
-          });
-
-          await markInventoryUnitSold(client, unit.id_inventory_unit, id_cashier);
-        }
-      } else {
-        saleItems.push({
-          id_product: product.id_product,
-          id_product_batch: null,
-          id_inventory_unit: null,
-          quantity: requestedQuantity,
-          unit_price: unitPrice,
-          subtotal: unitPrice * requestedQuantity,
-        });
       }
+
+      saleItems.push({
+        id_product: product.id_product,
+        id_product_batch: null,
+        quantity: requestedQuantity,
+        unit_price: unitPrice,
+        subtotal: unitPrice * requestedQuantity,
+      });
     }
 
-    subtotal = saleItems.reduce((total, item) => total + item.subtotal, 0);
+    const subtotal = saleItems.reduce((total, item) => total + item.subtotal, 0);
 
     const discount = toNumber(discount_amount);
     const totalAmount = subtotal - discount;
@@ -463,19 +356,17 @@ const checkoutSale = async (req, res) => {
           id_sale,
           id_product,
           id_product_batch,
-          id_inventory_unit,
           quantity,
           unit_price,
           subtotal,
           created_by
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8
+          $1, $2, $3, $4, $5, $6, $7
         )
         RETURNING
           id_sale_item,
           id_product,
           id_product_batch,
-          id_inventory_unit,
           quantity,
           unit_price::float AS unit_price,
           subtotal::float AS subtotal;
@@ -484,7 +375,6 @@ const checkoutSale = async (req, res) => {
           sale.id_sale,
           item.id_product,
           item.id_product_batch,
-          item.id_inventory_unit,
           item.quantity,
           item.unit_price,
           item.subtotal,
@@ -499,27 +389,24 @@ const checkoutSale = async (req, res) => {
         INSERT INTO tbl_stock_movements (
           id_product,
           id_product_batch,
-          id_inventory_unit,
           movement_type,
           quantity,
           reason,
           notes,
           created_by
         ) VALUES (
-          $1, $2, $3, 'OUT', $4, $5, $6, $7
+          $1, $2, 'OUT', $3, $4, $5, $6
         );
         `,
         [
           item.id_product,
           item.id_product_batch,
-          item.id_inventory_unit,
           item.quantity,
           "SALE",
           `Sale ${sale.sale_number}`,
           id_cashier,
         ]
       );
-
     }
 
     if (member) {
