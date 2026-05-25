@@ -1,13 +1,25 @@
 import { useRouter } from "expo-router";
 import { useEffect } from "react";
 import { Image, StyleSheet, View } from "react-native";
+import { getAuthSession, getRouteByRole } from "../utils/authSession";
 
 export default function SplashPage() {
   const router = useRouter();
 
   useEffect(() => {
     const timeout = setTimeout(() => {
-      router.replace("/login");
+      getAuthSession()
+        .then((session) => {
+          if (!session?.token || !session?.user?.role_name) {
+            router.replace("/login");
+            return;
+          }
+
+          router.replace(getRouteByRole(session.user.role_name));
+        })
+        .catch(() => {
+          router.replace("/login");
+        });
     }, 3000);
 
     return () => clearTimeout(timeout);

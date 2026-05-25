@@ -9,7 +9,7 @@ export default function AppSidebar({ children }: AppSidebarProps) {
 
 const styles = StyleSheet.create({
   sidebar: {
-    width: 270,
+    width: 220,
     backgroundColor: "#ffffff",
     borderRightColor: "#dde5f0",
     borderRightWidth: 1,

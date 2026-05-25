@@ -4,6 +4,8 @@ const express = require("express");
 const cors = require("cors");
 const pool = require("./config/db");
 const cashierRoutes = require("./routes/cashierRoutes");
+const authRoutes = require("./routes/authRoutes");
+const dashboardRoutes = require("./routes/dashboardRoutes");
 
 const app = express();
 
@@ -25,6 +27,8 @@ app.get("/", async (req, res) => {
 });
 
 app.use("/api", cashierRoutes);
+app.use("/api", authRoutes);
+app.use("/api", dashboardRoutes);
 
 app.listen(process.env.PORT, () => {
   console.log(`Server running on port ${process.env.PORT}`);

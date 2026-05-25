@@ -2,6 +2,7 @@ import Constants from "expo-constants";
 import { Image } from "expo-image";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "expo-router";
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +18,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { clearAuthSession } from "../../utils/authSession";
 
 const PRODUCT_PLACEHOLDER = require("../../assets/images/placeholders/default-product.png");
 const PROFILE_PLACEHOLDER = require("../../assets/images/placeholders/default-profile.png");
@@ -76,34 +78,6 @@ const AppIcon = ({
 
   return <Feather name={iconMap[name as Exclude<AppIconName, "package" | "cash">]} size={size} color={color} />;
 };
-
-type NavItem = {
-  key: string;
-  label: string;
-  icon: AppIconName;
-  active?: boolean;
-  children?: string[];
-};
-
-const NAV_ITEMS: NavItem[] = [
-  { key: "cashier", label: "Cashier", icon: "monitor", active: true },
-  { key: "dashboard", label: "Dashboard", icon: "grid" },
-  {
-    key: "inventory",
-    label: "Inventory",
-    icon: "package",
-    children: ["Producers", "Products", "Product Batches"],
-  },
-  {
-    key: "stock-movements",
-    label: "Stock Movements",
-    icon: "activity",
-    children: ["Stock In", "Stock Out", "Stock Adjustment"],
-  },
-  { key: "reports-history", label: "Reports & History", icon: "file-text" },
-  { key: "members", label: "Members", icon: "users" },
-  { key: "income", label: "Income", icon: "dollar-sign" },
-];
 
 type Product = {
   id_product: string;
@@ -169,6 +143,7 @@ const formatRupiah = (value: number) =>
     .replace(/\s/g, " ");
 
 export default function Index() {
+  const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -186,11 +161,8 @@ export default function Index() {
   const [submittedCashAmount, setSubmittedCashAmount] = useState(0);
   const [checkoutResult, setCheckoutResult] = useState<CheckoutResult | null>(null);
   const [receiptPaymentMethod, setReceiptPaymentMethod] = useState<PaymentMethod>("CASH");
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const successScale = useRef(new Animated.Value(0.7)).current;
-  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({
-    inventory: false,
-    "stock-movements": false,
-  });
 
   const selectedMember = useMemo(
     () => members.find((member) => member.id_member === selectedMemberId) ?? null,
@@ -474,70 +446,46 @@ export default function Index() {
     await submitCheckout(submittedCashAmount, receiptPaymentMethod);
   };
 
+  const handleLogout = async () => {
+    await clearAuthSession();
+    router.replace("/login");
+  };
+
   return (
     <View style={styles.appShell}>
-      <View style={styles.sidebar}>
-        <View style={styles.brandRow}>
-          <Image source={SIDEBAR_LOGO} style={styles.sidebarLogo} contentFit="contain" />
-        </View>
-
-        <View style={styles.navList}>
-          {NAV_ITEMS.map((item) => (
-            <View key={item.key}>
-              <Pressable
-                style={[styles.navItem, item.active && styles.navItemActive]}
-                onPress={() => {
-                  if (item.children?.length) {
-                    setExpandedMenus((current) => ({
-                      ...current,
-                      [item.key]: !current[item.key],
-                    }));
-                  }
-                }}
-              >
-                <AppIcon
-                  name={item.icon}
-                  size={18}
-                  color={item.active ? "#2563eb" : "#475569"}
-                  style={styles.navIcon}
+      <View style={styles.topBar}>
+        <Image source={SIDEBAR_LOGO} style={styles.topBarLogo} contentFit="contain" />
+        <View style={styles.topBarRight}>
+          <Pressable style={styles.mainAppButton} onPress={() => router.push("/(main)/dashboard")}>
+            <Feather name="arrow-right-circle" size={16} color="#ffffff" />
+            <Text style={styles.mainAppButtonText}>Enter Main App</Text>
+          </Pressable>
+          <View style={styles.profileMenuWrap}>
+            <Pressable style={styles.profileTrigger} onPress={() => setProfileMenuOpen((prev) => !prev)}>
+              <View style={styles.topAvatar}>
+                <Image
+                  source={CASHIER_PICTURE ? { uri: CASHIER_PICTURE } : PROFILE_PLACEHOLDER}
+                  style={styles.topAvatarImage}
+                  contentFit="cover"
                 />
-                <Text style={[styles.navText, item.active && styles.navTextActive]}>{item.label}</Text>
-                {item.children?.length ? (
-                  <AppIcon
-                    name="chevron-down"
-                    size={14}
-                    color="#64748b"
-                    style={[
-                      styles.navChevron,
-                      expandedMenus[item.key] ? styles.navChevronExpanded : null,
-                    ]}
-                  />
-                ) : null}
-              </Pressable>
-              {item.children?.length && expandedMenus[item.key] ? (
-                <View style={styles.submenuList}>
-                  {item.children.map((child) => (
-                    <Pressable key={child} style={styles.submenuItem}>
-                      <Text style={styles.submenuText}>{child}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.cashierProfile}>
-          <View style={styles.avatar}>
-            <Image
-              source={CASHIER_PICTURE ? { uri: CASHIER_PICTURE } : PROFILE_PLACEHOLDER}
-              style={styles.avatarImage}
-              contentFit="cover"
-            />
-          </View>
-          <View>
-            <Text style={styles.profileName}>{CASHIER_NAME}</Text>
-            <Text style={styles.profileRole}>Cashier</Text>
+              </View>
+              <Text style={styles.profileTriggerText}>{CASHIER_NAME}</Text>
+              <Feather name="chevron-down" size={16} color="#475569" />
+            </Pressable>
+            {profileMenuOpen ? (
+              <View style={styles.profileDropdown}>
+                <Pressable
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                    setProfileMenuOpen(false);
+                    handleLogout();
+                  }}
+                >
+                  <Feather name="log-out" size={14} color="#dc2626" />
+                  <Text style={styles.dropdownItemText}>Logout</Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
         </View>
       </View>
@@ -925,121 +873,114 @@ export default function Index() {
 const styles = StyleSheet.create({
   appShell: {
     flex: 1,
-    flexDirection: "row",
+    flexDirection: "column",
     backgroundColor: "#f8fafc",
   },
-  sidebar: {
-    width: 220,
-    backgroundColor: "#ffffff",
-    borderRightColor: "#e2e8f0",
-    borderRightWidth: 1,
-  },
-  brandRow: {
-    height: 84,
-    borderBottomColor: "#f1f5f9",
+  topBar: {
+    height: 72,
     borderBottomWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
+    borderBottomColor: "#e2e8f0",
+    backgroundColor: "#ffffff",
     paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    position: "relative",
+    zIndex: 30,
   },
-  sidebarLogo: {
-    width: "100%",
-    height: 56,
-  },
-  navList: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    gap: 2,
-  },
-  navItem: {
+  topBarLogo: {
+    width: 190,
     height: 44,
-    borderRadius: 8,
+  },
+  topBarRight: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
     gap: 10,
+    zIndex: 40,
   },
-  navItemActive: {
-    backgroundColor: "#eff6ff",
-  },
-  navIcon: {
-    width: 20,
-  },
-  navText: {
-    flex: 1,
-    color: "#475569",
-    fontSize: 15,
-    fontWeight: "500",
-  },
-  navTextActive: {
-    color: "#2563eb",
-    fontWeight: "600",
-  },
-  navChevron: {
-    marginLeft: "auto",
-  },
-  navChevronExpanded: {
-    transform: [{ rotate: "180deg" }],
-  },
-  submenuList: {
-    marginTop: 2,
-    marginBottom: 6,
-    marginLeft: 38,
-    gap: 2,
-  },
-  submenuItem: {
-    minHeight: 30,
-    borderRadius: 8,
+  mainAppButton: {
+    height: 38,
+    minWidth: 168,
+    borderRadius: 10,
+    backgroundColor: "#1d4ed8",
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+  },
+  mainAppButtonText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  profileMenuWrap: {
+    position: "relative",
+    zIndex: 60,
+  },
+  profileTrigger: {
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#dbe3ee",
+    backgroundColor: "#ffffff",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     paddingHorizontal: 10,
   },
-  submenuText: {
-    color: "#64748b",
-    fontSize: 13,
-    fontWeight: "500",
-  },
-  cashierProfile: {
-    height: 66,
-    borderTopColor: "#f1f5f9",
-    borderTopWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-  },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#e2e8f0",
-    borderWidth: 1.5,
-    borderColor: "#94a3b8",
-    alignItems: "center",
-    justifyContent: "center",
+  topAvatar: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     overflow: "hidden",
+    backgroundColor: "#e2e8f0",
   },
-  avatarImage: {
+  topAvatarImage: {
     width: "100%",
     height: "100%",
   },
-  profileName: {
+  profileTriggerText: {
     color: "#1e293b",
+    fontSize: 13,
     fontWeight: "600",
-    fontSize: 14,
-    lineHeight: 18,
   },
-  profileRole: {
-    color: "#64748b",
-    fontSize: 11,
-    lineHeight: 14,
-    marginTop: 2,
+  profileDropdown: {
+    position: "absolute",
+    top: 46,
+    right: 0,
+    width: 140,
+    backgroundColor: "#ffffff",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#dbe3ee",
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+    padding: 6,
+    zIndex: 120,
+  },
+  dropdownItem: {
+    height: 34,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 8,
+  },
+  dropdownItemText: {
+    color: "#dc2626",
+    fontSize: 13,
+    fontWeight: "700",
   },
   mainArea: {
     flex: 1,
     flexDirection: "row",
     gap: 12,
     padding: 14,
+    zIndex: 1,
   },
   productsPanel: {
     flex: 1,
