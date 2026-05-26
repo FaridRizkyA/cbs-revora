@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Feather } from "@expo/vector-icons";
-import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import {
   ActivityIndicator,
@@ -18,25 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import AppButton from "../../components/forms/AppButton";
 import AppInput from "../../components/forms/AppInput";
 import { getRouteByRole, saveAuthSession } from "../../utils/authSession";
-
-const getApiBaseUrl = () => {
-  const envUrl = process.env.EXPO_PUBLIC_API_URL;
-
-  if (envUrl) {
-    return envUrl.replace(/\/$/, "");
-  }
-
-  if (Platform.OS === "android") {
-    return "http://10.0.2.2:3000";
-  }
-
-  const hostUri = Constants.expoConfig?.hostUri ?? Constants.expoGoConfig?.debuggerHost;
-  const host = hostUri?.split(":")[0];
-
-  return `http://${host || "localhost"}:3000`;
-};
-
-const API_BASE_URL = getApiBaseUrl();
+import { API_BASE_URL } from "../../utils/api";
 
 export default function LoginScreen() {
   const router = useRouter();

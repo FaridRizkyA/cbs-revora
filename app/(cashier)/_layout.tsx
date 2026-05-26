@@ -1,5 +1,4 @@
-import { Stack } from "expo-router";
-import { useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { canAccessCashierMode, getAuthSession, getRouteByRole } from "../../utils/authSession";

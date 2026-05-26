@@ -8,8 +8,6 @@ CREATE TABLE tbl_product_batches (
 
     purchase_price NUMERIC(15, 2) NOT NULL DEFAULT 0,
 
-    is_active CHAR(1) NOT NULL DEFAULT 'Y',
-
     created_date TIMESTAMP NOT NULL DEFAULT NOW(),
     created_by UUID,
     last_modify_date TIMESTAMP,
@@ -23,8 +21,5 @@ CREATE TABLE tbl_product_batches (
         UNIQUE (id_product, batch_code),
 
     CONSTRAINT chk_product_batches_purchase_price
-        CHECK (purchase_price >= 0),
-
-    CONSTRAINT chk_product_batches_is_active
-        CHECK (is_active IN ('Y', 'N'))
+        CHECK (purchase_price >= 0)
 );

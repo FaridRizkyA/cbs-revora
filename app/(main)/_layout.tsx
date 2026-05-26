@@ -5,6 +5,7 @@ import { Pressable, Text, View } from "react-native";
 import AppNavigationSidebar, { NavigationItem } from "../../components/navigation/AppNavigationSidebar";
 import {
   canAccessMainApp,
+  clearAuthSession,
   canCashierAccessMainPath,
   getAuthSession,
   getRouteByRole,
@@ -20,7 +21,7 @@ const MAIN_MENU_ADMIN_STAFF: NavigationItem[] = [
     key: "inventory",
     label: "Inventory",
     icon: "package",
-    children: ["Producers", "Products", "Product Batches"],
+    children: ["Suppliers", "Products", "Product Batches"],
   },
   {
     key: "stock-movements",
@@ -38,9 +39,9 @@ const MAIN_MENU_CASHIER: NavigationItem[] = [
   { key: "dashboard", label: "Dashboard", icon: "grid" },
   {
     key: "inventory",
-    label: "Inventory (View Only)",
+    label: "Inventory",
     icon: "package",
-    children: ["Producers", "Products", "Product Batches"],
+    children: ["Suppliers", "Products", "Product Batches"],
   },
   {
     key: "stock-movements",
@@ -52,11 +53,11 @@ const MAIN_MENU_CASHIER: NavigationItem[] = [
 
 const routeBySubmenu = (child: string) => {
   if (child === "Products") return "/(main)/inventory/products";
-  if (child === "Producers") return "/(main)/inventory/producers";
+  if (child === "Suppliers") return "/(main)/inventory/suppliers";
   if (child === "Product Batches") return "/(main)/inventory/batches";
-  if (child === "Stock In") return "/(main)/inventory/stock-in";
-  if (child === "Stock Out") return "/(main)/inventory/stock-out";
-  if (child === "Stock Adjustment") return "/(main)/inventory/stock-adjustment";
+  if (child === "Stock In") return "/(main)/stock-movements/stock-in";
+  if (child === "Stock Out") return "/(main)/stock-movements/stock-out";
+  if (child === "Stock Adjustment") return "/(main)/stock-movements/stock-adjustment";
   return "/(main)/dashboard";
 };
 
@@ -66,6 +67,7 @@ export default function MainLayout() {
   const [ready, setReady] = useState(false);
   const [roleName, setRoleName] = useState<string>("ADMIN");
   const [profileName, setProfileName] = useState<string>("User");
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({
     inventory: true,
     "stock-movements": true,
@@ -118,8 +120,11 @@ export default function MainLayout() {
 
   const activeSubmenuKey = useMemo(() => {
     if (pathname === "/(main)/inventory/products") return "inventory:Products";
-    if (pathname === "/(main)/inventory/producers") return "inventory:Producers";
+    if (pathname === "/(main)/inventory/suppliers") return "inventory:Suppliers";
     if (pathname === "/(main)/inventory/batches") return "inventory:Product Batches";
+    if (pathname === "/(main)/stock-movements/stock-in") return "stock-movements:Stock In";
+    if (pathname === "/(main)/stock-movements/stock-out") return "stock-movements:Stock Out";
+    if (pathname === "/(main)/stock-movements/stock-adjustment") return "stock-movements:Stock Adjustment";
     if (pathname === "/(main)/inventory/stock-in") return "stock-movements:Stock In";
     if (pathname === "/(main)/inventory/stock-out") return "stock-movements:Stock Out";
     if (pathname === "/(main)/inventory/stock-adjustment") return "stock-movements:Stock Adjustment";
@@ -130,11 +135,20 @@ export default function MainLayout() {
     return <View style={{ flex: 1 }} />;
   }
 
+  const handleLogout = async () => {
+    setProfileMenuOpen(false);
+    await clearAuthSession();
+    router.replace("/login");
+  };
+
   const isInventoryPath =
     pathname === "/(main)/inventory/products" ||
-    pathname === "/(main)/inventory/producers" ||
+    pathname === "/(main)/inventory/suppliers" ||
     pathname === "/(main)/inventory/batches";
   const isStockMovementPath =
+    pathname === "/(main)/stock-movements/stock-in" ||
+    pathname === "/(main)/stock-movements/stock-out" ||
+    pathname === "/(main)/stock-movements/stock-adjustment" ||
     pathname === "/(main)/inventory/stock-in" ||
     pathname === "/(main)/inventory/stock-out" ||
     pathname === "/(main)/inventory/stock-adjustment";
@@ -204,6 +218,9 @@ export default function MainLayout() {
         profileName={profileName}
         profileRole={roleName}
         profileImageSource={PROFILE_PLACEHOLDER}
+        profileMenuOpen={profileMenuOpen}
+        onToggleProfileMenu={() => setProfileMenuOpen((prev) => !prev)}
+        onLogoutPress={handleLogout}
         footerAction={
           <Pressable
             style={{
@@ -215,7 +232,7 @@ export default function MainLayout() {
               justifyContent: "center",
               gap: 8,
             }}
-            onPress={() => router.push("/(cashier)")}
+            onPress={() => router.replace("/(cashier)")}
           >
             <Feather name="shopping-cart" size={16} color="#ffffff" />
             <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 13 }}>Enter Cashier Mode</Text>
@@ -229,3 +246,5 @@ export default function MainLayout() {
     </View>
   );
 }
+
+

@@ -22,7 +22,7 @@ const summaryCard = async (req, res) => {
               AND expired_date <= CURRENT_DATE + INTERVAL '14 days'
           )::int AS near_expired_batch_count
         FROM tbl_product_batches
-        WHERE is_active = 'Y';
+        ;
         `
       ),
     ]);

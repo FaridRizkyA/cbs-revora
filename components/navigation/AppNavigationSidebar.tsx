@@ -1,6 +1,7 @@
 import { Image } from "expo-image";
 import { ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Feather } from "@expo/vector-icons";
 import AppSidebar from "../layout/AppSidebar";
 
 export type NavigationItem = {
@@ -23,6 +24,9 @@ type AppNavigationSidebarProps = {
   profileName: string;
   profileRole: string;
   profileImageSource: number | { uri: string };
+  profileMenuOpen?: boolean;
+  onToggleProfileMenu?: () => void;
+  onLogoutPress?: () => void;
   footerAction?: ReactNode;
 };
 
@@ -38,6 +42,9 @@ export default function AppNavigationSidebar({
   profileName,
   profileRole,
   profileImageSource,
+  profileMenuOpen = false,
+  onToggleProfileMenu,
+  onLogoutPress,
   footerAction,
 }: AppNavigationSidebarProps) {
   return (
@@ -88,12 +95,25 @@ export default function AppNavigationSidebar({
       {footerAction ? <View style={styles.footerActionWrap}>{footerAction}</View> : null}
 
       <View style={styles.profileWrap}>
-        <View style={styles.avatar}>
-          <Image source={profileImageSource} style={styles.avatarImage} contentFit="cover" />
-        </View>
-        <View>
-          <Text style={styles.profileName}>{profileName}</Text>
-          <Text style={styles.profileRole}>{profileRole}</Text>
+        <View style={styles.profileMenuWrap}>
+          <Pressable style={styles.profileTrigger} onPress={onToggleProfileMenu}>
+            <View style={styles.avatar}>
+              <Image source={profileImageSource} style={styles.avatarImage} contentFit="cover" />
+            </View>
+            <View style={styles.profileTextWrap}>
+              <Text style={styles.profileName}>{profileName}</Text>
+              <Text style={styles.profileRole}>{profileRole}</Text>
+            </View>
+            <Feather name="chevron-up" size={14} color="#64748b" style={profileMenuOpen ? undefined : { transform: [{ rotate: "180deg" }] }} />
+          </Pressable>
+          {profileMenuOpen ? (
+            <View style={styles.profileDropdown}>
+              <Pressable style={styles.dropdownItem} onPress={onLogoutPress}>
+                <Feather name="log-out" size={14} color="#dc2626" />
+                <Text style={styles.dropdownItemText}>Logout</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </View>
     </AppSidebar>
@@ -168,13 +188,23 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   profileWrap: {
-    height: 66,
+    minHeight: 66,
     borderTopColor: "#f1f5f9",
     borderTopWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    zIndex: 40,
+  },
+  profileMenuWrap: {
+    position: "relative",
+  },
+  profileTrigger: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
+    gap: 10,
+  },
+  profileTextWrap: {
+    flex: 1,
   },
   avatar: {
     width: 36,
@@ -202,5 +232,35 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
     marginTop: 2,
+  },
+  profileDropdown: {
+    position: "absolute",
+    left: 0,
+    bottom: 50,
+    width: 160,
+    backgroundColor: "#ffffff",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#dbe3ee",
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+    padding: 6,
+    zIndex: 120,
+  },
+  dropdownItem: {
+    height: 34,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 8,
+  },
+  dropdownItemText: {
+    color: "#dc2626",
+    fontSize: 13,
+    fontWeight: "700",
   },
 });

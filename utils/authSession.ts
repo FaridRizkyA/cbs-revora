@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import * as SecureStore from "expo-secure-store";
 
 export type AuthUser = {
   id_user: string;
@@ -18,20 +19,38 @@ const AUTH_SESSION_KEY = "cbs_revora_auth_session";
 
 const canUseWebStorage = () => Platform.OS === "web" && typeof localStorage !== "undefined";
 
-export const saveAuthSession = async (session: AuthSession) => {
-  if (!canUseWebStorage()) {
+const setSessionRaw = async (value: string) => {
+  if (canUseWebStorage()) {
+    localStorage.setItem(AUTH_SESSION_KEY, value);
     return;
   }
 
-  localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+  await SecureStore.setItemAsync(AUTH_SESSION_KEY, value);
+};
+
+const getSessionRaw = async () => {
+  if (canUseWebStorage()) {
+    return localStorage.getItem(AUTH_SESSION_KEY);
+  }
+
+  return SecureStore.getItemAsync(AUTH_SESSION_KEY);
+};
+
+const clearSessionRaw = async () => {
+  if (canUseWebStorage()) {
+    localStorage.removeItem(AUTH_SESSION_KEY);
+    return;
+  }
+
+  await SecureStore.deleteItemAsync(AUTH_SESSION_KEY);
+};
+
+export const saveAuthSession = async (session: AuthSession) => {
+  await setSessionRaw(JSON.stringify(session));
 };
 
 export const getAuthSession = async (): Promise<AuthSession | null> => {
-  if (!canUseWebStorage()) {
-    return null;
-  }
-
-  const raw = localStorage.getItem(AUTH_SESSION_KEY);
+  const raw = await getSessionRaw();
 
   if (!raw) {
     return null;
@@ -40,21 +59,17 @@ export const getAuthSession = async (): Promise<AuthSession | null> => {
   try {
     return JSON.parse(raw) as AuthSession;
   } catch {
-    localStorage.removeItem(AUTH_SESSION_KEY);
+    await clearSessionRaw();
     return null;
   }
 };
 
 export const clearAuthSession = async () => {
-  if (!canUseWebStorage()) {
-    return;
-  }
-
-  localStorage.removeItem(AUTH_SESSION_KEY);
+  await clearSessionRaw();
 };
 
 export const getRouteByRole = (roleNameRaw: string | null | undefined) => {
-  const roleName = String(roleNameRaw || "").toUpperCase();
+  const roleName = String(roleNameRaw || "").trim().toUpperCase();
 
   if (roleName === "CASHIER") {
     return "/(cashier)";
@@ -85,21 +100,51 @@ export const canManageInventoryMaster = (roleNameRaw: string | null | undefined)
   return roleName === "STAFF" || roleName === "ADMIN";
 };
 
+export const canInsertStockMovement = (roleNameRaw: string | null | undefined) => {
+  const roleName = normalizeRole(roleNameRaw);
+  return roleName === "CASHIER" || roleName === "STAFF" || roleName === "ADMIN";
+};
+
+export const canManageStockMovementRecord = (roleNameRaw: string | null | undefined) => {
+  const roleName = normalizeRole(roleNameRaw);
+  return roleName === "ADMIN";
+};
+
 const CASHIER_MAIN_ALLOWED_PATHS = new Set([
   "/(main)/dashboard",
+  "/dashboard",
   "/(main)/inventory/products",
-  "/(main)/inventory/producers",
+  "/inventory/products",
+  "/(main)/inventory/suppliers",
+  "/inventory/suppliers",
   "/(main)/inventory/batches",
+  "/inventory/batches",
   "/(main)/inventory/stock",
+  "/inventory/stock",
   "/(main)/inventory/stock-in",
+  "/inventory/stock-in",
   "/(main)/inventory/stock-out",
+  "/inventory/stock-out",
+  "/(main)/inventory/stock-out-manual",
+  "/inventory/stock-out-manual",
   "/(main)/inventory/stock-adjustment",
+  "/inventory/stock-adjustment",
+  "/(main)/stock-movements/stock-in",
+  "/stock-movements/stock-in",
+  "/(main)/stock-movements/stock-out",
+  "/stock-movements/stock-out",
+  "/(main)/stock-movements/stock-out-manual",
+  "/stock-movements/stock-out-manual",
+  "/(main)/stock-movements/stock-adjustment",
+  "/stock-movements/stock-adjustment",
 ]);
 
 export const canCashierAccessMainPath = (pathname: string) => {
-  if (pathname === "/(main)") {
+  if (pathname === "/(main)" || pathname === "/main" || pathname === "/") {
     return false;
   }
 
   return CASHIER_MAIN_ALLOWED_PATHS.has(pathname);
 };
+
+

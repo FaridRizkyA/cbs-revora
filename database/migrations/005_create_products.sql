@@ -5,6 +5,9 @@ CREATE TABLE tbl_products (
     barcode VARCHAR(100) UNIQUE,
     product_name VARCHAR(150) NOT NULL,
     description TEXT,
+    id_supplier UUID REFERENCES tbl_suppliers(id_supplier)
+        ON UPDATE CASCADE
+        ON DELETE SET NULL,
 
     selling_price NUMERIC(15, 2) NOT NULL DEFAULT 0,
     minimum_stock INTEGER NOT NULL DEFAULT 0,
@@ -27,3 +30,6 @@ CREATE TABLE tbl_products (
     CONSTRAINT chk_products_is_active
         CHECK (is_active IN ('Y', 'N'))
 );
+
+CREATE INDEX idx_products_id_supplier ON tbl_products(id_supplier);
+

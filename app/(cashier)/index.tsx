@@ -1,4 +1,3 @@
-import Constants from "expo-constants";
 import { Image } from "expo-image";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -8,7 +7,6 @@ import {
   Alert,
   Animated,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleProp,
@@ -18,13 +16,12 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { clearAuthSession } from "../../utils/authSession";
+import { AuthUser, clearAuthSession, getAuthSession } from "../../utils/authSession";
+import { API_BASE_URL } from "../../utils/api";
 
 const PRODUCT_PLACEHOLDER = require("../../assets/images/placeholders/default-product.png");
 const PROFILE_PLACEHOLDER = require("../../assets/images/placeholders/default-profile.png");
 const SIDEBAR_LOGO = require("../../assets/images/ui/logo_horizontal.png");
-const CASHIER_ID = "2b8c7d6e-5f4a-43b2-a1c0-e9f8a7b6c512";
-const CASHIER_NAME = "Rizky Pratama";
 const CASHIER_PICTURE: string | null = null;
 
 
@@ -114,25 +111,6 @@ type CheckoutResult = {
   change_amount: number;
 };
 
-const getApiBaseUrl = () => {
-  const envUrl = process.env.EXPO_PUBLIC_API_URL;
-
-  if (envUrl) {
-    return envUrl.replace(/\/$/, "");
-  }
-
-  if (Platform.OS === "android") {
-    return "http://10.0.2.2:3000";
-  }
-
-  const hostUri = Constants.expoConfig?.hostUri ?? Constants.expoGoConfig?.debuggerHost;
-  const host = hostUri?.split(":")[0];
-
-  return `http://${host || "localhost"}:3000`;
-};
-
-const API_BASE_URL = getApiBaseUrl();
-
 const formatRupiah = (value: number) =>
   new Intl.NumberFormat("id-ID", {
     style: "currency",
@@ -142,8 +120,22 @@ const formatRupiah = (value: number) =>
     .format(value)
     .replace(/\s/g, " ");
 
+const formatReceiptProductLabel = (product: CartItem) => {
+  const normalizedCode = String(product.product_code || "")
+    .replace(/^PRD[-_\s]*/i, "")
+    .replace(/-/g, " ")
+    .trim();
+
+  if (normalizedCode) {
+    return normalizedCode.toUpperCase();
+  }
+
+  return product.product_name;
+};
+
 export default function Index() {
   const router = useRouter();
+  const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -152,6 +144,7 @@ export default function Index() {
   const [search, setSearch] = useState("");
   const [barcode, setBarcode] = useState("");
   const [memberPickerOpen, setMemberPickerOpen] = useState(false);
+  const [memberSearch, setMemberSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -163,6 +156,10 @@ export default function Index() {
   const [receiptPaymentMethod, setReceiptPaymentMethod] = useState<PaymentMethod>("CASH");
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const successScale = useRef(new Animated.Value(0.7)).current;
+  const barcodeInputRef = useRef<TextInput | null>(null);
+  const searchFocusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cashierId = sessionUser?.id_user ?? null;
+  const cashierName = sessionUser?.full_name?.trim() || "Cashier";
 
   const selectedMember = useMemo(
     () => members.find((member) => member.id_member === selectedMemberId) ?? null,
@@ -191,6 +188,15 @@ export default function Index() {
       return !query || searchable.includes(query);
     });
   }, [products, search]);
+
+  const filteredMembers = useMemo(() => {
+    const query = memberSearch.trim().toLowerCase();
+    if (!query) return members;
+    return members.filter((member) => {
+      const searchable = `${member.member_code} ${member.full_name}`.toLowerCase();
+      return searchable.includes(query);
+    });
+  }, [members, memberSearch]);
 
   const fetchProducts = useCallback(async () => {
     const response = await fetch(`${API_BASE_URL}/api/products`);
@@ -226,6 +232,44 @@ export default function Index() {
       setLoading(false);
     }
   }, [fetchMembers, fetchProducts]);
+
+  useEffect(() => {
+    let active = true;
+
+    getAuthSession()
+      .then((session) => {
+        if (!active) {
+          return;
+        }
+
+        if (!session?.token || !session?.user) {
+          router.replace("/login");
+          return;
+        }
+
+        setSessionUser(session.user);
+      })
+      .catch(() => {
+        router.replace("/login");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [router]);
+
+  useEffect(() => {
+    const focusTimer = setTimeout(() => {
+      barcodeInputRef.current?.focus();
+    }, 300);
+
+    return () => {
+      clearTimeout(focusTimer);
+      if (searchFocusTimeoutRef.current) {
+        clearTimeout(searchFocusTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     loadCashierData();
@@ -320,6 +364,7 @@ export default function Index() {
     if (localMatch) {
       addToCart(localMatch);
       setBarcode("");
+      barcodeInputRef.current?.focus();
       return;
     }
 
@@ -348,6 +393,7 @@ export default function Index() {
 
       addToCart(apiMatch);
       setBarcode("");
+      barcodeInputRef.current?.focus();
     } catch (error) {
       Alert.alert(
         "Barcode search failed",
@@ -356,7 +402,22 @@ export default function Index() {
     }
   };
 
+  const scheduleBackToBarcodeFocus = () => {
+    if (searchFocusTimeoutRef.current) {
+      clearTimeout(searchFocusTimeoutRef.current);
+    }
+
+    searchFocusTimeoutRef.current = setTimeout(() => {
+      barcodeInputRef.current?.focus();
+    }, 2500);
+  };
+
   const submitCheckout = async (amountPaid: number, method: PaymentMethod) => {
+    if (!cashierId) {
+      Alert.alert("Session expired", "Please sign in again.");
+      return false;
+    }
+
     setCheckoutLoading(true);
 
     try {
@@ -366,7 +427,7 @@ export default function Index() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          id_cashier: CASHIER_ID,
+          id_cashier: cashierId,
           id_member: selectedMemberId,
           payment_method: method,
           amount_paid: amountPaid,
@@ -469,7 +530,7 @@ export default function Index() {
                   contentFit="cover"
                 />
               </View>
-              <Text style={styles.profileTriggerText}>{CASHIER_NAME}</Text>
+              <Text style={styles.profileTriggerText}>{cashierName}</Text>
               <Feather name="chevron-down" size={16} color="#475569" />
             </Pressable>
             {profileMenuOpen ? (
@@ -498,7 +559,11 @@ export default function Index() {
               <AppIcon name="search" size={16} color="#64748b" />
               <TextInput
                 value={search}
-                onChangeText={setSearch}
+                onChangeText={(value) => {
+                  setSearch(value);
+                  scheduleBackToBarcodeFocus();
+                }}
+                onBlur={scheduleBackToBarcodeFocus}
                 placeholder="Search products..."
                 placeholderTextColor="#64748b"
                 style={styles.searchInput}
@@ -507,6 +572,7 @@ export default function Index() {
             <View style={styles.barcodeBox}>
               <AppIcon name="hash" size={16} color="#64748b" />
               <TextInput
+                ref={barcodeInputRef}
                 value={barcode}
                 onChangeText={setBarcode}
                 onSubmitEditing={handleBarcodeSubmit}
@@ -600,12 +666,15 @@ export default function Index() {
           </View>
 
           <View style={styles.contextCard}>
-            <Text style={styles.cashierLabel}>Cashier: {CASHIER_NAME}</Text>
+            <Text style={styles.cashierLabel}>Cashier: {cashierName}</Text>
 
             <Text style={styles.metaLabel}>MEMBER</Text>
             <Pressable
               style={styles.memberSelect}
-              onPress={() => setMemberPickerOpen((current) => !current)}
+              onPress={() => {
+                setMemberPickerOpen((current) => !current);
+                setMemberSearch("");
+              }}
             >
               <Text style={styles.memberSelectText} numberOfLines={1}>
                 {selectedMember ? selectedMember.full_name : "General (Non-member)"}
@@ -619,25 +688,37 @@ export default function Index() {
                 nestedScrollEnabled
                 showsVerticalScrollIndicator={false}
               >
+                <View style={styles.memberSearchWrap}>
+                  <AppIcon name="search" size={14} color="#64748b" />
+                  <TextInput
+                    value={memberSearch}
+                    onChangeText={setMemberSearch}
+                    placeholder="Search member..."
+                    placeholderTextColor="#94a3b8"
+                    style={styles.memberSearchInput}
+                  />
+                </View>
                 <Pressable
                   style={styles.memberDropdownOption}
                   onPress={() => {
                     setSelectedMemberId(null);
                     setMemberPickerOpen(false);
+                    setMemberSearch("");
                   }}
                 >
                   <Text style={styles.memberDropdownText}>General (Non-member)</Text>
                 </Pressable>
-                {members.map((member) => (
+                {filteredMembers.map((member) => (
                   <Pressable
                     key={member.id_member}
                     style={styles.memberDropdownOption}
                     onPress={() => {
                       setSelectedMemberId(member.id_member);
                       setMemberPickerOpen(false);
+                      setMemberSearch("");
                     }}
                   >
-                    <Text style={styles.memberDropdownText}>{member.full_name}</Text>
+                    <Text style={styles.memberDropdownText}>{member.full_name} ({member.member_code})</Text>
                   </Pressable>
                 ))}
               </ScrollView>
@@ -810,7 +891,10 @@ export default function Index() {
             ) : (
               <>
                 <Text style={styles.modalTitle}>Receipt Preview</Text>
-                <Text style={styles.receiptMeta}>Cashier: {CASHIER_NAME}</Text>
+                <View style={styles.receiptLogoWrap}>
+                  <Image source={SIDEBAR_LOGO} style={styles.receiptLogo} contentFit="contain" />
+                </View>
+                <Text style={styles.receiptMeta}>Cashier: {cashierName}</Text>
                 <Text style={styles.receiptMeta}>Time: {new Date().toLocaleString("id-ID")}</Text>
                 <Text style={styles.receiptMeta}>
                   Payment: {receiptPaymentMethod === "CASH" ? "Cash" : "QRIS"}
@@ -819,7 +903,7 @@ export default function Index() {
                 <View style={styles.receiptItems}>
                   {cart.map((item) => (
                     <View key={item.id_product} style={styles.receiptRow}>
-                      <Text style={styles.receiptItemName}>{item.product_name} x{item.quantity}</Text>
+                      <Text style={styles.receiptItemName}>{formatReceiptProductLabel(item)} x{item.quantity}</Text>
                       <Text style={styles.receiptItemPrice}>{formatRupiah(item.selling_price * item.quantity)}</Text>
                     </View>
                   ))}
@@ -1239,6 +1323,22 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: "#ffffff",
   },
+  memberSearchWrap: {
+    minHeight: 38,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    backgroundColor: "#f8fafc",
+  },
+  memberSearchInput: {
+    flex: 1,
+    color: "#1e293b",
+    fontSize: 12,
+    paddingVertical: 0,
+  },
   memberDropdownOption: {
     minHeight: 42,
     justifyContent: "center",
@@ -1544,6 +1644,15 @@ const styles = StyleSheet.create({
   receiptMeta: {
     color: "#334155",
     fontSize: 12,
+  },
+  receiptLogoWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
+  },
+  receiptLogo: {
+    width: 260,
+    height: 58,
   },
   receiptItems: {
     marginTop: 8,
