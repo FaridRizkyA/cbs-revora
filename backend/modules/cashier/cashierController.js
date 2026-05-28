@@ -1450,6 +1450,12 @@ const createStockIn = async (req, res) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(item.expired_date || ""))) {
       return res.status(400).json({ message: "Each item expired_date must use YYYY-MM-DD format." });
     }
+    const expiredAt = new Date(`${String(item.expired_date)}T00:00:00`);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (Number.isNaN(expiredAt.getTime()) || expiredAt <= today) {
+      return res.status(400).json({ message: "Each item expired_date must be after today." });
+    }
 
     const purchasePrice = Number(item.purchase_price || 0);
     if (!Number.isFinite(purchasePrice) || purchasePrice <= 0) {

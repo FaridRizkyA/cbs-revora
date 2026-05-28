@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import IconFilterButton from "../../../components/inventory/IconFilterButton";
@@ -63,7 +63,8 @@ type DraftItem = {
 };
 
 export default function StockInScreen() {
-  const isCompact = false;
+  const { width } = useWindowDimensions();
+  const isCompact = width < 960;
   const [rows, setRows] = useState<StockInDocument[]>([]);
   const [roleName, setRoleName] = useState("CASHIER");
   const [userId, setUserId] = useState("");
@@ -350,7 +351,8 @@ export default function StockInScreen() {
         />
       </View>
       <View style={styles.tableCard}>
-          <View style={styles.tableInner}>
+        <View style={styles.tableInner}>
+          {!isCompact ? (
             <View style={styles.tableHeader}>
               <Text style={[styles.headCell, styles.colCode]}>Stock In Code</Text>
               <Text style={[styles.headCell, styles.colSupplier]}>Supplier</Text>
@@ -359,8 +361,24 @@ export default function StockInScreen() {
               <Text style={[styles.headCell, styles.colDate]}>Date</Text>
               <Text style={[styles.headCell, styles.colAction]}>Action</Text>
             </View>
-            {(Array.isArray(filteredRows) ? filteredRows : []).map((row) => (
-              <Pressable key={row.id_stock_in} style={[styles.tableRow, openActionStockInId === row.id_stock_in && styles.tableRowActiveLayer]} onPress={() => (isCompact ? openDetail(row.id_stock_in) : null)}>
+          ) : null}
+
+          {(Array.isArray(filteredRows) ? filteredRows : []).map((row) =>
+            isCompact ? (
+              <Pressable key={row.id_stock_in} style={styles.compactCard} onPress={() => openDetail(row.id_stock_in)}>
+                <View style={styles.compactTopRow}>
+                  <Text style={styles.compactCode} numberOfLines={1}>{row.stock_in_code}</Text>
+                  <Text style={styles.compactQty}>Qty: {row.total_qty}</Text>
+                </View>
+                <Text style={styles.compactMeta} numberOfLines={1}>Supplier: {row.supplier_name}</Text>
+                <Text style={styles.compactMeta} numberOfLines={1}>Receiver: {row.received_by_name || "-"}</Text>
+                <Text style={styles.compactMeta}>Date: {new Date(row.stock_in_date).toLocaleString("id-ID")}</Text>
+                <Pressable style={styles.compactDetailBtn} onPress={() => openDetail(row.id_stock_in)}>
+                  <Text style={styles.compactDetailBtnText}>See Details</Text>
+                </Pressable>
+              </Pressable>
+            ) : (
+              <Pressable key={row.id_stock_in} style={[styles.tableRow, openActionStockInId === row.id_stock_in && styles.tableRowActiveLayer]}>
                 <Text style={[styles.rowCell, styles.colCode]} numberOfLines={1}>{row.stock_in_code}</Text>
                 <Text style={[styles.rowCell, styles.colSupplier]} numberOfLines={1}>{row.supplier_name}</Text>
                 <Text style={[styles.rowCell, styles.colReceiver]} numberOfLines={1}>{row.received_by_name || "-"}</Text>
@@ -381,9 +399,10 @@ export default function StockInScreen() {
                   </View>
                 </View>
               </Pressable>
-            ))}
-            {filteredRows.length === 0 ? <Text style={styles.emptyText}>No stock in documents found.</Text> : null}
-          </View>
+            )
+          )}
+          {filteredRows.length === 0 ? <Text style={styles.emptyText}>No stock in documents found.</Text> : null}
+        </View>
       </View>
       
 
@@ -594,6 +613,13 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, height: 40, borderRadius: 10, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#f8fafc", paddingHorizontal: 12, color: "#0f172a" },
   tableCard: { borderRadius: 12, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", overflow: "visible" },
   tableInner: { width: "100%" },
+  compactCard: { borderBottomWidth: 1, borderBottomColor: "#eef2f7", padding: 12, gap: 4 },
+  compactTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  compactCode: { color: "#0f172a", fontSize: 13, fontWeight: "800", flex: 1 },
+  compactQty: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
+  compactMeta: { color: "#334155", fontSize: 12 },
+  compactDetailBtn: { marginTop: 6, minHeight: 34, borderRadius: 8, borderWidth: 1, borderColor: "#93c5fd", backgroundColor: "#eff6ff", alignItems: "center", justifyContent: "center" },
+  compactDetailBtnText: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
   tableHeader: { minHeight: 42, backgroundColor: "#f1f5f9", flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#dbe3ee" },
   tableRow: { minHeight: 44, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#eef2f7", position: "relative", zIndex: 1 },
   tableRowActiveLayer: { zIndex: 40 },

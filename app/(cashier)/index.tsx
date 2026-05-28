@@ -2,6 +2,7 @@ import { Image } from "expo-image";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
   Alert,
@@ -14,6 +15,7 @@ import {
   Text,
   TextStyle,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { AuthUser, clearAuthSession, getAuthSession } from "../../utils/authSession";
@@ -135,6 +137,11 @@ const formatReceiptProductLabel = (product: CartItem) => {
 
 export default function Index() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  const BASE_WIDTH = 1366;
+  const BASE_HEIGHT = 768;
+  const appScale = Math.min(1, Math.min(width / BASE_WIDTH, height / BASE_HEIGHT));
   const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -513,8 +520,26 @@ export default function Index() {
   };
 
   return (
-    <View style={styles.appShell}>
-      <View style={styles.topBar}>
+    <View style={styles.viewportShell}>
+      <View
+        style={[
+          styles.scaledCanvas,
+          {
+            width: BASE_WIDTH,
+            height: BASE_HEIGHT,
+            transform: [{ scale: appScale }],
+          },
+        ]}
+      >
+      <View
+        style={[
+          styles.topBar,
+          {
+            paddingTop: Math.max(insets.top, 16),
+            minHeight: 88 + Math.max(insets.top, 16),
+          },
+        ]}
+      >
         <Image source={SIDEBAR_LOGO} style={styles.topBarLogo} contentFit="contain" />
         <View style={styles.topBarRight}>
           <Pressable style={styles.mainAppButton} onPress={() => router.push("/(main)/dashboard")}>
@@ -596,7 +621,7 @@ export default function Index() {
               </Pressable>
             </View>
           ) : (
-            <ScrollView contentContainerStyle={styles.productGrid}>
+            <ScrollView style={styles.productListScroll} contentContainerStyle={styles.productGrid}>
               {filteredProducts.map((product) => {
                 const inCartQuantity =
                   cart.find((item) => item.id_product === product.id_product)?.quantity ?? 0;
@@ -950,18 +975,29 @@ export default function Index() {
           </View>
         </View>
       </Modal>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  viewportShell: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  scaledCanvas: {
+    backgroundColor: "#f8fafc",
+  },
   appShell: {
     flex: 1,
     flexDirection: "column",
     backgroundColor: "#f8fafc",
   },
   topBar: {
-    height: 72,
+    minHeight: 72,
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
     backgroundColor: "#ffffff",
@@ -972,6 +1008,10 @@ const styles = StyleSheet.create({
     position: "relative",
     zIndex: 30,
   },
+  topBarCompact: {
+    minHeight: 62,
+    paddingHorizontal: 10,
+  },
   topBarLogo: {
     width: 190,
     height: 44,
@@ -981,6 +1021,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     zIndex: 40,
+  },
+  topBarRightCompact: {
+    gap: 6,
   },
   mainAppButton: {
     height: 38,
@@ -1066,6 +1109,11 @@ const styles = StyleSheet.create({
     padding: 14,
     zIndex: 1,
   },
+  mainAreaPhone: {
+    flexDirection: "column",
+    padding: 10,
+    gap: 10,
+  },
   productsPanel: {
     flex: 1,
     borderRadius: 18,
@@ -1074,17 +1122,31 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     padding: 16,
   },
+  productsPanelPhone: {
+    flex: 1.2,
+    padding: 10,
+  },
   productsHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     marginBottom: 10,
   },
+  productsHeaderPhone: {
+    flexWrap: "wrap",
+    alignItems: "stretch",
+    gap: 6,
+  },
   sectionTitle: {
     color: "#0f172a",
     fontSize: 33,
     fontWeight: "700",
     marginRight: 6,
+  },
+  sectionTitlePhone: {
+    width: "100%",
+    fontSize: 22,
+    marginRight: 0,
   },
   searchBox: {
     flex: 1,
@@ -1105,6 +1167,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     paddingHorizontal: 12,
+  },
+  barcodeBoxPhone: {
+    width: "100%",
   },
   searchInput: {
     flex: 1,
@@ -1139,6 +1204,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 14,
   },
+  productListScroll: {
+    flex: 1,
+  },
   productGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1159,6 +1227,20 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     alignItems: "center",
     position: "relative",
+  },
+  productCardTablet: {
+    width: "31%",
+    minWidth: 0,
+    height: "auto",
+    minHeight: 204,
+    padding: 12,
+  },
+  productCardPhone: {
+    width: "48%",
+    minWidth: 0,
+    height: "auto",
+    minHeight: 182,
+    padding: 10,
   },
   cardTopSpacer: {
     flex: 1,
@@ -1219,9 +1301,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 12,
   },
+  productImageWrapPhone: {
+    width: 56,
+    height: 56,
+    marginBottom: 8,
+  },
   productImage: {
     width: 52,
     height: 52,
+  },
+  productImagePhone: {
+    width: 40,
+    height: 40,
   },
   productName: {
     color: "#1e293b",
@@ -1250,6 +1341,16 @@ const styles = StyleSheet.create({
     borderColor: "#e2e8f0",
     backgroundColor: "#ffffff",
     padding: 16,
+  },
+  cartPanelTablet: {
+    width: "36%",
+    minWidth: 300,
+    maxWidth: 420,
+  },
+  cartPanelPhone: {
+    width: "100%",
+    flex: 1,
+    padding: 10,
   },
   cartHeader: {
     flexDirection: "row",

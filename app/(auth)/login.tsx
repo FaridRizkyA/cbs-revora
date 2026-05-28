@@ -13,7 +13,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AppButton from "../../components/forms/AppButton";
 import AppInput from "../../components/forms/AppInput";
 import { getRouteByRole, saveAuthSession } from "../../utils/authSession";
@@ -21,19 +21,25 @@ import { API_BASE_URL } from "../../utils/api";
 
 export default function LoginScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
+  const shortSide = Math.min(width, height);
+  const isPhoneLandscape = shortSide < 768 && width > height;
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const isTabletLike = width >= 768;
+  const isTabletLike = shortSide >= 768;
   const baseWidth = isTabletLike ? 520 : 360;
-  const baseHeight = isTabletLike ? 700 : 760;
-  const framePadding = 24;
-  const widthScale = (width - framePadding * 2) / baseWidth;
-  const heightScale = (height - framePadding * 2) / baseHeight;
-  const contentScale = Math.max(0.68, Math.min(1, widthScale, heightScale));
+  const baseHeight = isTabletLike ? 700 : 740;
+  const framePadding = isTabletLike ? 24 : 14;
+  const safeWidth = Math.max(width - framePadding * 2, 280);
+  const safeHeight = Math.max(height - insets.top - insets.bottom - framePadding * 2, 520);
+  const widthScale = safeWidth / baseWidth;
+  const heightScale = safeHeight / baseHeight;
+  const fitScale = Math.min(1, widthScale, heightScale);
+  const contentScale = isTabletLike ? fitScale : fitScale * 0.9;
   const contentWidth = baseWidth;
   const logoSize = isTabletLike ? 164 : 132;
   const verticalGap = isTabletLike ? 22 : 18;
@@ -94,79 +100,87 @@ export default function LoginScreen() {
     >
       <View style={styles.backgroundOverlay} />
       <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
-        <View style={[styles.container, Platform.OS === "ios" && styles.iosKeyboardSpacing]}>
-          <View
-            style={[
-              styles.contentScaleWrap,
-              {
-                transform: [{ scale: contentScale }],
-              },
-            ]}
-          >
-            <View style={[styles.content, { width: contentWidth, gap: verticalGap }]}>
-        <View style={styles.header}>
-          <View style={[styles.logoFrame, { height: logoSize }]}>
-            <Image
-              source={require("../../assets/images/ui/logo_clean.png")}
-              style={[styles.logo, { width: logoSize, height: logoSize }]}
-              resizeMode="contain"
-            />
-          </View>
-          <Text style={[styles.title, { fontSize: titleSize }]}>Sign in to REVORA</Text>
-          <Text style={[styles.subtitle, { fontSize: subtitleSize, maxWidth: subtitleWidth }]}>
-            Manage cooperative operations from one app.
-          </Text>
-        </View>
+        <View
+          style={[
+            styles.container,
+            Platform.OS === "ios" && styles.iosKeyboardSpacing,
+            { paddingTop: Math.max(insets.top, framePadding), paddingBottom: Math.max(insets.bottom, framePadding) },
+          ]}
+        >
+          <View style={[styles.contentScaleWrap, isPhoneLandscape && { transform: [{ translateY: -18 }] }]}>
+            <View
+              style={[
+                styles.content,
+                {
+                  width: contentWidth,
+                  gap: verticalGap,
+                  transform: [{ scale: contentScale }],
+                },
+              ]}
+            >
+                <View style={styles.header}>
+                  <View style={[styles.logoFrame, { height: logoSize }]}>
+                    <Image
+                      source={require("../../assets/images/ui/logo_clean.png")}
+                      style={[styles.logo, { width: logoSize, height: logoSize }]}
+                      resizeMode="contain"
+                    />
+                  </View>
+                  <Text style={[styles.title, { fontSize: titleSize }]}>Sign in to REVORA</Text>
+                  <Text style={[styles.subtitle, { fontSize: subtitleSize, maxWidth: subtitleWidth }]}>
+                    Manage cooperative operations from one app.
+                  </Text>
+                </View>
 
-        <View style={styles.card}>
-          <AppInput
-            label="Username or Email"
-            placeholder="Enter your username or email"
-            autoCapitalize="none"
-            autoCorrect={false}
-            value={username}
-            onChangeText={setUsername}
-          />
+                <View style={styles.card}>
+                  <AppInput
+                    label="Username or Email"
+                    placeholder="Enter your username or email"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    value={username}
+                    onChangeText={setUsername}
+                  />
 
-          <View style={styles.passwordSection}>
-            <Text style={styles.passwordLabel}>Password</Text>
-            <View style={styles.passwordInputWrap}>
-              <TextInput
-                placeholder="Enter your password"
-                placeholderTextColor="#61708a"
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-                value={password}
-                onChangeText={setPassword}
-                style={styles.passwordInput}
-              />
-              <Pressable
-                onPress={() => setShowPassword((prev) => !prev)}
-                style={styles.passwordIconButton}
-                hitSlop={10}
-              >
-                <Feather name={showPassword ? "eye-off" : "eye"} size={18} color="#0f274a" />
-              </Pressable>
-            </View>
-          </View>
+                  <View style={styles.passwordSection}>
+                    <Text style={styles.passwordLabel}>Password</Text>
+                    <View style={styles.passwordInputWrap}>
+                      <TextInput
+                        placeholder="Enter your password"
+                        placeholderTextColor="#61708a"
+                        secureTextEntry={!showPassword}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        value={password}
+                        onChangeText={setPassword}
+                        style={styles.passwordInput}
+                      />
+                      <Pressable
+                        onPress={() => setShowPassword((prev) => !prev)}
+                        style={styles.passwordIconButton}
+                        hitSlop={10}
+                      >
+                        <Feather name={showPassword ? "eye-off" : "eye"} size={18} color="#0f274a" />
+                      </Pressable>
+                    </View>
+                  </View>
 
-          <AppButton
-            title={submitting ? "Signing In..." : "Sign In"}
-            style={styles.loginButton}
-            onPress={handleLogin}
-            disabled={submitting}
-          />
-          {submitting ? (
-            <View style={styles.statusWrap}>
-              <ActivityIndicator size="small" color="#102852" />
-            </View>
-          ) : null}
-          {loginError ? <Text style={styles.errorText}>{loginError}</Text> : null}
-          <Pressable style={styles.helpButton}>
-            <Text style={styles.helpText}>Need help signing in?</Text>
-          </Pressable>
-        </View>
+                  <AppButton
+                    title={submitting ? "Signing In..." : "Sign In"}
+                    style={styles.loginButton}
+                    onPress={handleLogin}
+                    disabled={submitting}
+                  />
+                  {submitting ? (
+                    <View style={styles.statusWrap}>
+                      <ActivityIndicator size="small" color="#102852" />
+                    </View>
+                  ) : null}
+                  {loginError ? <Text style={styles.errorText}>{loginError}</Text> : null}
+                  <Pressable style={styles.helpButton}>
+                    <Text style={styles.helpText}>Need help signing in?</Text>
+                  </Pressable>
+                </View>
             </View>
           </View>
         </View>
@@ -190,8 +204,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 18,
+    paddingHorizontal: 16,
   },
   iosKeyboardSpacing: {
     paddingVertical: 22,
