@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  Modal,
   Pressable,
   ScrollView,
   StyleProp,
@@ -18,6 +17,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import ResponsiveModal from "../../components/common/ResponsiveModal";
 import { AuthUser, clearAuthSession, getAuthSession } from "../../utils/authSession";
 import { API_BASE_URL } from "../../utils/api";
 
@@ -855,126 +855,137 @@ export default function Index() {
         </View>
       </View>
 
-      <Modal visible={isCashModalOpen} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Cash Payment</Text>
-            <Text style={styles.modalLabel}>Total Amount</Text>
-            <Text style={styles.modalValue}>{formatRupiah(subtotal)}</Text>
-            <Text style={styles.modalLabel}>Cash Amount</Text>
-            <TextInput
-              value={cashAmountInput}
-              onChangeText={setCashAmountInput}
-              keyboardType="numeric"
-              style={styles.cashInput}
-              placeholder="Enter cash amount"
-              placeholderTextColor="#94a3b8"
-            />
-            <Text style={styles.modalLabel}>Change</Text>
-            <Text style={styles.modalValue}>{formatRupiah(cashChangePreview)}</Text>
+      <ResponsiveModal
+        visible={isCashModalOpen}
+        onClose={() => setIsCashModalOpen(false)}
+        maxWidthDesktop={420}
+        maxWidthPhoneRatio={0.96}
+        maxHeightDesktopRatio={0.88}
+        maxHeightPhoneRatio={0.9}
+        cardStyle={styles.modalCard}
+      >
+        <Text style={styles.modalTitle}>Cash Payment</Text>
+        <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
+          <Text style={styles.modalLabel}>Total Amount</Text>
+          <Text style={styles.modalValue}>{formatRupiah(subtotal)}</Text>
+          <Text style={styles.modalLabel}>Cash Amount</Text>
+          <TextInput
+            value={cashAmountInput}
+            onChangeText={setCashAmountInput}
+            keyboardType="numeric"
+            style={styles.cashInput}
+            placeholder="Enter cash amount"
+            placeholderTextColor="#94a3b8"
+          />
+          <Text style={styles.modalLabel}>Change</Text>
+          <Text style={styles.modalValue}>{formatRupiah(cashChangePreview)}</Text>
+        </ScrollView>
+        <View style={styles.modalActions}>
+          <Pressable style={styles.modalSecondaryButton} onPress={() => setIsCashModalOpen(false)}>
+            <Text style={styles.modalSecondaryText}>Cancel</Text>
+          </Pressable>
+          <Pressable style={styles.modalPrimaryButton} onPress={handleCashContinue}>
+            <Text style={styles.modalPrimaryText}>Continue</Text>
+          </Pressable>
+        </View>
+      </ResponsiveModal>
+
+      <ResponsiveModal
+        visible={isReceiptModalOpen}
+        onClose={() => setIsReceiptModalOpen(false)}
+        maxWidthDesktop={520}
+        maxWidthPhoneRatio={0.96}
+        maxHeightDesktopRatio={0.9}
+        maxHeightPhoneRatio={0.9}
+        cardStyle={[styles.modalCard, styles.receiptCard]}
+      >
+        {checkoutResult ? (
+          <Animated.View style={[styles.sweetAlertCard, { transform: [{ scale: successScale }] }]}>
+            <View style={styles.sweetIconCircle}>
+              <MaterialCommunityIcons name="check" size={42} color="#84cc16" />
+            </View>
+            <Text style={styles.sweetTitle}>Payment Successful!</Text>
+            <Text style={styles.sweetMeta}>Transaction No.: {checkoutResult.sale_number}</Text>
             <View style={styles.modalActions}>
-              <Pressable style={styles.modalSecondaryButton} onPress={() => setIsCashModalOpen(false)}>
-                <Text style={styles.modalSecondaryText}>Cancel</Text>
+              <Pressable
+                style={[styles.modalSecondaryButton, styles.successSecondaryButton]}
+                onPress={() => {
+                  setIsReceiptModalOpen(false);
+                  setCheckoutResult(null);
+                  setSubmittedCashAmount(0);
+                }}
+              >
+                <Text style={[styles.modalSecondaryText, styles.successButtonText]}>Done</Text>
               </Pressable>
-              <Pressable style={styles.modalPrimaryButton} onPress={handleCashContinue}>
-                <Text style={styles.modalPrimaryText}>Continue</Text>
+              <Pressable
+                style={[styles.modalPrimaryButton, styles.successPrimaryButton]}
+                onPress={() => Alert.alert("Print", "Receipt printing will be connected to printer.")}
+              >
+                <Text style={[styles.modalPrimaryText, styles.successButtonText]}>Print Receipt</Text>
               </Pressable>
             </View>
-          </View>
-        </View>
-      </Modal>
+          </Animated.View>
+        ) : (
+          <>
+            <Text style={styles.modalTitle}>Receipt Preview</Text>
+            <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.receiptLogoWrap}>
+                <Image source={SIDEBAR_LOGO} style={styles.receiptLogo} contentFit="contain" />
+              </View>
+              <Text style={styles.receiptMeta}>Cashier: {cashierName}</Text>
+              <Text style={styles.receiptMeta}>Time: {new Date().toLocaleString("id-ID")}</Text>
+              <Text style={styles.receiptMeta}>
+                Payment: {receiptPaymentMethod === "CASH" ? "Cash" : "QRIS"}
+              </Text>
 
-      <Modal visible={isReceiptModalOpen} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, styles.receiptCard]}>
-            {checkoutResult ? (
-              <Animated.View style={[styles.sweetAlertCard, { transform: [{ scale: successScale }] }]}>
-                <View style={styles.sweetIconCircle}>
-                  <MaterialCommunityIcons name="check" size={42} color="#84cc16" />
-                </View>
-                <Text style={styles.sweetTitle}>Payment Successful!</Text>
-                <Text style={styles.sweetMeta}>Transaction No.: {checkoutResult.sale_number}</Text>
-                <View style={styles.modalActions}>
-                  <Pressable
-                    style={[styles.modalSecondaryButton, styles.successSecondaryButton]}
-                    onPress={() => {
-                      setIsReceiptModalOpen(false);
-                      setCheckoutResult(null);
-                      setSubmittedCashAmount(0);
-                    }}
-                  >
-                    <Text style={[styles.modalSecondaryText, styles.successButtonText]}>Done</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.modalPrimaryButton, styles.successPrimaryButton]}
-                    onPress={() => Alert.alert("Print", "Receipt printing will be connected to printer.")}
-                  >
-                    <Text style={[styles.modalPrimaryText, styles.successButtonText]}>Print Receipt</Text>
-                  </Pressable>
-                </View>
-              </Animated.View>
-            ) : (
-              <>
-                <Text style={styles.modalTitle}>Receipt Preview</Text>
-                <View style={styles.receiptLogoWrap}>
-                  <Image source={SIDEBAR_LOGO} style={styles.receiptLogo} contentFit="contain" />
-                </View>
-                <Text style={styles.receiptMeta}>Cashier: {cashierName}</Text>
-                <Text style={styles.receiptMeta}>Time: {new Date().toLocaleString("id-ID")}</Text>
-                <Text style={styles.receiptMeta}>
-                  Payment: {receiptPaymentMethod === "CASH" ? "Cash" : "QRIS"}
-                </Text>
+              <View style={styles.receiptItems}>
+                {cart.map((item) => (
+                  <View key={item.id_product} style={styles.receiptRow}>
+                    <Text style={styles.receiptItemName}>{formatReceiptProductLabel(item)} x{item.quantity}</Text>
+                    <Text style={styles.receiptItemPrice}>{formatRupiah(item.selling_price * item.quantity)}</Text>
+                  </View>
+                ))}
+              </View>
 
-                <View style={styles.receiptItems}>
-                  {cart.map((item) => (
-                    <View key={item.id_product} style={styles.receiptRow}>
-                      <Text style={styles.receiptItemName}>{formatReceiptProductLabel(item)} x{item.quantity}</Text>
-                      <Text style={styles.receiptItemPrice}>{formatRupiah(item.selling_price * item.quantity)}</Text>
-                    </View>
-                  ))}
-                </View>
-
-                <View style={styles.receiptTotals}>
-                  <Text style={styles.receiptMeta}>Total: {formatRupiah(subtotal)}</Text>
-                  {receiptPaymentMethod === "CASH" ? (
-                    <>
-                      <Text style={styles.receiptMeta}>Cash: {formatRupiah(submittedCashAmount)}</Text>
-                      <Text style={styles.receiptMeta}>
-                        Change: {formatRupiah(Math.max(submittedCashAmount - subtotal, 0))}
-                      </Text>
-                    </>
-                  ) : null}
-                </View>
-
-                <View style={styles.modalActions}>
-                  <Pressable
-                    style={styles.modalSecondaryButton}
-                    onPress={() => {
-                      if (receiptPaymentMethod === "CASH") {
-                        setIsReceiptModalOpen(false);
-                        setIsCashModalOpen(true);
-                      } else {
-                        setIsReceiptModalOpen(false);
-                      }
-                    }}
-                  >
-                    <Text style={styles.modalSecondaryText}>Back</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.modalPrimaryButton, checkoutLoading && styles.checkoutButtonDisabled]}
-                    onPress={handleSubmitCashTransaction}
-                    disabled={checkoutLoading}
-                  >
-                    <Text style={styles.modalPrimaryText}>
-                      {checkoutLoading ? "Processing..." : "Submit"}
+              <View style={styles.receiptTotals}>
+                <Text style={styles.receiptMeta}>Total: {formatRupiah(subtotal)}</Text>
+                {receiptPaymentMethod === "CASH" ? (
+                  <>
+                    <Text style={styles.receiptMeta}>Cash: {formatRupiah(submittedCashAmount)}</Text>
+                    <Text style={styles.receiptMeta}>
+                      Change: {formatRupiah(Math.max(submittedCashAmount - subtotal, 0))}
                     </Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
+                  </>
+                ) : null}
+              </View>
+            </ScrollView>
+            <View style={styles.modalActions}>
+              <Pressable
+                style={styles.modalSecondaryButton}
+                onPress={() => {
+                  if (receiptPaymentMethod === "CASH") {
+                    setIsReceiptModalOpen(false);
+                    setIsCashModalOpen(true);
+                  } else {
+                    setIsReceiptModalOpen(false);
+                  }
+                }}
+              >
+                <Text style={styles.modalSecondaryText}>Back</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalPrimaryButton, checkoutLoading && styles.checkoutButtonDisabled]}
+                onPress={handleSubmitCashTransaction}
+                disabled={checkoutLoading}
+              >
+                <Text style={styles.modalPrimaryText}>
+                  {checkoutLoading ? "Processing..." : "Submit"}
+                </Text>
+              </Pressable>
+            </View>
+          </>
+        )}
+      </ResponsiveModal>
       </View>
     </View>
   );
@@ -1638,7 +1649,6 @@ const styles = StyleSheet.create({
   },
   receiptCard: {
     maxWidth: 520,
-    maxHeight: "90%",
   },
   modalTitle: {
     color: "#0f172a",
@@ -1724,6 +1734,13 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontWeight: "700",
     fontSize: 13,
+  },
+  detailScroll: {
+    maxHeight: "84%",
+  },
+  detailScrollContent: {
+    gap: 8,
+    paddingBottom: 6,
   },
   successPrimaryButton: {
     minWidth: 178,

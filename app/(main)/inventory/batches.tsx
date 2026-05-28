@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import IconFilterButton from "../../../components/inventory/IconFilterButton";
 import DatePickerField from "../../../components/inventory/DatePickerField";
 import ActiveFilterBadges from "../../../components/inventory/ActiveFilterBadges";
+import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import { API_BASE_URL } from "../../../utils/api";
 
 type BatchRow = {
@@ -349,10 +350,17 @@ export default function BatchesScreen() {
         </View>
       </FilterSheetModal>
 
-      <Modal visible={Boolean(selectedBatch)} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+      <ResponsiveModal
+        visible={Boolean(selectedBatch)}
+        onClose={() => setSelectedBatch(null)}
+        maxWidthDesktop={980}
+        maxWidthPhoneRatio={0.96}
+        maxHeightDesktopRatio={0.9}
+        maxHeightPhoneRatio={0.9}
+        cardStyle={styles.modalCard}
+      >
             <Text style={styles.modalTitle}>Batch Detail</Text>
+            <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
             <View style={styles.metaGrid}>
               <View style={styles.metaItem}><Text style={styles.metaLabel}>Batch</Text><Text style={styles.metaValue}>{selectedBatch?.batch_code || "-"}</Text></View>
               <View style={styles.metaItem}><Text style={styles.metaLabel}>Product</Text><Text style={styles.metaValue}>{selectedBatch?.product_name || "-"}</Text></View>
@@ -369,12 +377,11 @@ export default function BatchesScreen() {
                 </Text>
               </View>
             </View>
+            </ScrollView>
             <Pressable style={styles.closeBtn} onPress={() => setSelectedBatch(null)}>
               <Text style={styles.closeBtnText}>Close</Text>
             </Pressable>
-          </View>
-        </View>
-      </Modal>
+      </ResponsiveModal>
     </ScrollView>
   );
 }
@@ -400,13 +407,13 @@ const styles = StyleSheet.create({
   emptyText: { color: "#64748b", fontSize: 12, padding: 12 },
   actionCellWrap: { alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
   actionHeadText: { textAlign: "center" },
-  actionDropdownWrap: { position: "relative" },
+  actionDropdownWrap: { position: "relative", alignItems: "flex-end" },
   actionMenuButton: { minHeight: 28, borderRadius: 8, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
   actionMenuButtonText: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
   actionMenu: {
     position: "absolute",
     top: 30,
-    left: 0,
+    right: 0,
     minWidth: 110,
     backgroundColor: "#fff",
     borderRadius: 8,
@@ -435,14 +442,15 @@ const styles = StyleSheet.create({
   rangeRow: { flexDirection: "row", gap: 8 },
   dateFieldWrap: { flex: 1 },
   rangeInput: { flex: 1, height: 38, borderRadius: 10, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#ffffff", paddingHorizontal: 10, color: "#0f172a" },
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", alignItems: "center", justifyContent: "center", padding: 16 },
-  modalCard: { width: "100%", maxWidth: 680, backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 10 },
+  modalCard: { backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 10 },
   modalTitle: { color: "#0f172a", fontSize: 18, fontWeight: "800", marginBottom: 4 },
   metaGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 10 },
   metaItem: { width: "49%", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#f8fafc", padding: 10, gap: 3 },
   metaItemFull: { width: "100%" },
   metaLabel: { color: "#64748b", fontSize: 11, fontWeight: "700" },
   metaValue: { color: "#0f172a", fontSize: 13, fontWeight: "700" },
+  detailScroll: { maxHeight: "84%" },
+  detailScrollContent: { gap: 10, paddingBottom: 6 },
   closeBtn: { marginTop: 6, minHeight: 36, borderRadius: 10, backgroundColor: "#1d4ed8", alignItems: "center", justifyContent: "center" },
   closeBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
 });

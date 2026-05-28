@@ -22,6 +22,7 @@ const {
   updateSupplier,
   setSupplierActiveState,
   createProduct,
+  uploadProductImage,
   updateProduct,
   setProductActiveState,
 } = require("../modules/cashier/cashierController");
@@ -29,6 +30,7 @@ const {
 const router = express.Router();
 
 router.get("/products", getProducts);
+router.post("/products/upload-image", uploadProductImage);
 router.post("/products", createProduct);
 router.put("/products/:idProduct", updateProduct);
 router.patch("/products/:idProduct/status", setProductActiveState);

@@ -1,11 +1,12 @@
 import { Feather } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import IconFilterButton from "../../../components/inventory/IconFilterButton";
 import ActiveFilterBadges from "../../../components/inventory/ActiveFilterBadges";
 import PrimaryActionButton from "../../../components/inventory/PrimaryActionButton";
+import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import { canManageInventoryMaster, getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { API_BASE_URL } from "../../../utils/api";
 
@@ -441,168 +442,194 @@ export default function SuppliersScreen() {
         />
       </FilterSheetModal>
 
-      <Modal visible={inactiveModalOpen} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.inactiveModalCard}>
-            <Text style={styles.modalTitle}>Inactive Suppliers</Text>
-            {inactiveRows.length === 0 ? (
-              <Text style={styles.modalEmpty}>No inactive supplier data.</Text>
-            ) : (
-              <View style={styles.inactiveTableCard}>
-                <View style={styles.tableHeader}>
-                  <View style={[styles.colCode, styles.leftCell]}><Text style={styles.headCell}>Code</Text></View>
-                  <View style={[styles.colName, styles.leftCell]}><Text style={styles.headCell}>Supplier Name</Text></View>
-                  <View style={[styles.colCity, styles.leftCell]}><Text style={styles.headCell}>City</Text></View>
-                  <View style={[styles.colPhone, styles.leftCell]}><Text style={styles.headCell}>Phone</Text></View>
-                  <View style={[styles.colAction, styles.actionCellWrap]}><Text style={[styles.headCell, styles.actionHeadText]}>Action</Text></View>
-                </View>
-                {inactiveRows.map((item) => (
-                  <View key={item.id_supplier} style={styles.tableRow}>
-                    <View style={[styles.colCode, styles.leftCell]}><Text style={styles.rowCell}>{item.supplier_code}</Text></View>
-                    <View style={[styles.colName, styles.leftCell]}><Text style={styles.rowCell} numberOfLines={1}>{item.supplier_name}</Text></View>
-                    <View style={[styles.colCity, styles.leftCell]}><Text style={styles.rowCell}>{item.city}</Text></View>
-                    <View style={[styles.colPhone, styles.leftCell]}><Text style={styles.rowCell}>{item.phone_number || "-"}</Text></View>
-                    <View style={[styles.colAction, styles.actionCellWrap]}>
-                      {canManage ? (
-                        <Pressable style={styles.activateButton} onPress={() => openConfirm("activate", item)}>
-                          <Text style={styles.activateButtonText}>Activate</Text>
-                        </Pressable>
-                      ) : null}
-                    </View>
+      <ResponsiveModal
+        visible={inactiveModalOpen}
+        onClose={() => setInactiveModalOpen(false)}
+        maxWidthDesktop={900}
+        maxWidthPhoneRatio={0.96}
+        maxHeightDesktopRatio={0.9}
+        maxHeightPhoneRatio={0.9}
+        cardStyle={styles.inactiveModalCard}
+      >
+        <Text style={styles.modalTitle}>Inactive Suppliers</Text>
+        <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
+          {inactiveRows.length === 0 ? (
+            <Text style={styles.modalEmpty}>No inactive supplier data.</Text>
+          ) : (
+            <View style={styles.inactiveTableCard}>
+              <View style={styles.tableHeader}>
+                <View style={[styles.colCode, styles.leftCell]}><Text style={styles.headCell}>Code</Text></View>
+                <View style={[styles.colName, styles.leftCell]}><Text style={styles.headCell}>Supplier Name</Text></View>
+                <View style={[styles.colCity, styles.leftCell]}><Text style={styles.headCell}>City</Text></View>
+                <View style={[styles.colPhone, styles.leftCell]}><Text style={styles.headCell}>Phone</Text></View>
+                <View style={[styles.colAction, styles.actionCellWrap]}><Text style={[styles.headCell, styles.actionHeadText]}>Action</Text></View>
+              </View>
+              {inactiveRows.map((item) => (
+                <View key={item.id_supplier} style={styles.tableRow}>
+                  <View style={[styles.colCode, styles.leftCell]}><Text style={styles.rowCell}>{item.supplier_code}</Text></View>
+                  <View style={[styles.colName, styles.leftCell]}><Text style={styles.rowCell} numberOfLines={1}>{item.supplier_name}</Text></View>
+                  <View style={[styles.colCity, styles.leftCell]}><Text style={styles.rowCell}>{item.city}</Text></View>
+                  <View style={[styles.colPhone, styles.leftCell]}><Text style={styles.rowCell}>{item.phone_number || "-"}</Text></View>
+                  <View style={[styles.colAction, styles.actionCellWrap]}>
+                    {canManage ? (
+                      <Pressable style={styles.activateButton} onPress={() => openConfirm("activate", item)}>
+                        <Text style={styles.activateButtonText}>Activate</Text>
+                      </Pressable>
+                    ) : null}
                   </View>
-                ))}
-              </View>
-            )}
-            <Pressable style={styles.closeButton} onPress={() => setInactiveModalOpen(false)}>
-              <Text style={styles.closeButtonText}>Close</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={Boolean(selectedSupplier)} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.detailModalCard}>
-            <Text style={styles.modalTitle}>Supplier Products</Text>
-            <View style={styles.metaGrid}>
-              <View style={styles.metaItem}><Text style={styles.metaLabel}>Supplier</Text><Text style={styles.metaValue}>{selectedSupplier?.supplier_name || "-"}</Text></View>
-              <View style={styles.metaItem}><Text style={styles.metaLabel}>Code</Text><Text style={styles.metaValue}>{selectedSupplier?.supplier_code || "-"}</Text></View>
-              <View style={styles.metaItem}><Text style={styles.metaLabel}>City</Text><Text style={styles.metaValue}>{selectedSupplier?.city || "-"}</Text></View>
-              <View style={styles.metaItem}><Text style={styles.metaLabel}>Products</Text><Text style={styles.metaValue}>{selectedSupplierProducts.length}</Text></View>
-            </View>
-            <View style={styles.detailTableCard}>
-              <View style={styles.detailHeaderRow}>
-                <Text style={[styles.detailHead, styles.detailCodeCol]}>Code</Text>
-                <Text style={[styles.detailHead, styles.detailNameCol]}>Product</Text>
-                <Text style={[styles.detailHead, styles.detailBarcodeCol]}>Barcode</Text>
-              </View>
-              {selectedSupplierProducts.map((item) => (
-                <View key={item.id_product} style={styles.detailBodyRow}>
-                  <Text style={[styles.detailCell, styles.detailCodeCol]}>{item.product_code}</Text>
-                  <Text style={[styles.detailCell, styles.detailNameCol]} numberOfLines={1}>{item.product_name}</Text>
-                  <Text style={[styles.detailCell, styles.detailBarcodeCol]} numberOfLines={1}>{item.barcode || "-"}</Text>
                 </View>
               ))}
-              {selectedSupplierProducts.length === 0 ? <Text style={styles.modalEmpty}>No linked products.</Text> : null}
             </View>
-            <Pressable style={styles.closeButton} onPress={() => setSelectedSupplier(null)}>
-              <Text style={styles.closeButtonText}>Close</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+          )}
+        </ScrollView>
+        <Pressable style={styles.closeButton} onPress={() => setInactiveModalOpen(false)}>
+          <Text style={styles.closeButtonText}>Close</Text>
+        </Pressable>
+      </ResponsiveModal>
 
-      <Modal visible={formOpen} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{isEdit ? "Edit Supplier" : "Add Supplier"}</Text>
-            {isEdit ? (
-              <View style={styles.formGroup}>
-                <Text style={styles.metaLabel}>Supplier Code</Text>
-                <TextInput
-                  value={formSupplierCode}
-                  editable={false}
-                  placeholderTextColor="#94a3b8"
-                  style={[styles.formInput, styles.formInputDisabled]}
-                />
+      <ResponsiveModal
+        visible={Boolean(selectedSupplier)}
+        onClose={() => setSelectedSupplier(null)}
+        maxWidthDesktop={980}
+        maxWidthPhoneRatio={0.96}
+        maxHeightDesktopRatio={0.9}
+        maxHeightPhoneRatio={0.9}
+        cardStyle={styles.detailModalCard}
+      >
+        <Text style={styles.modalTitle}>Supplier Products</Text>
+        <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.metaGrid}>
+            <View style={styles.metaItem}><Text style={styles.metaLabel}>Supplier</Text><Text style={styles.metaValue}>{selectedSupplier?.supplier_name || "-"}</Text></View>
+            <View style={styles.metaItem}><Text style={styles.metaLabel}>Code</Text><Text style={styles.metaValue}>{selectedSupplier?.supplier_code || "-"}</Text></View>
+            <View style={styles.metaItem}><Text style={styles.metaLabel}>City</Text><Text style={styles.metaValue}>{selectedSupplier?.city || "-"}</Text></View>
+            <View style={styles.metaItem}><Text style={styles.metaLabel}>Products</Text><Text style={styles.metaValue}>{selectedSupplierProducts.length}</Text></View>
+          </View>
+          <View style={styles.detailTableCard}>
+            <View style={styles.detailHeaderRow}>
+              <Text style={[styles.detailHead, styles.detailCodeCol]}>Code</Text>
+              <Text style={[styles.detailHead, styles.detailNameCol]}>Product</Text>
+              <Text style={[styles.detailHead, styles.detailBarcodeCol]}>Barcode</Text>
+            </View>
+            {selectedSupplierProducts.map((item) => (
+              <View key={item.id_product} style={styles.detailBodyRow}>
+                <Text style={[styles.detailCell, styles.detailCodeCol]}>{item.product_code}</Text>
+                <Text style={[styles.detailCell, styles.detailNameCol]} numberOfLines={1}>{item.product_name}</Text>
+                <Text style={[styles.detailCell, styles.detailBarcodeCol]} numberOfLines={1}>{item.barcode || "-"}</Text>
               </View>
-            ) : null}
+            ))}
+            {selectedSupplierProducts.length === 0 ? <Text style={styles.modalEmpty}>No linked products.</Text> : null}
+          </View>
+        </ScrollView>
+        <Pressable style={styles.closeButton} onPress={() => setSelectedSupplier(null)}>
+          <Text style={styles.closeButtonText}>Close</Text>
+        </Pressable>
+      </ResponsiveModal>
+
+      <ResponsiveModal
+        visible={formOpen}
+        onClose={() => (saving ? null : setFormOpen(false))}
+        maxWidthDesktop={460}
+        maxWidthPhoneRatio={0.96}
+        maxHeightDesktopRatio={0.88}
+        maxHeightPhoneRatio={0.9}
+        cardStyle={styles.modalCard}
+      >
+        <Text style={styles.modalTitle}>{isEdit ? "Edit Supplier" : "Add Supplier"}</Text>
+        <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
+          {isEdit ? (
             <View style={styles.formGroup}>
-              <Text style={styles.metaLabel}>Supplier Name</Text>
+              <Text style={styles.metaLabel}>Supplier Code</Text>
               <TextInput
-                value={formSupplierName}
-                onChangeText={setFormSupplierName}
-                placeholder="Supplier Name"
+                value={formSupplierCode}
+                editable={false}
                 placeholderTextColor="#94a3b8"
-                style={styles.formInput}
+                style={[styles.formInput, styles.formInputDisabled]}
               />
             </View>
-            <View style={styles.formGroup}>
-              <Text style={styles.metaLabel}>City</Text>
-              <TextInput value={formCity} onChangeText={setFormCity} placeholder="City" placeholderTextColor="#94a3b8" style={styles.formInput} />
-            </View>
-            <View style={styles.formGroup}>
-              <Text style={styles.metaLabel}>Phone</Text>
-              <TextInput
-                value={formPhone}
-                onChangeText={(value) => {
-                  const sanitized = value.replace(/[^0-9+\-\s]/g, "");
-                  setFormPhone(sanitized);
-                }}
-                placeholder="Phone Number"
-                placeholderTextColor="#94a3b8"
-                style={styles.formInput}
-              />
-            </View>
-            <View style={styles.formActionRow}>
-              <Pressable style={styles.formCancelBtn} onPress={() => (saving ? null : setFormOpen(false))}>
-                <Text style={styles.formCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={styles.formSaveBtn}
-                onPress={() => openConfirm(isEdit ? "edit" : "create")}
-                disabled={saving}
-              >
-                <Text style={styles.formSaveText}>{saving ? "Saving..." : "Save"}</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={confirmOpen} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.confirmModalCard}>
-            <Text style={styles.modalTitle}>Please Confirm</Text>
-            <Text style={styles.confirmText}>{getConfirmMessage()}</Text>
-            <View style={styles.confirmActionRow}>
-              <Pressable style={styles.formCancelBtn} onPress={() => setConfirmOpen(false)}>
-                <Text style={styles.formCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable style={styles.formSaveBtn} onPress={executePendingAction}>
-                <Text style={styles.formSaveText}>Yes, Continue</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={resultModalOpen} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.resultModalCard}>
-            <Feather
-              name={resultStatus === "success" ? "check-circle" : "x-circle"}
-              size={42}
-              color={resultStatus === "success" ? "#16a34a" : "#dc2626"}
+          ) : null}
+          <View style={styles.formGroup}>
+            <Text style={styles.metaLabel}>Supplier Name</Text>
+            <TextInput
+              value={formSupplierName}
+              onChangeText={setFormSupplierName}
+              placeholder="Supplier Name"
+              placeholderTextColor="#94a3b8"
+              style={styles.formInput}
             />
-            <Text style={styles.resultTitle}>{resultTitle}</Text>
-            <Text style={styles.resultMessage}>{resultMessage}</Text>
-            <Pressable style={styles.resultCloseBtn} onPress={() => setResultModalOpen(false)}>
-              <Text style={styles.resultCloseBtnText}>OK</Text>
-            </Pressable>
           </View>
+          <View style={styles.formGroup}>
+            <Text style={styles.metaLabel}>City</Text>
+            <TextInput value={formCity} onChangeText={setFormCity} placeholder="City" placeholderTextColor="#94a3b8" style={styles.formInput} />
+          </View>
+          <View style={styles.formGroup}>
+            <Text style={styles.metaLabel}>Phone</Text>
+            <TextInput
+              value={formPhone}
+              onChangeText={(value) => {
+                const sanitized = value.replace(/[^0-9+\-\s]/g, "");
+                setFormPhone(sanitized);
+              }}
+              placeholder="Phone Number"
+              placeholderTextColor="#94a3b8"
+              style={styles.formInput}
+            />
+          </View>
+        </ScrollView>
+        <View style={styles.formActionRow}>
+          <Pressable style={styles.formCancelBtn} onPress={() => (saving ? null : setFormOpen(false))}>
+            <Text style={styles.formCancelText}>Cancel</Text>
+          </Pressable>
+          <Pressable
+            style={styles.formSaveBtn}
+            onPress={() => openConfirm(isEdit ? "edit" : "create")}
+            disabled={saving}
+          >
+            <Text style={styles.formSaveText}>{saving ? "Saving..." : "Save"}</Text>
+          </Pressable>
         </View>
-      </Modal>
+      </ResponsiveModal>
+
+      <ResponsiveModal
+        visible={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        maxWidthDesktop={420}
+        maxWidthPhoneRatio={0.96}
+        maxHeightDesktopRatio={0.84}
+        maxHeightPhoneRatio={0.9}
+        cardStyle={styles.confirmModalCard}
+      >
+        <Text style={styles.modalTitle}>Please Confirm</Text>
+        <Text style={styles.confirmText}>{getConfirmMessage()}</Text>
+        <View style={styles.confirmActionRow}>
+          <Pressable style={styles.formCancelBtn} onPress={() => setConfirmOpen(false)}>
+            <Text style={styles.formCancelText}>Cancel</Text>
+          </Pressable>
+          <Pressable style={styles.formSaveBtn} onPress={executePendingAction}>
+            <Text style={styles.formSaveText}>Yes, Continue</Text>
+          </Pressable>
+        </View>
+      </ResponsiveModal>
+
+      <ResponsiveModal
+        visible={resultModalOpen}
+        onClose={() => setResultModalOpen(false)}
+        maxWidthDesktop={380}
+        maxWidthPhoneRatio={0.94}
+        maxHeightDesktopRatio={0.82}
+        maxHeightPhoneRatio={0.9}
+        cardStyle={styles.resultModalCard}
+      >
+        <Feather
+          name={resultStatus === "success" ? "check-circle" : "x-circle"}
+          size={42}
+          color={resultStatus === "success" ? "#16a34a" : "#dc2626"}
+        />
+        <Text style={styles.resultTitle}>{resultTitle}</Text>
+        <Text style={styles.resultMessage}>{resultMessage}</Text>
+        <Pressable style={styles.resultCloseBtn} onPress={() => setResultModalOpen(false)}>
+          <Text style={styles.resultCloseBtnText}>OK</Text>
+        </Pressable>
+      </ResponsiveModal>
     </ScrollView>
   );
 }
@@ -630,13 +657,13 @@ const styles = StyleSheet.create({
   leftCell: { justifyContent: "center", alignItems: "flex-start", paddingHorizontal: 8 },
   actionCellWrap: { alignItems: "center", justifyContent: "center" },
   actionHeadText: { textAlign: "center" },
-  actionDropdownWrap: { position: "relative" },
+  actionDropdownWrap: { position: "relative", alignItems: "flex-end" },
   actionMenuButton: { height: 28, borderRadius: 8, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", paddingHorizontal: 8, alignItems: "center", justifyContent: "center" },
   actionMenuButtonText: { color: "#1d4ed8", fontSize: 11, fontWeight: "700" },
   actionMenu: {
     position: "absolute",
     top: 30,
-    left: 0,
+    right: 0,
     minWidth: 116,
     backgroundColor: "#fff",
     borderRadius: 8,
@@ -662,6 +689,8 @@ const styles = StyleSheet.create({
   modalBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", alignItems: "center", justifyContent: "center", padding: 16 },
   modalCard: { width: "100%", maxWidth: 460, backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 8 },
   detailModalCard: { width: "100%", maxWidth: 980, backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 10 },
+  detailScroll: { maxHeight: "84%" },
+  detailScrollContent: { gap: 10, paddingBottom: 6 },
   inactiveModalCard: { width: "100%", maxWidth: 900, backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 8 },
   modalTitle: { color: "#0f172a", fontSize: 18, fontWeight: "800" },
   inactiveTableCard: { borderRadius: 10, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", overflow: "hidden" },

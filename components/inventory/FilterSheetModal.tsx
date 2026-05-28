@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import ResponsiveModal from "../common/ResponsiveModal";
 
 type FilterSheetModalProps = {
   title: string;
@@ -19,39 +20,37 @@ export default function FilterSheetModal({
   onClose,
 }: FilterSheetModalProps) {
   return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={styles.backdrop}>
-        <View style={styles.card}>
-          <Text style={styles.title}>{title}</Text>
-          <View style={styles.content}>{children}</View>
-          <View style={styles.actions}>
-            <Pressable style={styles.resetButton} onPress={onReset}>
-              <Text style={styles.resetButtonText}>Reset</Text>
-            </Pressable>
-            <Pressable style={styles.applyButton} onPress={onApply}>
-              <Text style={styles.applyButtonText}>Apply</Text>
-            </Pressable>
-          </View>
-          <Pressable style={styles.closeButton} onPress={onClose}>
-            <Text style={styles.closeButtonText}>Close</Text>
-          </Pressable>
-        </View>
+    <ResponsiveModal
+      visible={visible}
+      onClose={onClose}
+      maxWidthDesktop={420}
+      maxWidthPhoneRatio={0.96}
+      maxHeightDesktopRatio={0.84}
+      maxHeightPhoneRatio={0.9}
+      cardStyle={styles.card}
+    >
+      <Text style={styles.title}>{title}</Text>
+      <ScrollView style={styles.contentScroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {children}
+      </ScrollView>
+      <View style={styles.actions}>
+        <Pressable style={styles.resetButton} onPress={onReset}>
+          <Text style={styles.resetButtonText}>Reset</Text>
+        </Pressable>
+        <Pressable style={styles.applyButton} onPress={onApply}>
+          <Text style={styles.applyButtonText}>Apply</Text>
+        </Pressable>
       </View>
-    </Modal>
+      <Pressable style={styles.closeButton} onPress={onClose}>
+        <Text style={styles.closeButtonText}>Close</Text>
+      </Pressable>
+    </ResponsiveModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(15,23,42,0.45)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
-  },
   card: {
     width: "100%",
-    maxWidth: 420,
     backgroundColor: "#ffffff",
     borderRadius: 14,
     padding: 16,
@@ -64,6 +63,10 @@ const styles = StyleSheet.create({
   },
   content: {
     gap: 10,
+    paddingBottom: 6,
+  },
+  contentScroll: {
+    maxHeight: "78%",
   },
   actions: {
     flexDirection: "row",

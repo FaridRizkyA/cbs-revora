@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import type { CSSProperties } from "react";
 
 type DatePickerFieldProps = {
@@ -33,6 +33,9 @@ export default function DatePickerField({
   minimumDate,
   maximumDate,
 }: DatePickerFieldProps) {
+  const { width, height } = useWindowDimensions();
+  const shortSide = Math.min(width, height);
+  const isPhone = shortSide < 768;
   const [open, setOpen] = useState(false);
   const [draftDate, setDraftDate] = useState<Date>(parseDate(value));
 
@@ -83,7 +86,15 @@ export default function DatePickerField({
 
       <Modal visible={Platform.OS !== "web" && open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <View style={styles.backdrop}>
-          <View style={styles.card}>
+          <View
+            style={[
+              styles.card,
+              {
+                maxWidth: isPhone ? Math.max(shortSide * 0.9, 280) : 360,
+                maxHeight: isPhone ? height * 0.72 : height * 0.82,
+              },
+            ]}
+          >
             <Text style={styles.title}>{label}</Text>
             <View style={styles.pickerWrap}>
               <DateTimePicker
@@ -127,7 +138,7 @@ const styles = StyleSheet.create({
   fieldText: { color: "#0f172a", fontSize: 13 },
   placeholderText: { color: "#94a3b8" },
   backdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", alignItems: "center", justifyContent: "center", padding: 16 },
-  card: { width: "100%", maxWidth: 360, borderRadius: 14, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", padding: 12, gap: 10 },
+  card: { width: "100%", borderRadius: 14, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", padding: 12, gap: 10 },
   title: { color: "#0f172a", fontSize: 14, fontWeight: "800" },
   pickerWrap: { alignItems: "center" },
   actionRow: { flexDirection: "row", gap: 8 },

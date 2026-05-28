@@ -1,4 +1,4 @@
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import FilterSelectField from "./FilterSelectField";
 import DatePickerField from "./DatePickerField";
 import PrimaryActionButton from "./PrimaryActionButton";
@@ -40,6 +40,10 @@ type StockInFormModalProps = {
 };
 
 export default function StockInFormModal(props: StockInFormModalProps) {
+  const { width, height } = useWindowDimensions();
+  const shortSide = Math.min(width, height);
+  const isPhone = shortSide < 768;
+
   const {
     visible,
     suppliers,
@@ -66,7 +70,15 @@ export default function StockInFormModal(props: StockInFormModalProps) {
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.backdrop}>
-        <View style={styles.card}>
+        <View
+          style={[
+            styles.card,
+            {
+              maxWidth: isPhone ? Math.max(shortSide * 0.94, 320) : 640,
+              maxHeight: isPhone ? height * 0.8 : height * 0.88,
+            },
+          ]}
+        >
           <Text style={styles.title}>Add Stock In</Text>
           <ScrollView contentContainerStyle={styles.body}>
             <FilterSelectField
@@ -163,7 +175,7 @@ export default function StockInFormModal(props: StockInFormModalProps) {
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", alignItems: "center", justifyContent: "center", padding: 16 },
-  card: { width: "100%", maxWidth: 640, maxHeight: "88%", borderRadius: 14, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", overflow: "hidden" },
+  card: { width: "100%", borderRadius: 14, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", overflow: "hidden" },
   title: { fontSize: 18, fontWeight: "800", color: "#0f172a", padding: 16, borderBottomWidth: 1, borderBottomColor: "#eef2f7" },
   body: { padding: 16, gap: 10 },
   fieldWrap: { gap: 6 },

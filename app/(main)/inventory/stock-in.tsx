@@ -1,5 +1,6 @@
+import { Feather } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import IconFilterButton from "../../../components/inventory/IconFilterButton";
@@ -7,6 +8,7 @@ import StockInFormModal from "../../../components/inventory/StockInFormModal";
 import DatePickerField from "../../../components/inventory/DatePickerField";
 import ActiveFilterBadges from "../../../components/inventory/ActiveFilterBadges";
 import PrimaryActionButton from "../../../components/inventory/PrimaryActionButton";
+import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import { API_BASE_URL } from "../../../utils/api";
 import { canInsertStockMovement, getAuthSession, normalizeRole } from "../../../utils/authSession";
 
@@ -63,8 +65,6 @@ type DraftItem = {
 };
 
 export default function StockInScreen() {
-  const { width } = useWindowDimensions();
-  const isCompact = width < 960;
   const [rows, setRows] = useState<StockInDocument[]>([]);
   const [roleName, setRoleName] = useState("CASHIER");
   const [userId, setUserId] = useState("");
@@ -95,6 +95,11 @@ export default function StockInScreen() {
   const [draftMinTotalQtyFilter, setDraftMinTotalQtyFilter] = useState("");
   const [draftMaxTotalQtyFilter, setDraftMaxTotalQtyFilter] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [resultStatus, setResultStatus] = useState<"success" | "error">("success");
+  const [resultTitle, setResultTitle] = useState("");
+  const [resultMessage, setResultMessage] = useState("");
   const tomorrowDate = useMemo(() => new Date(Date.now() + 24 * 60 * 60 * 1000), []);
   const todayDayNumber = useMemo(() => Number(new Date().toISOString().slice(0, 10).replaceAll("-", "")), []);
 
@@ -252,12 +257,18 @@ export default function StockInScreen() {
 
   const submitStockIn = async () => {
     if (!selectedSupplierId) {
-      Alert.alert("Validation", "Please select a supplier first.");
+      setResultStatus("error");
+      setResultTitle("Validation Error");
+      setResultMessage("Please select a supplier first.");
+      setResultModalOpen(true);
       return;
     }
 
     if (hasInvalidRows) {
-      Alert.alert("Validation", "Each row must have a product, qty > 0, purchase price > 0, and an expired date after today.");
+      setResultStatus("error");
+      setResultTitle("Validation Error");
+      setResultMessage("Each row must have a product, qty > 0, purchase price > 0, and an expired date after today.");
+      setResultModalOpen(true);
       return;
     }
 
@@ -286,9 +297,15 @@ export default function StockInScreen() {
 
       setFormOpen(false);
       loadRows();
-      Alert.alert("Success", "Stock in saved successfully.");
+      setResultStatus("success");
+      setResultTitle("Action Completed");
+      setResultMessage("Stock in saved successfully.");
+      setResultModalOpen(true);
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to create stock in.");
+      setResultStatus("error");
+      setResultTitle("Action Failed");
+      setResultMessage(error instanceof Error ? error.message : "Failed to create stock in.");
+      setResultModalOpen(true);
     } finally {
       setSaving(false);
     }
@@ -352,55 +369,38 @@ export default function StockInScreen() {
       </View>
       <View style={styles.tableCard}>
         <View style={styles.tableInner}>
-          {!isCompact ? (
-            <View style={styles.tableHeader}>
-              <Text style={[styles.headCell, styles.colCode]}>Stock In Code</Text>
-              <Text style={[styles.headCell, styles.colSupplier]}>Supplier</Text>
-              <Text style={[styles.headCell, styles.colReceiver]}>Receiver</Text>
-              <Text style={[styles.headCell, styles.colQty]}>Total Qty</Text>
-              <Text style={[styles.headCell, styles.colDate]}>Date</Text>
-              <Text style={[styles.headCell, styles.colAction]}>Action</Text>
-            </View>
-          ) : null}
+          <View style={styles.tableHeader}>
+            <Text style={[styles.headCell, styles.colCode]}>Stock In Code</Text>
+            <Text style={[styles.headCell, styles.colSupplier]}>Supplier</Text>
+            <Text style={[styles.headCell, styles.colReceiver]}>Receiver</Text>
+            <Text style={[styles.headCell, styles.colQty]}>Total Qty</Text>
+            <Text style={[styles.headCell, styles.colDate]}>Date</Text>
+            <Text style={[styles.headCell, styles.colAction]}>Action</Text>
+          </View>
 
-          {(Array.isArray(filteredRows) ? filteredRows : []).map((row) =>
-            isCompact ? (
-              <Pressable key={row.id_stock_in} style={styles.compactCard} onPress={() => openDetail(row.id_stock_in)}>
-                <View style={styles.compactTopRow}>
-                  <Text style={styles.compactCode} numberOfLines={1}>{row.stock_in_code}</Text>
-                  <Text style={styles.compactQty}>Qty: {row.total_qty}</Text>
+          {(Array.isArray(filteredRows) ? filteredRows : []).map((row) => (
+            <Pressable key={row.id_stock_in} style={[styles.tableRow, openActionStockInId === row.id_stock_in && styles.tableRowActiveLayer]}>
+              <Text style={[styles.rowCell, styles.colCode]} numberOfLines={1}>{row.stock_in_code}</Text>
+              <Text style={[styles.rowCell, styles.colSupplier]} numberOfLines={1}>{row.supplier_name}</Text>
+              <Text style={[styles.rowCell, styles.colReceiver]} numberOfLines={1}>{row.received_by_name || "-"}</Text>
+              <Text style={[styles.rowCell, styles.colQty]}>{row.total_qty}</Text>
+              <Text style={[styles.rowCell, styles.colDate]}>{new Date(row.stock_in_date).toLocaleString("id-ID")}</Text>
+              <View style={[styles.colAction, styles.actionWrap]}>
+                <View style={styles.actionDropdownWrap}>
+                  <Pressable style={styles.actionMenuButton} onPress={() => setOpenActionStockInId((prev) => (prev === row.id_stock_in ? null : row.id_stock_in))}>
+                    <Text style={styles.actionMenuButtonText}>Actions</Text>
+                  </Pressable>
+                  {openActionStockInId === row.id_stock_in ? (
+                    <View style={styles.actionMenu}>
+                      <Pressable style={[styles.actionOutlineBtn, styles.actionOutlineInfo]} onPress={() => { setOpenActionStockInId(null); openDetail(row.id_stock_in); }}>
+                        <Text style={[styles.actionOutlineBtnText, styles.actionOutlineInfoText]}>See Details</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
                 </View>
-                <Text style={styles.compactMeta} numberOfLines={1}>Supplier: {row.supplier_name}</Text>
-                <Text style={styles.compactMeta} numberOfLines={1}>Receiver: {row.received_by_name || "-"}</Text>
-                <Text style={styles.compactMeta}>Date: {new Date(row.stock_in_date).toLocaleString("id-ID")}</Text>
-                <Pressable style={styles.compactDetailBtn} onPress={() => openDetail(row.id_stock_in)}>
-                  <Text style={styles.compactDetailBtnText}>See Details</Text>
-                </Pressable>
-              </Pressable>
-            ) : (
-              <Pressable key={row.id_stock_in} style={[styles.tableRow, openActionStockInId === row.id_stock_in && styles.tableRowActiveLayer]}>
-                <Text style={[styles.rowCell, styles.colCode]} numberOfLines={1}>{row.stock_in_code}</Text>
-                <Text style={[styles.rowCell, styles.colSupplier]} numberOfLines={1}>{row.supplier_name}</Text>
-                <Text style={[styles.rowCell, styles.colReceiver]} numberOfLines={1}>{row.received_by_name || "-"}</Text>
-                <Text style={[styles.rowCell, styles.colQty]}>{row.total_qty}</Text>
-                <Text style={[styles.rowCell, styles.colDate]}>{new Date(row.stock_in_date).toLocaleString("id-ID")}</Text>
-                <View style={[styles.colAction, styles.actionWrap]}>
-                  <View style={styles.actionDropdownWrap}>
-                    <Pressable style={styles.actionMenuButton} onPress={() => setOpenActionStockInId((prev) => (prev === row.id_stock_in ? null : row.id_stock_in))}>
-                      <Text style={styles.actionMenuButtonText}>Actions</Text>
-                    </Pressable>
-                    {openActionStockInId === row.id_stock_in ? (
-                      <View style={styles.actionMenu}>
-                        <Pressable style={[styles.actionOutlineBtn, styles.actionOutlineInfo]} onPress={() => { setOpenActionStockInId(null); openDetail(row.id_stock_in); }}>
-                          <Text style={[styles.actionOutlineBtnText, styles.actionOutlineInfoText]}>See Details</Text>
-                        </Pressable>
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-              </Pressable>
-            )
-          )}
+              </View>
+            </Pressable>
+          ))}
           {filteredRows.length === 0 ? <Text style={styles.emptyText}>No stock in documents found.</Text> : null}
         </View>
       </View>
@@ -545,13 +545,58 @@ export default function StockInScreen() {
         }}
         onAddRow={() => setItems((prev) => [...prev, { id_product: "", quantity: "", expired_date: "", purchase_price: "" }])}
         onRemoveRow={(index) => setItems((prev) => prev.filter((_, i) => i !== index))}
-        onSubmit={submitStockIn}
+        onSubmit={() => setConfirmOpen(true)}
       />
 
-      <Modal visible={Boolean(selectedDoc)} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+      <ResponsiveModal
+        visible={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        maxWidthDesktop={420}
+        maxWidthPhoneRatio={0.96}
+        maxHeightDesktopRatio={0.84}
+        maxHeightPhoneRatio={0.9}
+        cardStyle={styles.confirmModalCard}
+      >
+        <Text style={styles.modalTitle}>Please Confirm</Text>
+        <Text style={styles.confirmText}>Create this stock in data?</Text>
+        <View style={styles.confirmActionRow}>
+          <Pressable style={styles.cancelBtn} onPress={() => setConfirmOpen(false)}>
+            <Text style={styles.cancelBtnText}>Cancel</Text>
+          </Pressable>
+          <Pressable style={styles.submitBtn} onPress={async () => { setConfirmOpen(false); await submitStockIn(); }}>
+            <Text style={styles.submitBtnText}>Yes, Continue</Text>
+          </Pressable>
+        </View>
+      </ResponsiveModal>
+
+      <ResponsiveModal
+        visible={resultModalOpen}
+        onClose={() => setResultModalOpen(false)}
+        maxWidthDesktop={380}
+        maxWidthPhoneRatio={0.94}
+        maxHeightDesktopRatio={0.82}
+        maxHeightPhoneRatio={0.9}
+        cardStyle={styles.resultModalCard}
+      >
+        <Feather name={resultStatus === "success" ? "check-circle" : "x-circle"} size={42} color={resultStatus === "success" ? "#16a34a" : "#dc2626"} />
+        <Text style={styles.resultTitle}>{resultTitle}</Text>
+        <Text style={styles.resultMessage}>{resultMessage}</Text>
+        <Pressable style={styles.resultCloseBtn} onPress={() => setResultModalOpen(false)}>
+          <Text style={styles.resultCloseBtnText}>OK</Text>
+        </Pressable>
+      </ResponsiveModal>
+
+      <ResponsiveModal
+        visible={Boolean(selectedDoc)}
+        onClose={() => setSelectedDoc(null)}
+        maxWidthDesktop={980}
+        maxWidthPhoneRatio={0.96}
+        maxHeightDesktopRatio={0.9}
+        maxHeightPhoneRatio={0.9}
+        cardStyle={styles.modalCard}
+      >
             <Text style={styles.modalTitle}>Stock In Detail</Text>
+            <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
             <View style={styles.metaGrid}>
               <View style={styles.metaItem}><Text style={styles.metaLabel}>Stock In Code</Text><Text style={styles.metaValue}>{selectedDoc?.stock_in_code || "-"}</Text></View>
               <View style={styles.metaItem}>
@@ -592,12 +637,11 @@ export default function StockInScreen() {
                 </View>
               </ScrollView>
             </View>
+            </ScrollView>
             <Pressable style={styles.closeBtn} onPress={() => setSelectedDoc(null)}>
               <Text style={styles.closeBtnText}>Close</Text>
             </Pressable>
-          </View>
-        </View>
-      </Modal>
+      </ResponsiveModal>
     </ScrollView>
   );
 }
@@ -613,25 +657,18 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, height: 40, borderRadius: 10, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#f8fafc", paddingHorizontal: 12, color: "#0f172a" },
   tableCard: { borderRadius: 12, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", overflow: "visible" },
   tableInner: { width: "100%" },
-  compactCard: { borderBottomWidth: 1, borderBottomColor: "#eef2f7", padding: 12, gap: 4 },
-  compactTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  compactCode: { color: "#0f172a", fontSize: 13, fontWeight: "800", flex: 1 },
-  compactQty: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
-  compactMeta: { color: "#334155", fontSize: 12 },
-  compactDetailBtn: { marginTop: 6, minHeight: 34, borderRadius: 8, borderWidth: 1, borderColor: "#93c5fd", backgroundColor: "#eff6ff", alignItems: "center", justifyContent: "center" },
-  compactDetailBtnText: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
   tableHeader: { minHeight: 42, backgroundColor: "#f1f5f9", flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#dbe3ee" },
-  tableRow: { minHeight: 44, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#eef2f7", position: "relative", zIndex: 1 },
+  tableRow: { minHeight: 44, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#eef2f7", position: "relative", zIndex: 1, overflow: "visible" },
   tableRowActiveLayer: { zIndex: 40 },
   headCell: { fontSize: 12, fontWeight: "700", color: "#334155", paddingHorizontal: 10, textAlign: "left" },
   rowCell: { fontSize: 12, color: "#0f172a", paddingHorizontal: 10, textAlign: "left" },
-  colCode: { width: "24%" }, colSupplier: { width: "20%" }, colReceiver: { width: "20%" }, colQty: { width: "10%" }, colDate: { width: "18%" }, colAction: { width: "8%", textAlign: "center" },
+  colCode: { width: "22%" }, colSupplier: { width: "20%" }, colReceiver: { width: "20%" }, colQty: { width: "8%" }, colDate: { width: "16%" }, colAction: { width: "14%", textAlign: "center" },
   emptyText: { color: "#64748b", fontSize: 12, padding: 12 },
   actionWrap: { alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
-  actionDropdownWrap: { position: "relative" },
+  actionDropdownWrap: { position: "relative", alignItems: "flex-end" },
   actionMenuButton: { minHeight: 28, borderRadius: 8, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
   actionMenuButtonText: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
-  actionMenu: { position: "absolute", top: 30, left: 0, minWidth: 132, backgroundColor: "#fff", borderRadius: 8, borderWidth: 1, borderColor: "#dbe3ee", padding: 6, gap: 6, zIndex: 50, elevation: 6 },
+  actionMenu: { position: "absolute", top: 30, right: 0, minWidth: 132, backgroundColor: "#fff", borderRadius: 8, borderWidth: 1, borderColor: "#dbe3ee", padding: 6, gap: 6, zIndex: 50, elevation: 6 },
   actionOutlineBtn: { minHeight: 30, borderRadius: 7, borderWidth: 1, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
   actionOutlineBtnText: { fontSize: 11, fontWeight: "700" },
   actionOutlineInfo: { borderColor: "#93c5fd", backgroundColor: "#eff6ff" },
@@ -644,8 +681,7 @@ const styles = StyleSheet.create({
   rangeRow: { flexDirection: "row", gap: 8 },
   dateFieldWrap: { flex: 1 },
   rangeInput: { flex: 1, height: 38, borderRadius: 10, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#ffffff", paddingHorizontal: 10, color: "#0f172a" },
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", alignItems: "center", justifyContent: "center", padding: 16 },
-  modalCard: { width: "100%", maxWidth: 980, backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 10 },
+  modalCard: { backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 10 },
   modalTitle: { color: "#0f172a", fontSize: 18, fontWeight: "800", marginBottom: 4 },
   metaGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 10 },
   metaItem: { width: "49%", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#f8fafc", padding: 10, gap: 3 },
@@ -659,7 +695,17 @@ const styles = StyleSheet.create({
   detailHead: { color: "#334155", fontSize: 11, fontWeight: "800", paddingHorizontal: 10 },
   detailCell: { color: "#0f172a", fontSize: 12, paddingHorizontal: 10 },
   detailColProduct: { width: "28%" }, detailColBatch: { width: "24%" }, detailColPrice: { width: "22%" }, detailColQty: { width: "8%" }, detailColExp: { width: "18%" },
+  detailScroll: { maxHeight: "84%" },
+  detailScrollContent: { gap: 10, paddingBottom: 6 },
   closeBtn: { marginTop: 6, minHeight: 36, borderRadius: 10, backgroundColor: "#1d4ed8", alignItems: "center", justifyContent: "center" },
   closeBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  confirmModalCard: { width: "100%", maxWidth: 420, backgroundColor: "#fff", borderRadius: 12, padding: 16, gap: 12 },
+  confirmText: { color: "#334155", fontSize: 13, lineHeight: 20 },
+  confirmActionRow: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
+  resultModalCard: { width: "100%", maxWidth: 380, backgroundColor: "#fff", borderRadius: 14, padding: 18, alignItems: "center", gap: 10 },
+  resultTitle: { color: "#0f172a", fontSize: 18, fontWeight: "800" },
+  resultMessage: { color: "#475569", fontSize: 13, textAlign: "center", lineHeight: 20 },
+  resultCloseBtn: { marginTop: 4, width: "100%", height: 38, borderRadius: 10, backgroundColor: "#1d4ed8", alignItems: "center", justifyContent: "center" },
+  resultCloseBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
 });
 

@@ -1,3 +1,6 @@
+const fs = require("fs");
+const path = require("path");
+const multer = require("multer");
 const pool = require("../../config/db");
 
 const toNumber = (value) => Number(value || 0);
@@ -115,6 +118,116 @@ const generateNextSupplierCode = async (client) => {
   );
   const nextSeq = Number(result.rows[0]?.max_seq || 0) + 1;
   return `SUP-${String(nextSeq).padStart(3, "0")}`;
+};
+
+const buildProductCodeBaseFromName = (productNameRaw) => {
+  const name = String(productNameRaw || "").trim().toUpperCase();
+  const tokens = name.split(/\s+/).filter(Boolean);
+  const consonantTokens = tokens
+    .map((token) => token.replace(/[^A-Z0-9]/g, ""))
+    .map((token) => token.replace(/[AEIOU]/g, ""))
+    .filter(Boolean);
+  const compact = consonantTokens.join("-");
+  return `PRD-${compact || "ITEM"}`;
+};
+
+const generateNextProductCode = async (client, productName) => {
+  const baseCode = buildProductCodeBaseFromName(productName);
+  let attempt = 0;
+
+  while (attempt < 9999) {
+    const candidate = attempt === 0 ? baseCode : `${baseCode}-${attempt + 1}`;
+    const exists = await client.query(
+      `SELECT 1 FROM tbl_products WHERE UPPER(TRIM(product_code)) = $1 LIMIT 1;`,
+      [candidate]
+    );
+    if (exists.rowCount === 0) return candidate;
+    attempt += 1;
+  }
+
+  throw new Error("Failed to generate unique product_code.");
+};
+
+const uploadsRootDir = path.join(__dirname, "..", "..", "uploads");
+const productUploadsDir = path.join(uploadsRootDir, "products");
+if (!fs.existsSync(productUploadsDir)) {
+  fs.mkdirSync(productUploadsDir, { recursive: true });
+}
+
+const productImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, productUploadsDir),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname || "").toLowerCase() || ".jpg";
+      cb(null, `product-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!String(file.mimetype || "").startsWith("image/")) {
+      return cb(new Error("Only image files are allowed."));
+    }
+    cb(null, true);
+  },
+}).single("image");
+
+const uploadProductImage = (req, res) => {
+  productImageUpload(req, res, (error) => {
+    if (error) {
+      return res.status(400).json({ message: "Failed to upload product image.", error: error.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ message: "image file is required." });
+    }
+
+    const relativePath = `uploads/products/${req.file.filename}`.replace(/\\/g, "/");
+    const imageUrl = `${req.protocol}://${req.get("host")}/${relativePath}`;
+    return res.status(201).json({
+      message: "Product image uploaded successfully.",
+      data: {
+        file_name: req.file.filename,
+        file_path: relativePath,
+        image_url: imageUrl,
+      },
+    });
+  });
+};
+
+const parseProductUploadFilePath = (productImageValue) => {
+  const raw = String(productImageValue || "").trim();
+  if (!raw) return null;
+
+  let pathname = raw;
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const parsed = new URL(raw);
+      pathname = parsed.pathname || "";
+    } catch {
+      pathname = raw;
+    }
+  }
+
+  const normalized = pathname.replace(/\\/g, "/");
+  const marker = "/uploads/products/";
+  const index = normalized.toLowerCase().indexOf(marker);
+  if (index < 0) return null;
+
+  const fileName = normalized.slice(index + marker.length).split("/")[0];
+  if (!fileName) return null;
+
+  const safeFileName = path.basename(fileName);
+  const resolved = path.resolve(productUploadsDir, safeFileName);
+  const rootResolved = path.resolve(productUploadsDir);
+  if (!resolved.startsWith(rootResolved)) return null;
+  return resolved;
+};
+
+const removeUploadedProductImageIfAny = (productImageValue) => {
+  const targetPath = parseProductUploadFilePath(productImageValue);
+  if (!targetPath) return;
+  if (fs.existsSync(targetPath)) {
+    fs.unlinkSync(targetPath);
+  }
 };
 
 const getProducts = async (req, res) => {
@@ -553,8 +666,10 @@ const getStockAdjustments = async (req, res) => {
       FROM ranked r
       WHERE (
           $1 = ''
+          OR CONCAT('STA/', r.date_token, '/', r.type_token, '/', LPAD(r.sequence_no::text, 5, '0')) ILIKE $2
           OR r.product_code ILIKE $2
           OR r.product_name ILIKE $2
+          OR COALESCE(r.adjustment_reason, '') ILIKE $2
           OR COALESCE(r.notes, '') ILIKE $2
           OR COALESCE(r.operator_name, '') ILIKE $2
         )
@@ -1729,7 +1844,6 @@ const createProduct = async (req, res) => {
   const {
     id_user,
     id_supplier,
-    product_code,
     barcode,
     product_name,
     description,
@@ -1738,7 +1852,6 @@ const createProduct = async (req, res) => {
     product_image,
   } = req.body || {};
 
-  const code = String(product_code || "").trim().toUpperCase();
   const bar = String(barcode || "").trim();
   const name = String(product_name || "").trim();
   const desc = String(description || "").trim();
@@ -1747,7 +1860,6 @@ const createProduct = async (req, res) => {
 
   if (!id_user) return res.status(400).json({ message: "id_user is required." });
   if (!id_supplier) return res.status(400).json({ message: "id_supplier is required." });
-  if (!code) return res.status(400).json({ message: "product_code is required." });
   if (!name) return res.status(400).json({ message: "product_name is required." });
   if (!Number.isFinite(price) || price < 0) return res.status(400).json({ message: "selling_price must be >= 0." });
   if (!Number.isInteger(minStock) || minStock < 0) return res.status(400).json({ message: "minimum_stock must be an integer >= 0." });
@@ -1763,12 +1875,7 @@ const createProduct = async (req, res) => {
       [id_supplier]
     );
     if (supplierResult.rowCount === 0) throw new Error("Supplier not found or inactive.");
-
-    const codeExists = await client.query(
-      `SELECT 1 FROM tbl_products WHERE UPPER(TRIM(product_code)) = $1 LIMIT 1;`,
-      [code]
-    );
-    if (codeExists.rowCount > 0) throw new Error("product_code already exists.");
+    const code = await generateNextProductCode(client, name);
 
     if (bar) {
       const barcodeExists = await client.query(
@@ -1828,6 +1935,8 @@ const updateProduct = async (req, res) => {
   if (!Number.isInteger(minStock) || minStock < 0) return res.status(400).json({ message: "minimum_stock must be an integer >= 0." });
 
   const client = await pool.connect();
+  let previousProductImage = null;
+  let nextProductImage = null;
   try {
     await client.query("BEGIN");
     const user = await getActiveUserRole(client, id_user);
@@ -1846,6 +1955,14 @@ const updateProduct = async (req, res) => {
       );
       if (barcodeExists.rowCount > 0) throw new Error("barcode already exists.");
     }
+
+    const existingProductResult = await client.query(
+      `SELECT product_image FROM tbl_products WHERE id_product = $1 LIMIT 1;`,
+      [idProduct]
+    );
+    if (existingProductResult.rowCount === 0) throw new Error("Product not found.");
+    previousProductImage = existingProductResult.rows[0]?.product_image || null;
+    nextProductImage = String(product_image || "").trim() || null;
 
     const result = await client.query(
       `
@@ -1870,6 +1987,13 @@ const updateProduct = async (req, res) => {
     if (result.rowCount === 0) throw new Error("Product not found.");
 
     await client.query("COMMIT");
+    if (previousProductImage && nextProductImage && previousProductImage !== nextProductImage) {
+      try {
+        removeUploadedProductImageIfAny(previousProductImage);
+      } catch (cleanupError) {
+        console.warn("Failed to remove previous product image:", cleanupError.message);
+      }
+    }
     res.json({ message: "Product updated successfully.", data: result.rows[0] });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
@@ -2400,6 +2524,7 @@ module.exports = {
   getSuppliers,
   setProductActiveState,
   setSupplierActiveState,
+  uploadProductImage,
   updateProduct,
   updateSupplier,
   getProducts,

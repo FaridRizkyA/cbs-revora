@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import ActiveFilterBadges from "../../../components/inventory/ActiveFilterBadges";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import IconFilterButton from "../../../components/inventory/IconFilterButton";
 import PrimaryActionButton from "../../../components/inventory/PrimaryActionButton";
+import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import { API_BASE_URL } from "../../../utils/api";
 import { canInsertStockMovement, getAuthSession, normalizeRole } from "../../../utils/authSession";
 
@@ -257,9 +258,15 @@ export default function StockOutManualScreen() {
         <FilterSelectField label="Operator" value={draftOperatorFilter} options={operatorOptions.map((item) => ({ label: item, value: item }))} onChange={setDraftOperatorFilter} />
       </FilterSheetModal>
 
-      <Modal visible={formOpen} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+      <ResponsiveModal
+        visible={formOpen}
+        onClose={() => (saving ? null : setFormOpen(false))}
+        maxWidthDesktop={640}
+        maxWidthPhoneRatio={0.94}
+        maxHeightDesktopRatio={0.88}
+        maxHeightPhoneRatio={0.82}
+        cardStyle={styles.modalCard}
+      >
             <Text style={styles.modalTitle}>Add Stock Out Non-Sales</Text>
             <ScrollView contentContainerStyle={styles.formBody}>
               <FilterSelectField label="Reason" value={reason} options={REASONS.map((item) => ({ label: item, value: item }))} onChange={setReason} />
@@ -306,14 +313,19 @@ export default function StockOutManualScreen() {
               <Pressable style={styles.cancelBtn} onPress={() => (saving ? null : setFormOpen(false))}><Text style={styles.cancelBtnText}>Cancel</Text></Pressable>
               <Pressable style={styles.submitBtn} onPress={submit} disabled={saving}><Text style={styles.submitBtnText}>{saving ? "Saving..." : "Save Stock Out"}</Text></Pressable>
             </View>
-          </View>
-        </View>
-      </Modal>
+      </ResponsiveModal>
 
-      <Modal visible={Boolean(selectedDoc)} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.detailModalCard}>
+      <ResponsiveModal
+        visible={Boolean(selectedDoc)}
+        onClose={() => setSelectedDoc(null)}
+        maxWidthDesktop={980}
+        maxWidthPhoneRatio={0.96}
+        maxHeightDesktopRatio={0.9}
+        maxHeightPhoneRatio={0.9}
+        cardStyle={styles.detailModalCard}
+      >
             <Text style={styles.modalTitle}>Stock Out Non-Sales Detail</Text>
+            <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
             <View style={styles.metaGrid}>
               <View style={styles.metaItem}><Text style={styles.metaLabel}>Code</Text><Text style={styles.metaValue}>{selectedDoc?.stock_out_code || "-"}</Text></View>
               <View style={styles.metaItem}><Text style={styles.metaLabel}>Operator</Text><Text style={styles.metaValue}>{selectedDoc?.operator_name || "-"}</Text></View>
@@ -337,10 +349,9 @@ export default function StockOutManualScreen() {
                 </View>
               ))}
             </View>
+            </ScrollView>
             <Pressable style={styles.closeBtn} onPress={() => setSelectedDoc(null)}><Text style={styles.closeBtnText}>Close</Text></Pressable>
-          </View>
-        </View>
-      </Modal>
+      </ResponsiveModal>
     </ScrollView>
   );
 }
@@ -363,9 +374,8 @@ const styles = StyleSheet.create({
   actionWrap: { alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
   detailBtn: { minHeight: 28, borderRadius: 8, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", paddingHorizontal: 10, justifyContent: "center" },
   detailBtnText: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", alignItems: "center", justifyContent: "center", padding: 16 },
-  modalCard: { width: "100%", maxWidth: 640, maxHeight: "88%", borderRadius: 14, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", overflow: "hidden" },
-  detailModalCard: { width: "100%", maxWidth: 980, borderRadius: 14, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", overflow: "hidden", padding: 16, gap: 10 },
+  modalCard: { borderRadius: 14, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", overflow: "hidden" },
+  detailModalCard: { borderRadius: 14, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", overflow: "hidden", padding: 16, gap: 10 },
   modalTitle: { fontSize: 18, fontWeight: "800", color: "#0f172a", padding: 16, borderBottomWidth: 1, borderBottomColor: "#eef2f7" },
   formBody: { padding: 16, gap: 10 },
   fieldWrap: { gap: 6 },
@@ -390,6 +400,8 @@ const styles = StyleSheet.create({
   detailRow: { minHeight: 36, borderBottomWidth: 1, borderBottomColor: "#f1f5f9", flexDirection: "row", alignItems: "center" },
   detailCell: { color: "#0f172a", fontSize: 12, paddingHorizontal: 10 },
   detailColProduct: { width: "34%" }, detailColBatch: { width: "26%" }, detailColQty: { width: "10%" }, detailColReason: { width: "30%" },
+  detailScroll: { maxHeight: "84%" },
+  detailScrollContent: { gap: 10, paddingBottom: 6 },
   closeBtn: { minHeight: 36, borderRadius: 10, backgroundColor: "#1d4ed8", alignItems: "center", justifyContent: "center" },
   closeBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
 });

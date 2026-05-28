@@ -1,4 +1,4 @@
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 type ConfirmModalProps = {
   visible: boolean;
@@ -15,10 +15,22 @@ export default function ConfirmModal({
   onCancel,
   onConfirm,
 }: ConfirmModalProps) {
+  const { width, height } = useWindowDimensions();
+  const shortSide = Math.min(width, height);
+  const isPhone = shortSide < 768;
+
   return (
     <Modal transparent visible={visible} animationType="fade">
       <View style={styles.backdrop}>
-        <View style={styles.modal}>
+        <View
+          style={[
+            styles.modal,
+            {
+              maxWidth: isPhone ? Math.max(shortSide * 0.9, 300) : 420,
+              maxHeight: isPhone ? height * 0.72 : height * 0.82,
+            },
+          ]}
+        >
           <Text style={styles.title}>{title}</Text>
           {message ? <Text style={styles.message}>{message}</Text> : null}
           <View style={styles.actions}>
@@ -43,7 +55,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(15, 23, 42, 0.35)",
     padding: 24,
   },
-  modal: { width: "100%", maxWidth: 420, backgroundColor: "#ffffff", borderRadius: 8, padding: 20 },
+  modal: { width: "100%", backgroundColor: "#ffffff", borderRadius: 8, padding: 20 },
   title: { color: "#061329", fontSize: 18, fontWeight: "900" },
   message: { color: "#52617a", marginTop: 8 },
   actions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 20 },

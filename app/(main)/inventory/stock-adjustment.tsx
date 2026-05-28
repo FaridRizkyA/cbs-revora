@@ -1,11 +1,13 @@
+import { Feather } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import ActiveFilterBadges from "../../../components/inventory/ActiveFilterBadges";
 import DatePickerField from "../../../components/inventory/DatePickerField";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import IconFilterButton from "../../../components/inventory/IconFilterButton";
 import PrimaryActionButton from "../../../components/inventory/PrimaryActionButton";
+import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import { API_BASE_URL } from "../../../utils/api";
 import { canInsertStockMovement, getAuthSession, normalizeRole } from "../../../utils/authSession";
 
@@ -44,6 +46,11 @@ export default function StockAdjustmentScreen() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [resultStatus, setResultStatus] = useState<"success" | "error">("success");
+  const [resultTitle, setResultTitle] = useState("");
+  const [resultMessage, setResultMessage] = useState("");
   const [selectedRow, setSelectedRow] = useState<Movement | null>(null);
   const [openActionAdjustmentId, setOpenActionAdjustmentId] = useState<string | null>(null);
 
@@ -118,9 +125,15 @@ export default function StockAdjustmentScreen() {
 
     return rows.filter((item) => {
       const rowDate = item.movement_date ? new Date(item.movement_date) : null;
+      const normalizedReason = displayText(
+        String(item.adjustment_reason || item.reason || "")
+          .replace("ADJUSTMENT_INCREASE:", "")
+          .replace("ADJUSTMENT_DECREASE:", "")
+          .replace("ADJUSTMENT:", "")
+      );
       const matchSearch =
         !query ||
-        `${item.product_code} ${item.product_name} ${item.notes || ""} ${item.operator_name || ""}`
+        `${item.adjustment_code || ""} ${item.product_code} ${item.product_name} ${normalizedReason} ${item.notes || ""} ${item.operator_name || ""}`
           .toLowerCase()
           .includes(query);
       const matchType = typeFilter === "ALL" ? true : item.adjustment_type === typeFilter;
@@ -146,19 +159,31 @@ export default function StockAdjustmentScreen() {
 
   const submitAdjustment = async () => {
     if (!selectedProductId) {
-      Alert.alert("Validation", "Please select a product first.");
+      setResultStatus("error");
+      setResultTitle("Validation Error");
+      setResultMessage("Please select a product first.");
+      setResultModalOpen(true);
       return;
     }
     if (!Number.isInteger(Number(quantity)) || Number(quantity) <= 0) {
-      Alert.alert("Validation", "Quantity must be an integer greater than 0.");
+      setResultStatus("error");
+      setResultTitle("Validation Error");
+      setResultMessage("Quantity must be an integer greater than 0.");
+      setResultModalOpen(true);
       return;
     }
     if (!notes.trim()) {
-      Alert.alert("Validation", "Notes are required for stock opname correction.");
+      setResultStatus("error");
+      setResultTitle("Validation Error");
+      setResultMessage("Notes are required for stock opname correction.");
+      setResultModalOpen(true);
       return;
     }
     if (!userId) {
-      Alert.alert("Session", "User session was not found. Please sign in again.");
+      setResultStatus("error");
+      setResultTitle("Action Failed");
+      setResultMessage("User session was not found. Please sign in again.");
+      setResultModalOpen(true);
       return;
     }
     const reason = adjustmentType === "INCREASE" ? "STOCK_OPNAME_PLUS" : "STOCK_OPNAME_MINUS";
@@ -188,9 +213,15 @@ export default function StockAdjustmentScreen() {
       setQuantity("");
       setNotes("");
       loadRows();
-      Alert.alert("Success", "Stock adjustment saved successfully.");
+      setResultStatus("success");
+      setResultTitle("Action Completed");
+      setResultMessage("Stock adjustment saved successfully.");
+      setResultModalOpen(true);
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to create stock adjustment.");
+      setResultStatus("error");
+      setResultTitle("Action Failed");
+      setResultMessage(error instanceof Error ? error.message : "Failed to create stock adjustment.");
+      setResultModalOpen(true);
     } finally {
       setSaving(false);
     }
@@ -290,6 +321,10 @@ export default function StockAdjustmentScreen() {
             Alert.alert("Validation", "End date must be the same as or after Start date.");
             return;
           }
+          if (draftMinQtyFilter.trim() && draftMaxQtyFilter.trim() && Number(draftMaxQtyFilter) < Number(draftMinQtyFilter)) {
+            Alert.alert("Validation", "Max qty must be greater than or equal to Min qty.");
+            return;
+          }
           setTypeFilter(draftTypeFilter);
           setProductFilter(draftProductFilter);
           setMinQtyFilter(draftMinQtyFilter);
@@ -375,9 +410,15 @@ export default function StockAdjustmentScreen() {
         </View>
       </FilterSheetModal>
 
-      <Modal visible={formOpen} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+      <ResponsiveModal
+        visible={formOpen}
+        onClose={() => (saving ? null : setFormOpen(false))}
+        maxWidthDesktop={640}
+        maxWidthPhoneRatio={0.94}
+        maxHeightDesktopRatio={0.88}
+        maxHeightPhoneRatio={0.82}
+        cardStyle={styles.modalCard}
+      >
             <Text style={styles.modalTitle}>Add Stock Adjustment</Text>
             <ScrollView contentContainerStyle={styles.formBody}>
               <FilterSelectField
@@ -424,18 +465,61 @@ export default function StockAdjustmentScreen() {
               <Pressable style={styles.cancelBtn} onPress={() => (saving ? null : setFormOpen(false))}>
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </Pressable>
-              <Pressable style={styles.submitBtn} onPress={submitAdjustment} disabled={saving}>
+              <Pressable style={styles.submitBtn} onPress={() => setConfirmOpen(true)} disabled={saving}>
                 <Text style={styles.submitBtnText}>{saving ? "Saving..." : "Save Adjustment"}</Text>
               </Pressable>
             </View>
-          </View>
-        </View>
-      </Modal>
+      </ResponsiveModal>
 
-      <Modal visible={Boolean(selectedRow)} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+      <ResponsiveModal
+        visible={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        maxWidthDesktop={420}
+        maxWidthPhoneRatio={0.96}
+        maxHeightDesktopRatio={0.84}
+        maxHeightPhoneRatio={0.9}
+        cardStyle={styles.confirmModalCard}
+      >
+        <Text style={styles.modalTitle}>Please Confirm</Text>
+        <Text style={styles.confirmText}>Create this stock adjustment data?</Text>
+        <View style={styles.confirmActionRow}>
+          <Pressable style={styles.cancelBtn} onPress={() => setConfirmOpen(false)}>
+            <Text style={styles.cancelBtnText}>Cancel</Text>
+          </Pressable>
+          <Pressable style={styles.submitBtn} onPress={async () => { setConfirmOpen(false); await submitAdjustment(); }}>
+            <Text style={styles.submitBtnText}>Yes, Continue</Text>
+          </Pressable>
+        </View>
+      </ResponsiveModal>
+
+      <ResponsiveModal
+        visible={resultModalOpen}
+        onClose={() => setResultModalOpen(false)}
+        maxWidthDesktop={380}
+        maxWidthPhoneRatio={0.94}
+        maxHeightDesktopRatio={0.82}
+        maxHeightPhoneRatio={0.9}
+        cardStyle={styles.resultModalCard}
+      >
+        <Feather name={resultStatus === "success" ? "check-circle" : "x-circle"} size={42} color={resultStatus === "success" ? "#16a34a" : "#dc2626"} />
+        <Text style={styles.resultTitle}>{resultTitle}</Text>
+        <Text style={styles.resultMessage}>{resultMessage}</Text>
+        <Pressable style={styles.resultCloseBtn} onPress={() => setResultModalOpen(false)}>
+          <Text style={styles.resultCloseBtnText}>OK</Text>
+        </Pressable>
+      </ResponsiveModal>
+
+      <ResponsiveModal
+        visible={Boolean(selectedRow)}
+        onClose={() => setSelectedRow(null)}
+        maxWidthDesktop={640}
+        maxWidthPhoneRatio={0.96}
+        maxHeightDesktopRatio={0.88}
+        maxHeightPhoneRatio={0.9}
+        cardStyle={styles.modalCard}
+      >
             <Text style={styles.modalTitle}>Adjustment Detail</Text>
+            <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
             <View style={styles.detailBody}>
               <View style={styles.detailGrid}>
                 <View style={styles.detailItem}><Text style={styles.detailLabel}>Adjustment Code</Text><Text style={styles.detailValue}>{selectedRow?.adjustment_code || "-"}</Text></View>
@@ -456,9 +540,8 @@ export default function StockAdjustmentScreen() {
                 <Text style={styles.closePrimaryBtnText}>Close</Text>
               </Pressable>
             </View>
-          </View>
-        </View>
-      </Modal>
+            </ScrollView>
+      </ResponsiveModal>
     </ScrollView>
   );
 }
@@ -480,10 +563,10 @@ const styles = StyleSheet.create({
   rowCell: { fontSize: 12, color: "#0f172a", paddingHorizontal: 10, textAlign: "left" },
   colCode: { width: "32%" }, colProduct: { width: "30%" }, colType: { width: "12%" }, colQty: { width: "10%" }, colAction: { width: "16%", textAlign: "center" },
   actionWrap: { alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
-  actionDropdownWrap: { position: "relative" },
+  actionDropdownWrap: { position: "relative", alignItems: "flex-end" },
   actionMenuButton: { minHeight: 28, borderRadius: 8, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
   actionMenuButtonText: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
-  actionMenu: { position: "absolute", top: 30, left: 0, minWidth: 132, backgroundColor: "#fff", borderRadius: 8, borderWidth: 1, borderColor: "#dbe3ee", padding: 6, gap: 6, zIndex: 50, elevation: 6 },
+  actionMenu: { position: "absolute", top: 30, right: 0, minWidth: 132, backgroundColor: "#fff", borderRadius: 8, borderWidth: 1, borderColor: "#dbe3ee", padding: 6, gap: 6, zIndex: 50, elevation: 6 },
   actionOutlineBtn: { minHeight: 30, borderRadius: 7, borderWidth: 1, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
   actionOutlineBtnText: { fontSize: 11, fontWeight: "700" },
   actionOutlineInfo: { borderColor: "#93c5fd", backgroundColor: "#eff6ff" },
@@ -497,8 +580,7 @@ const styles = StyleSheet.create({
   rangeRow: { flexDirection: "row", gap: 8 },
   dateFieldWrap: { flex: 1 },
   rangeInput: { flex: 1, height: 38, borderRadius: 10, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff", paddingHorizontal: 10, color: "#0f172a" },
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", alignItems: "center", justifyContent: "center", padding: 16 },
-  modalCard: { width: "100%", maxWidth: 640, maxHeight: "88%", borderRadius: 14, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", overflow: "hidden" },
+  modalCard: { borderRadius: 14, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", overflow: "hidden" },
   modalTitle: { fontSize: 18, fontWeight: "800", color: "#0f172a", padding: 14, borderBottomWidth: 1, borderBottomColor: "#eef2f7" },
   formBody: { padding: 14, gap: 10 },
   fieldWrap: { gap: 6 },
@@ -515,6 +597,16 @@ const styles = StyleSheet.create({
   detailItemFull: { width: "100%" },
   detailLabel: { color: "#64748b", fontSize: 11, fontWeight: "700" },
   detailValue: { color: "#0f172a", fontSize: 13, fontWeight: "700" },
+  detailScroll: { maxHeight: "84%" },
+  detailScrollContent: { gap: 10, paddingBottom: 6 },
   closePrimaryBtn: { marginTop: 6, minHeight: 38, borderRadius: 10, backgroundColor: "#1d4ed8", alignItems: "center", justifyContent: "center" },
   closePrimaryBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  confirmModalCard: { width: "100%", maxWidth: 420, backgroundColor: "#fff", borderRadius: 12, padding: 16, gap: 12 },
+  confirmText: { color: "#334155", fontSize: 13, lineHeight: 20 },
+  confirmActionRow: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
+  resultModalCard: { width: "100%", maxWidth: 380, backgroundColor: "#fff", borderRadius: 14, padding: 18, alignItems: "center", gap: 10 },
+  resultTitle: { color: "#0f172a", fontSize: 18, fontWeight: "800" },
+  resultMessage: { color: "#475569", fontSize: 13, textAlign: "center", lineHeight: 20 },
+  resultCloseBtn: { marginTop: 4, width: "100%", height: 38, borderRadius: 10, backgroundColor: "#1d4ed8", alignItems: "center", justifyContent: "center" },
+  resultCloseBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
 });

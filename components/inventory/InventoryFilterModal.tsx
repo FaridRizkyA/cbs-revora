@@ -1,4 +1,4 @@
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 type FilterOption = {
   label: string;
@@ -22,10 +22,22 @@ export default function InventoryFilterModal({
   onSelect,
   onClose,
 }: InventoryFilterModalProps) {
+  const { width, height } = useWindowDimensions();
+  const shortSide = Math.min(width, height);
+  const isPhone = shortSide < 768;
+
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.backdrop}>
-        <View style={styles.card}>
+        <View
+          style={[
+            styles.card,
+            {
+              maxWidth: isPhone ? Math.max(shortSide * 0.9, 300) : 360,
+              maxHeight: isPhone ? height * 0.76 : height * 0.84,
+            },
+          ]}
+        >
           <Text style={styles.title}>{title}</Text>
           <View style={styles.options}>
             {options.map((opt) => (
@@ -59,7 +71,6 @@ const styles = StyleSheet.create({
   },
   card: {
     width: "100%",
-    maxWidth: 360,
     backgroundColor: "#ffffff",
     borderRadius: 12,
     padding: 16,

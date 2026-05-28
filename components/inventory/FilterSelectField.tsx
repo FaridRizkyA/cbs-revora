@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 
 type Option = {
   label: string;
@@ -20,6 +20,9 @@ export default function FilterSelectField({
   options,
   onChange,
 }: FilterSelectFieldProps) {
+  const { width, height } = useWindowDimensions();
+  const shortSide = Math.min(width, height);
+  const isPhone = shortSide < 768;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const selected = options.find((opt) => opt.value === value);
@@ -44,7 +47,15 @@ export default function FilterSelectField({
       </Pressable>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <View style={styles.backdrop}>
-          <View style={styles.modalCard}>
+          <View
+            style={[
+              styles.modalCard,
+              {
+                maxWidth: isPhone ? Math.max(shortSide * 0.92, 300) : 520,
+                maxHeight: isPhone ? height * 0.78 : height * 0.8,
+              },
+            ]}
+          >
             <View style={styles.searchWrap}>
               <Feather name="search" size={14} color="#64748b" />
               <TextInput
@@ -109,8 +120,6 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: "100%",
-    maxWidth: 520,
-    maxHeight: "80%",
     borderRadius: 14,
     borderWidth: 1,
     borderColor: "#dbe3ee",
