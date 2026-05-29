@@ -5,6 +5,8 @@ import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import IconFilterButton from "../../../components/inventory/IconFilterButton";
 import DatePickerField from "../../../components/inventory/DatePickerField";
 import ActiveFilterBadges from "../../../components/inventory/ActiveFilterBadges";
+import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
+import InventoryRowActionsMenu from "../../../components/inventory/InventoryRowActionsMenu";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import { API_BASE_URL } from "../../../utils/api";
 
@@ -147,6 +149,75 @@ export default function BatchesScreen() {
     }).format(date);
   };
 
+  const batchColumns = useMemo<InventoryDataTableColumn<BatchRow>[]>(() => [
+    {
+      key: "batch_code",
+      title: "Batch",
+      weight: 20,
+      sortable: true,
+      sortValue: (row) => row.batch_code || "",
+      render: (item) => <Text style={styles.rowCell}>{item.batch_code}</Text>,
+    },
+    {
+      key: "product_name",
+      title: "Product",
+      weight: 28,
+      sortable: true,
+      sortValue: (row) => row.product_name || "",
+      render: (item) => <Text style={styles.rowCell} numberOfLines={1}>{item.product_name || "-"}</Text>,
+    },
+    {
+      key: "qty_in",
+      title: "Qty In",
+      weight: 10,
+      align: "center",
+      sortable: true,
+      sortValue: (row) => Number(row.qty_in || 0),
+      render: (item) => <Text style={styles.rowCell}>{item.qty_in}</Text>,
+    },
+    {
+      key: "stock_in_time",
+      title: "Date In",
+      weight: 18,
+      sortable: true,
+      sortValue: (row) => new Date(row.stock_in_time).getTime(),
+      render: (item) => <Text style={styles.rowCell}>{formatDateTime(item.stock_in_time)}</Text>,
+    },
+    {
+      key: "expired_date",
+      title: "Expired Date",
+      weight: 12,
+      sortable: true,
+      sortValue: (row) => new Date(row.expired_date).getTime(),
+      render: (item) => <Text style={styles.rowCell}>{formatDateOnly(item.expired_date)}</Text>,
+    },
+    {
+      key: "action",
+      title: "Action",
+      weight: 12,
+      align: "center",
+      render: (item, meta) => (
+        <View style={styles.actionCellWrap}>
+          <InventoryRowActionsMenu
+            open={openActionBatchId === item.id_product_batch}
+            onToggle={() => setOpenActionBatchId((prev) => (prev === item.id_product_batch ? null : item.id_product_batch))}
+            direction={meta.rowIndex >= meta.totalRows - 2 ? "up" : "down"}
+          >
+            <Pressable
+              style={[styles.actionOutlineBtn, styles.actionOutlineInfo]}
+              onPress={() => {
+                setOpenActionBatchId(null);
+                setSelectedBatch(item);
+              }}
+            >
+              <Text style={[styles.actionOutlineBtnText, styles.actionOutlineInfoText]}>See Details</Text>
+            </Pressable>
+          </InventoryRowActionsMenu>
+        </View>
+      ),
+    },
+  ], [openActionBatchId]);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
@@ -194,55 +265,13 @@ export default function BatchesScreen() {
         />
       </View>
 
-      <View style={styles.tableCard}>
-          <View style={styles.tableInner}>
-            <View style={styles.tableHeader}>
-              <View style={[styles.colBatch, styles.leftCell]}><Text style={styles.headCell}>Batch</Text></View>
-              <View style={[styles.colProduct, styles.leftCell]}><Text style={styles.headCell}>Product</Text></View>
-              <View style={[styles.colQty, styles.leftCell]}><Text style={styles.headCell}>Qty In</Text></View>
-              <View style={[styles.colDateIn, styles.leftCell]}><Text style={styles.headCell}>Date In</Text></View>
-              <View style={[styles.colExp, styles.leftCell]}><Text style={styles.headCell}>Expired Date</Text></View>
-              <View style={[styles.colAction, styles.actionCellWrap]}><Text style={[styles.headCell, styles.actionHeadText]}>Action</Text></View>
-            </View>
-            {(Array.isArray(filtered) ? filtered : []).map((item) => {
-              return (
-                <View key={item.id_product_batch} style={[styles.tableRow, openActionBatchId === item.id_product_batch && styles.tableRowActiveLayer]}>
-                  <View style={[styles.colBatch, styles.leftCell]}><Text style={styles.rowCell}>{item.batch_code}</Text></View>
-                  <View style={[styles.colProduct, styles.leftCell]}><Text style={styles.rowCell} numberOfLines={1}>{item.product_name || "-"}</Text></View>
-                  <View style={[styles.colQty, styles.leftCell]}><Text style={styles.rowCell}>{item.qty_in}</Text></View>
-                  <View style={[styles.colDateIn, styles.leftCell]}><Text style={styles.rowCell}>{formatDateTime(item.stock_in_time)}</Text></View>
-                  <View style={[styles.colExp, styles.leftCell]}><Text style={styles.rowCell}>{formatDateOnly(item.expired_date)}</Text></View>
-                  <View style={[styles.colAction, styles.actionCellWrap]}>
-                    <View style={styles.actionDropdownWrap}>
-                      <Pressable
-                        style={styles.actionMenuButton}
-                        onPress={() =>
-                          setOpenActionBatchId((prev) => (prev === item.id_product_batch ? null : item.id_product_batch))
-                        }
-                      >
-                        <Text style={styles.actionMenuButtonText}>Actions</Text>
-                      </Pressable>
-                      {openActionBatchId === item.id_product_batch ? (
-                        <View style={styles.actionMenu}>
-                          <Pressable
-                            style={[styles.actionOutlineBtn, styles.actionOutlineInfo]}
-                            onPress={() => {
-                              setOpenActionBatchId(null);
-                              setSelectedBatch(item);
-                            }}
-                          >
-                            <Text style={[styles.actionOutlineBtnText, styles.actionOutlineInfoText]}>See Details</Text>
-                          </Pressable>
-                        </View>
-                      ) : null}
-                    </View>
-                  </View>
-                </View>
-              );
-            })}
-            {filtered.length === 0 ? <Text style={styles.emptyText}>No batches found.</Text> : null}
-          </View>
-      </View>
+      <InventoryDataTable
+        columns={batchColumns}
+        rows={Array.isArray(filtered) ? filtered : []}
+        rowKey={(item) => item.id_product_batch}
+        isRowActive={(item) => openActionBatchId === item.id_product_batch}
+        emptyText="No batches found."
+      />
 
       <FilterSheetModal
         title="Filter Batches"

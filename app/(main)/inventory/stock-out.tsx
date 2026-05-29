@@ -1,12 +1,14 @@
-import { Feather } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
-import IconFilterButton from "../../../components/inventory/IconFilterButton";
 import DatePickerField from "../../../components/inventory/DatePickerField";
-import ActiveFilterBadges from "../../../components/inventory/ActiveFilterBadges";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import PrimaryActionButton from "../../../components/inventory/PrimaryActionButton";
+import InventoryPageHeader from "../../../components/inventory/InventoryPageHeader";
+import InventoryRowActionsMenu from "../../../components/inventory/InventoryRowActionsMenu";
+import InventoryFilterSection from "../../../components/inventory/InventoryFilterSection";
+import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
+import { InventoryConfirmModal, InventoryResultModal } from "../../../components/inventory/ActionModals";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import { API_BASE_URL } from "../../../utils/api";
 import { canInsertStockMovement, getAuthSession, normalizeRole } from "../../../utils/authSession";
@@ -65,7 +67,14 @@ type Product = {
   is_active?: string;
 };
 
-type DraftItem = { id_product: string; quantity: string };
+type ProductBatch = {
+  id_product_batch: string;
+  batch_code: string;
+  expired_date?: string | null;
+  batch_qty: number;
+};
+
+type DraftItem = { id_product: string; id_product_batch?: string; quantity: string };
 
 const MANUAL_REASONS = ["DAMAGED", "EXPIRED", "RETURN_TO_SUPPLIER", "LOST", "DONATION", "OTHER"];
 const formatCurrency = (value: number) => `Rp ${Math.round(value || 0).toLocaleString("id-ID")}`;
@@ -113,6 +122,7 @@ export default function StockOutScreen() {
   const [manualReturnRefund, setManualReturnRefund] = useState<"" | "YES" | "NO">("");
   const [manualNotes, setManualNotes] = useState("");
   const [manualItems, setManualItems] = useState<DraftItem[]>([{ id_product: "", quantity: "" }]);
+  const [batchesByProduct, setBatchesByProduct] = useState<Record<string, ProductBatch[]>>({});
 
   const canInsert = canInsertStockMovement(roleName);
 
@@ -184,6 +194,18 @@ export default function StockOutScreen() {
       }, {}),
     [products]
   );
+  const loadBatchesByProduct = async (idProduct: string) => {
+    const productId = String(idProduct || "").trim();
+    if (!productId || batchesByProduct[productId]) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/products/${productId}/batches`);
+      const payload = await response.json();
+      const safeRows = Array.isArray(payload?.data) ? payload.data : [];
+      setBatchesByProduct((prev) => ({ ...prev, [productId]: safeRows as ProductBatch[] }));
+    } catch {
+      setBatchesByProduct((prev) => ({ ...prev, [productId]: [] }));
+    }
+  };
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -229,6 +251,92 @@ export default function StockOutScreen() {
     if (maxProfitFilter) items.push({ key: "maxProfit", label: "Max Profit", value: maxProfitFilter, onClear: () => setMaxProfitFilter("") });
     return items;
   }, [typeFilter, productFilter, dateStartFilter, dateEndFilter, minItemCountFilter, maxItemCountFilter, minTotalQtyFilter, maxTotalQtyFilter, minProfitFilter, maxProfitFilter]);
+
+  const tableColumns = useMemo<InventoryDataTableColumn<StockOutDocument>[]>(() => [
+    {
+      key: "stock_out_code",
+      title: "Stock Out Code",
+      weight: 34,
+      sortable: true,
+      sortValue: (row) => row.stock_out_code || "",
+      render: (row) => <Text style={styles.rowCell} numberOfLines={1}>{row.stock_out_code}</Text>,
+    },
+    {
+      key: "stock_out_type",
+      title: "Type",
+      weight: 18,
+      sortable: true,
+      sortValue: (row) => String(row.stock_out_type || "SALE").toUpperCase(),
+      render: (row) => <Text style={styles.rowCell} numberOfLines={1}>{displayText(row.stock_out_type || "SALE")}</Text>,
+    },
+    {
+      key: "total_qty",
+      title: "Total Qty",
+      weight: 12,
+      align: "center",
+      sortable: true,
+      sortValue: (row) => Number(row.total_qty || 0),
+      render: (row) => <Text style={styles.rowCell}>{row.total_qty}</Text>,
+    },
+    {
+      key: "stock_out_date",
+      title: "Date",
+      weight: 20,
+      sortable: true,
+      sortValue: (row) => new Date(row.stock_out_date).getTime(),
+      render: (row) => <Text style={styles.rowCell}>{new Date(row.stock_out_date).toLocaleString("id-ID")}</Text>,
+    },
+    {
+      key: "action",
+      title: "Action",
+      weight: 16,
+      align: "center",
+      render: (row, meta) => (
+        <View style={[styles.actionWrap, openActionStockOutId === row.id_stock_out ? styles.actionWrapOpen : null]}>
+          <InventoryRowActionsMenu
+            open={openActionStockOutId === row.id_stock_out}
+            onToggle={() => setOpenActionStockOutId((prev) => (prev === row.id_stock_out ? null : row.id_stock_out))}
+            direction={meta.rowIndex >= meta.totalRows - 2 ? "up" : "down"}
+          >
+            <Pressable style={[styles.actionOutlineBtn, styles.actionOutlineInfo]} onPress={() => { setOpenActionStockOutId(null); openDetail(row); }}>
+              <Text style={[styles.actionOutlineBtnText, styles.actionOutlineInfoText]}>See Details</Text>
+            </Pressable>
+          </InventoryRowActionsMenu>
+        </View>
+      ),
+    },
+  ], [openActionStockOutId]);
+
+  const saleDetailColumns = useMemo<InventoryDataTableColumn<StockOutItem>[]>(() => [
+    { key: "product_name", title: "Product", weight: 18, sortable: true, sortValue: (r) => r.product_name || "", render: (r) => <Text style={styles.detailRowCell} numberOfLines={1}>{r.product_name}</Text> },
+    { key: "batch_code", title: "Batch", weight: 16, sortable: true, sortValue: (r) => r.batch_code || "", render: (r) => <Text style={styles.detailRowCell} numberOfLines={1}>{r.batch_code || "-"}</Text> },
+    { key: "quantity", title: "Qty", weight: 7, align: "center", sortable: true, sortValue: (r) => Number(r.quantity || 0), render: (r) => <Text style={styles.detailRowCell}>{r.quantity}</Text> },
+    { key: "buy_per_pcs", title: "Buy/Pcs", weight: 18, sortable: true, sortValue: (r) => Number(r.buy_per_pcs || 0), render: (r) => <Text style={styles.detailRowCell}>{formatCurrency(Number(r.buy_per_pcs || 0))}</Text> },
+    { key: "sell_per_pcs", title: "Sell/Pcs", weight: 18, sortable: true, sortValue: (r) => Number(r.sell_per_pcs || 0), render: (r) => <Text style={styles.detailRowCell}>{formatCurrency(Number(r.sell_per_pcs || 0))}</Text> },
+    {
+      key: "profit_per_pcs",
+      title: "Profit/Pcs",
+      weight: 23,
+      sortable: true,
+      sortValue: (r) => Number(r.sell_per_pcs || 0) - Number(r.buy_per_pcs || 0),
+      render: (r) => <Text style={styles.detailRowCell}>{formatCurrency(Number(r.sell_per_pcs || 0) - Number(r.buy_per_pcs || 0))}</Text>,
+    },
+  ], []);
+
+  const nonSaleDetailColumns = useMemo<InventoryDataTableColumn<StockOutItem>[]>(() => [
+    { key: "product_name", title: "Product", weight: 23, sortable: true, sortValue: (r) => r.product_name || "", render: (r) => <Text style={styles.detailRowCell} numberOfLines={1}>{r.product_name}</Text> },
+    { key: "batch_code", title: "Batch", weight: 35, sortable: true, sortValue: (r) => r.batch_code || "", render: (r) => <Text style={styles.detailRowCell} numberOfLines={1}>{r.batch_code || "-"}</Text> },
+    { key: "quantity", title: "Qty", weight: 8, align: "center", sortable: true, sortValue: (r) => Number(r.quantity || 0), render: (r) => <Text style={styles.detailRowCell}>{r.quantity}</Text> },
+    { key: "buy_per_pcs", title: "Buy/Pcs", weight: 16, sortable: true, sortValue: (r) => Number(r.buy_per_pcs || 0), render: (r) => <Text style={styles.detailRowCell}>{formatCurrency(Number(r.buy_per_pcs || 0))}</Text> },
+    {
+      key: "total_loss",
+      title: "Total Loss",
+      weight: 18,
+      sortable: true,
+      sortValue: (r) => Number(r.total_buy ?? (Number(r.buy_per_pcs || 0) * Number(r.quantity || 0))),
+      render: (r) => <Text style={styles.detailRowCell}>{formatCurrency(Number(r.total_buy ?? (Number(r.buy_per_pcs || 0) * Number(r.quantity || 0))))}</Text>,
+    },
+  ], []);
 
   const openDetail = async (row: StockOutDocument) => {
     const type = String(row.stock_out_type || "SALE").toUpperCase();
@@ -286,6 +394,23 @@ export default function StockOutScreen() {
       setResultModalOpen(true);
       return;
     }
+    const exceedsSelectedBatch = manualItems.find((item) => {
+      if (!item.id_product || !item.id_product_batch) return false;
+      const batches = batchesByProduct[item.id_product] || [];
+      const batch = batches.find((b) => b.id_product_batch === item.id_product_batch);
+      if (!batch) return true;
+      return Number(item.quantity) > Number(batch.batch_qty || 0);
+    });
+    if (exceedsSelectedBatch) {
+      const batches = batchesByProduct[exceedsSelectedBatch.id_product] || [];
+      const selected = batches.find((b) => b.id_product_batch === exceedsSelectedBatch.id_product_batch);
+      const available = Number(selected?.batch_qty || 0);
+      setResultStatus("error");
+      setResultTitle("Validation Error");
+      setResultMessage(`Qty exceeds selected batch stock (${available}).`);
+      setResultModalOpen(true);
+      return;
+    }
 
     setSaving(true);
     try {
@@ -297,7 +422,7 @@ export default function StockOutScreen() {
           reason: manualReason,
           return_refund: manualReason === "RETURN_TO_SUPPLIER" ? manualReturnRefund === "YES" : undefined,
           notes: manualNotes.trim(),
-          items: manualItems.map((item) => ({ id_product: item.id_product, quantity: Number(item.quantity) })),
+          items: manualItems.map((item) => ({ id_product: item.id_product, id_product_batch: item.id_product_batch || undefined, quantity: Number(item.quantity) })),
         }),
       });
       const payload = await response.json();
@@ -324,61 +449,53 @@ export default function StockOutScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.title}>Stock Out</Text>
-          <Text style={styles.subtitle}>Sales stock out is automatic. Use Add Stock Out for non-sales.</Text>
-        </View>
-        {canInsert ? (
-          <PrimaryActionButton label="Add Stock Out" onPress={() => setFormOpen(true)} />
-        ) : null}
-      </View>
+      <InventoryPageHeader
+        title="Stock Out"
+        subtitle="Sales stock out is automatic. Use Add Stock Out for non-sales."
+        action={canInsert ? <PrimaryActionButton label="Add Stock Out" onPress={() => setFormOpen(true)} /> : undefined}
+      />
 
-      <View style={styles.filterCard}>
-        <View style={styles.searchRow}>
-          <TextInput value={search} onChangeText={setSearch} placeholder="Search stock out code or notes" placeholderTextColor="#94a3b8" style={styles.searchInput} />
-          <IconFilterButton
-            onPress={() => {
-              setDraftDateStartFilter(dateStartFilter);
-              setDraftDateEndFilter(dateEndFilter);
-              setDraftTypeFilter(typeFilter);
-              setDraftProductFilter(productFilter);
-              setDraftMinItemCountFilter(minItemCountFilter);
-              setDraftMaxItemCountFilter(maxItemCountFilter);
-              setDraftMinTotalQtyFilter(minTotalQtyFilter);
-              setDraftMaxTotalQtyFilter(maxTotalQtyFilter);
-              setDraftMinProfitFilter(minProfitFilter);
-              setDraftMaxProfitFilter(maxProfitFilter);
-              setFilterOpen(true);
-            }}
-          />
-        </View>
-        <ActiveFilterBadges
-          items={activeFilters}
-          onClearAll={() => {
-            setTypeFilter("ALL");
-            setProductFilter("ALL");
-            setDateStartFilter("");
-            setDateEndFilter("");
-            setMinItemCountFilter("");
-            setMaxItemCountFilter("");
-            setMinTotalQtyFilter("");
-            setMaxTotalQtyFilter("");
-            setMinProfitFilter("");
-            setMaxProfitFilter("");
-            setDraftTypeFilter("ALL");
-            setDraftProductFilter("ALL");
-            setDraftDateStartFilter("");
-            setDraftDateEndFilter("");
-            setDraftMinItemCountFilter("");
-            setDraftMaxItemCountFilter("");
-            setDraftMinTotalQtyFilter("");
-            setDraftMaxTotalQtyFilter("");
-            setDraftMinProfitFilter("");
-            setDraftMaxProfitFilter("");
-          }}
-        />
-      </View>
+      <InventoryFilterSection
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search stock out code or notes"
+        onOpenFilter={() => {
+          setDraftDateStartFilter(dateStartFilter);
+          setDraftDateEndFilter(dateEndFilter);
+          setDraftTypeFilter(typeFilter);
+          setDraftProductFilter(productFilter);
+          setDraftMinItemCountFilter(minItemCountFilter);
+          setDraftMaxItemCountFilter(maxItemCountFilter);
+          setDraftMinTotalQtyFilter(minTotalQtyFilter);
+          setDraftMaxTotalQtyFilter(maxTotalQtyFilter);
+          setDraftMinProfitFilter(minProfitFilter);
+          setDraftMaxProfitFilter(maxProfitFilter);
+          setFilterOpen(true);
+        }}
+        activeFilters={activeFilters}
+        onClearAllFilters={() => {
+          setTypeFilter("ALL");
+          setProductFilter("ALL");
+          setDateStartFilter("");
+          setDateEndFilter("");
+          setMinItemCountFilter("");
+          setMaxItemCountFilter("");
+          setMinTotalQtyFilter("");
+          setMaxTotalQtyFilter("");
+          setMinProfitFilter("");
+          setMaxProfitFilter("");
+          setDraftTypeFilter("ALL");
+          setDraftProductFilter("ALL");
+          setDraftDateStartFilter("");
+          setDraftDateEndFilter("");
+          setDraftMinItemCountFilter("");
+          setDraftMaxItemCountFilter("");
+          setDraftMinTotalQtyFilter("");
+          setDraftMaxTotalQtyFilter("");
+          setDraftMinProfitFilter("");
+          setDraftMaxProfitFilter("");
+        }}
+      />
 
       <FilterSheetModal
         title="Filter Stock Out"
@@ -455,38 +572,13 @@ export default function StockOutScreen() {
         ) : null}
       </FilterSheetModal>
 
-      <View style={styles.tableCard}>
-        <View style={styles.tableHeader}>
-          <Text style={[styles.headCell, styles.colCode]}>Stock Out Code</Text>
-          <Text style={[styles.headCell, styles.colType]}>Type</Text>
-          <Text style={[styles.headCell, styles.colQty]}>Total Qty</Text>
-          <Text style={[styles.headCell, styles.colDate]}>Date</Text>
-          <Text style={[styles.headCell, styles.colAction]}>Action</Text>
-        </View>
-        {(Array.isArray(filteredRows) ? filteredRows : []).map((row) => (
-          <View key={`${row.stock_out_type}-${row.id_stock_out}`} style={[styles.tableRow, openActionStockOutId === row.id_stock_out && styles.tableRowActiveLayer]}>
-            <Text style={[styles.rowCell, styles.colCode]} numberOfLines={1}>{row.stock_out_code}</Text>
-            <Text style={[styles.rowCell, styles.colType]} numberOfLines={1}>{displayText(row.stock_out_type || "SALE")}</Text>
-            <Text style={[styles.rowCell, styles.colQty]}>{row.total_qty}</Text>
-            <Text style={[styles.rowCell, styles.colDate]}>{new Date(row.stock_out_date).toLocaleString("id-ID")}</Text>
-            <View style={[styles.colAction, styles.actionWrap]}>
-              <View style={styles.actionDropdownWrap}>
-                <Pressable style={styles.actionMenuButton} onPress={() => setOpenActionStockOutId((prev) => (prev === row.id_stock_out ? null : row.id_stock_out))}>
-                  <Text style={styles.actionMenuButtonText}>Actions</Text>
-                </Pressable>
-                {openActionStockOutId === row.id_stock_out ? (
-                  <View style={styles.actionMenu}>
-                    <Pressable style={[styles.actionOutlineBtn, styles.actionOutlineInfo]} onPress={() => { setOpenActionStockOutId(null); openDetail(row); }}>
-                      <Text style={[styles.actionOutlineBtnText, styles.actionOutlineInfoText]}>See Details</Text>
-                    </Pressable>
-                  </View>
-                ) : null}
-              </View>
-            </View>
-          </View>
-        ))}
-        {filteredRows.length === 0 ? <Text style={styles.emptyText}>No stock out documents found.</Text> : null}
-      </View>
+      <InventoryDataTable
+        columns={tableColumns}
+        rows={Array.isArray(filteredRows) ? filteredRows : []}
+        rowKey={(row) => `${row.stock_out_type || "SALE"}-${row.id_stock_out}`}
+        isRowActive={(row) => openActionStockOutId === row.id_stock_out}
+        emptyText="No stock out documents found."
+      />
 
       <ResponsiveModal
         visible={formOpen}
@@ -537,8 +629,27 @@ export default function StockOutScreen() {
                           const nextStock = Number(stockByProductId[value] || 0);
                           const nextQty =
                             row.quantity && Number(row.quantity) > nextStock ? String(nextStock) : row.quantity;
-                          return { ...row, id_product: value, quantity: nextQty };
+                          loadBatchesByProduct(value);
+                          return { ...row, id_product: value, id_product_batch: "", quantity: nextQty };
                         })
+                      )
+                    }
+                  />
+                  <FilterSelectField
+                    label="Batch (Optional)"
+                    value={item.id_product_batch || ""}
+                    options={[
+                      { label: "Auto Allocation (FIFO/EXP)", value: "" },
+                      ...((batchesByProduct[item.id_product] || [])
+                        .filter((batch) => Number(batch.batch_qty || 0) > 0)
+                        .map((batch) => ({
+                          label: `${batch.batch_code} - Qty ${batch.batch_qty}${batch.expired_date ? ` - Exp ${new Date(batch.expired_date).toLocaleDateString("id-ID")}` : ""}`,
+                          value: batch.id_product_batch,
+                        }))),
+                    ]}
+                    onChange={(value) =>
+                      setManualItems((prev) =>
+                        prev.map((row, i) => (i === index ? { ...row, id_product_batch: value } : row))
                       )
                     }
                   />
@@ -580,43 +691,20 @@ export default function StockOutScreen() {
             </View>
       </ResponsiveModal>
 
-      <ResponsiveModal
+      <InventoryConfirmModal
         visible={confirmOpen}
-        onClose={() => setConfirmOpen(false)}
-        maxWidthDesktop={420}
-        maxWidthPhoneRatio={0.96}
-        maxHeightDesktopRatio={0.84}
-        maxHeightPhoneRatio={0.9}
-        cardStyle={styles.confirmModalCard}
-      >
-        <Text style={styles.modalTitle}>Please Confirm</Text>
-        <Text style={styles.confirmText}>Create this stock out data?</Text>
-        <View style={styles.confirmActionRow}>
-          <Pressable style={styles.cancelBtn} onPress={() => setConfirmOpen(false)}>
-            <Text style={styles.cancelBtnText}>Cancel</Text>
-          </Pressable>
-          <Pressable style={styles.submitBtn} onPress={async () => { setConfirmOpen(false); await submitManualStockOut(); }}>
-            <Text style={styles.submitBtnText}>Yes, Continue</Text>
-          </Pressable>
-        </View>
-      </ResponsiveModal>
+        message="Create this stock out data?"
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={async () => { setConfirmOpen(false); await submitManualStockOut(); }}
+      />
 
-      <ResponsiveModal
+      <InventoryResultModal
         visible={resultModalOpen}
+        status={resultStatus}
+        title={resultTitle}
+        message={resultMessage}
         onClose={() => setResultModalOpen(false)}
-        maxWidthDesktop={380}
-        maxWidthPhoneRatio={0.94}
-        maxHeightDesktopRatio={0.82}
-        maxHeightPhoneRatio={0.9}
-        cardStyle={styles.resultModalCard}
-      >
-        <Feather name={resultStatus === "success" ? "check-circle" : "x-circle"} size={42} color={resultStatus === "success" ? "#16a34a" : "#dc2626"} />
-        <Text style={styles.resultTitle}>{resultTitle}</Text>
-        <Text style={styles.resultMessage}>{resultMessage}</Text>
-        <Pressable style={styles.resultCloseBtn} onPress={() => setResultModalOpen(false)}>
-          <Text style={styles.resultCloseBtnText}>OK</Text>
-        </Pressable>
-      </ResponsiveModal>
+      />
 
       <ResponsiveModal
         visible={Boolean(selectedDoc)}
@@ -644,34 +732,13 @@ export default function StockOutScreen() {
             </View>
             {String(selectedDoc?.stock_out_type || "SALE").toUpperCase() === "SALE" ? (
               <>
-                <View style={styles.detailTableCard}>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <View style={styles.detailInnerWide}>
-                      <View style={styles.detailTableHeader}>
-                        <Text style={[styles.detailHeadCell, styles.detailColProduct]}>Product</Text>
-                        <Text style={[styles.detailHeadCell, styles.detailColBatch]}>Batch</Text>
-                        <Text style={[styles.detailHeadCell, styles.detailColQty]}>Qty</Text>
-                        <Text style={[styles.detailHeadCell, styles.detailColMoney]}>Buy/Pcs</Text>
-                        <Text style={[styles.detailHeadCell, styles.detailColMoney]}>Sell/Pcs</Text>
-                        <Text style={[styles.detailHeadCell, styles.detailColMoney]}>Total Buy</Text>
-                        <Text style={[styles.detailHeadCell, styles.detailColMoney]}>Total Sell</Text>
-                        <Text style={[styles.detailHeadCell, styles.detailColMoney]}>Profit</Text>
-                      </View>
-                      {(selectedDoc?.items || []).map((item) => (
-                        <View key={item.id_stock_movement} style={styles.detailTableRow}>
-                          <Text style={[styles.detailRowCell, styles.detailColProduct]} numberOfLines={1}>{item.product_name}</Text>
-                          <Text style={[styles.detailRowCell, styles.detailColBatch]} numberOfLines={1}>{item.batch_code || "-"}</Text>
-                          <Text style={[styles.detailRowCell, styles.detailColQty]}>{item.quantity}</Text>
-                          <Text style={[styles.detailRowCell, styles.detailColMoney]}>{formatCurrency(Number(item.buy_per_pcs || 0))}</Text>
-                          <Text style={[styles.detailRowCell, styles.detailColMoney]}>{formatCurrency(Number(item.sell_per_pcs || 0))}</Text>
-                          <Text style={[styles.detailRowCell, styles.detailColMoney]}>{formatCurrency(Number(item.total_buy || 0))}</Text>
-                          <Text style={[styles.detailRowCell, styles.detailColMoney]}>{formatCurrency(Number(item.total_sell || 0))}</Text>
-                          <Text style={[styles.detailRowCell, styles.detailColMoney]}>{formatCurrency(Number(item.profit || 0))}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </ScrollView>
-                </View>
+                <InventoryDataTable
+                  columns={saleDetailColumns}
+                  rows={selectedDoc?.items || []}
+                  rowKey={(item) => item.id_stock_movement}
+                  emptyText="No detail items."
+                  enablePagination={false}
+                />
                 <View style={styles.summaryCard}>
                   <Text style={styles.summaryLabel}>Total Buy: <Text style={styles.summaryValue}>{formatCurrency(Number(selectedDoc?.total_buy || 0))}</Text></Text>
                   <Text style={styles.summaryLabel}>Total Sell: <Text style={styles.summaryValue}>{formatCurrency(Number(selectedDoc?.total_sell || 0))}</Text></Text>
@@ -679,26 +746,30 @@ export default function StockOutScreen() {
                 </View>
               </>
             ) : (
-              <View style={styles.detailTableCard}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={styles.detailInnerNarrow}>
-                    <View style={styles.detailTableHeader}>
-                      <Text style={[styles.detailHeadCell, styles.nonSaleColProduct]}>Product</Text>
-                      <Text style={[styles.detailHeadCell, styles.nonSaleColBatch]}>Batch</Text>
-                      <Text style={[styles.detailHeadCell, styles.nonSaleColQty]}>Qty</Text>
-                      <Text style={[styles.detailHeadCell, styles.nonSaleColReason]}>Reason</Text>
-                    </View>
-                    {(selectedDoc?.items || []).map((item) => (
-                      <View key={item.id_stock_movement} style={styles.detailTableRow}>
-                        <Text style={[styles.detailRowCell, styles.nonSaleColProduct]} numberOfLines={1}>{item.product_name}</Text>
-                        <Text style={[styles.detailRowCell, styles.nonSaleColBatch]} numberOfLines={1}>{item.batch_code || "-"}</Text>
-                        <Text style={[styles.detailRowCell, styles.nonSaleColQty]}>{item.quantity}</Text>
-                        <Text style={[styles.detailRowCell, styles.nonSaleColReason]} numberOfLines={1}>{displayText(String(item.reason || "").replace("NON_SALE_OUT:", ""))}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </ScrollView>
-              </View>
+              <>
+                <InventoryDataTable
+                  columns={nonSaleDetailColumns}
+                  rows={selectedDoc?.items || []}
+                  rowKey={(item) => item.id_stock_movement}
+                  emptyText="No detail items."
+                  enablePagination={false}
+                />
+                <View style={styles.summaryCard}>
+                  <Text style={styles.summaryLabel}>
+                    Total Loss:{" "}
+                    <Text style={styles.summaryValue}>
+                      {formatCurrency(
+                        Number(
+                          (selectedDoc?.items || []).reduce(
+                            (sum, item) => sum + Number(item.total_buy ?? (Number(item.buy_per_pcs || 0) * Number(item.quantity || 0))),
+                            0
+                          )
+                        )
+                      )}
+                    </Text>
+                  </Text>
+                </View>
+              </>
             )}
             </ScrollView>
             <Pressable style={styles.closePrimaryBtn} onPress={() => setSelectedDoc(null)}>
@@ -712,28 +783,14 @@ export default function StockOutScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f3f6fb" },
   content: { padding: 14, gap: 12 },
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  title: { fontSize: 30, color: "#0f2852", fontWeight: "800" },
-  subtitle: { color: "#64748b", fontSize: 13 },
-  filterCard: { borderRadius: 12, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", padding: 12 },
-  searchRow: { flexDirection: "row", gap: 8, alignItems: "center" },
-  searchInput: { flex: 1, height: 40, borderRadius: 10, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#f8fafc", paddingHorizontal: 12, color: "#0f172a" },
   filterLabel: { color: "#334155", fontSize: 12, fontWeight: "700" },
   rangeRow: { flexDirection: "row", gap: 8 },
   dateFieldWrap: { flex: 1 },
   rangeInput: { flex: 1, height: 38, borderRadius: 10, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#ffffff", paddingHorizontal: 10, color: "#0f172a" },
-  tableCard: { borderRadius: 12, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", overflow: "visible" },
-  tableHeader: { minHeight: 42, backgroundColor: "#f1f5f9", flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#dbe3ee" },
-  tableRow: { minHeight: 44, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#eef2f7", position: "relative", zIndex: 1 },
-  tableRowActiveLayer: { zIndex: 40 },
-  headCell: { fontSize: 12, fontWeight: "700", color: "#334155", paddingHorizontal: 10, textAlign: "left" },
   rowCell: { fontSize: 12, color: "#0f172a", paddingHorizontal: 10, textAlign: "left" },
   colCode: { width: "34%" }, colType: { width: "18%" }, colQty: { width: "12%" }, colDate: { width: "20%" }, colAction: { width: "16%", textAlign: "center" },
   actionWrap: { alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
-  actionDropdownWrap: { position: "relative", alignItems: "flex-end" },
-  actionMenuButton: { minHeight: 28, borderRadius: 8, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
-  actionMenuButtonText: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
-  actionMenu: { position: "absolute", top: 30, right: 0, minWidth: 132, backgroundColor: "#fff", borderRadius: 8, borderWidth: 1, borderColor: "#dbe3ee", padding: 6, gap: 6, zIndex: 50, elevation: 6 },
+  actionWrapOpen: { position: "relative", zIndex: 4000 },
   actionOutlineBtn: { minHeight: 30, borderRadius: 7, borderWidth: 1, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
   actionOutlineBtnText: { fontSize: 11, fontWeight: "700" },
   actionOutlineInfo: { borderColor: "#93c5fd", backgroundColor: "#eff6ff" },
@@ -742,7 +799,6 @@ const styles = StyleSheet.create({
   actionOutlineEditText: { color: "#c2410c" },
   actionOutlineDanger: { borderColor: "#fca5a5", backgroundColor: "#fef2f2" },
   actionOutlineDangerText: { color: "#b91c1c" },
-  emptyText: { color: "#64748b", fontSize: 12, padding: 12 },
   modalCard: { backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 10 },
   detailModalCard: { backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 10 },
   modalTitle: { color: "#0f172a", fontSize: 18, fontWeight: "800", marginBottom: 4 },
@@ -785,12 +841,4 @@ const styles = StyleSheet.create({
   detailScrollContent: { gap: 10, paddingBottom: 6 },
   closePrimaryBtn: { marginTop: 6, minHeight: 38, borderRadius: 10, backgroundColor: "#1d4ed8", alignItems: "center", justifyContent: "center" },
   closePrimaryBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  confirmModalCard: { width: "100%", maxWidth: 420, backgroundColor: "#fff", borderRadius: 12, padding: 16, gap: 12 },
-  confirmText: { color: "#334155", fontSize: 13, lineHeight: 20 },
-  confirmActionRow: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
-  resultModalCard: { width: "100%", maxWidth: 380, backgroundColor: "#fff", borderRadius: 14, padding: 18, alignItems: "center", gap: 10 },
-  resultTitle: { color: "#0f172a", fontSize: 18, fontWeight: "800" },
-  resultMessage: { color: "#475569", fontSize: 13, textAlign: "center", lineHeight: 20 },
-  resultCloseBtn: { marginTop: 4, width: "100%", height: 38, borderRadius: 10, backgroundColor: "#1d4ed8", alignItems: "center", justifyContent: "center" },
-  resultCloseBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
 });

@@ -125,7 +125,13 @@ const buildProductCodeBaseFromName = (productNameRaw) => {
   const tokens = name.split(/\s+/).filter(Boolean);
   const consonantTokens = tokens
     .map((token) => token.replace(/[^A-Z0-9]/g, ""))
-    .map((token) => token.replace(/[AEIOU]/g, ""))
+    .map((token) => {
+      if (!token) return "";
+      const first = token[0];
+      const rest = token.slice(1).replace(/[AEIOU]/g, "");
+      if (/[AEIOU]/.test(first)) return `${first}${rest}`;
+      return token.replace(/[AEIOU]/g, "");
+    })
     .filter(Boolean);
   const compact = consonantTokens.join("-");
   return `PRD-${compact || "ITEM"}`;
@@ -605,8 +611,11 @@ const getStockAdjustments = async (req, res) => {
         SELECT
           sm.id_stock_movement,
           sm.id_product,
+          sm.id_product_batch,
           p.product_code,
           p.product_name,
+          pb.batch_code,
+          pb.purchase_price::float AS buy_per_pcs,
           sm.movement_type,
           CASE
             WHEN sm.movement_type = 'IN' THEN 'INCREASE'
@@ -623,6 +632,10 @@ const getStockAdjustments = async (req, res) => {
           sm.reason,
           sm.notes,
           sm.movement_date,
+          CASE
+            WHEN sm.movement_type = 'OUT' THEN (COALESCE(pb.purchase_price, 0) * sm.quantity)::float
+            ELSE 0::float
+          END AS total_loss,
           sm.created_by AS operator_id,
           COALESCE(u.full_name, u.username, '-') AS operator_name,
           TO_CHAR(sm.movement_date, 'YYYYMMDD') AS date_token,
@@ -630,6 +643,8 @@ const getStockAdjustments = async (req, res) => {
         FROM tbl_stock_movements sm
         JOIN tbl_products p
           ON p.id_product = sm.id_product
+        LEFT JOIN tbl_product_batches pb
+          ON pb.id_product_batch = sm.id_product_batch
         LEFT JOIN tbl_users u
           ON u.id_user = sm.created_by
         WHERE sm.is_active = 'Y'
@@ -651,8 +666,11 @@ const getStockAdjustments = async (req, res) => {
       SELECT
         r.id_stock_movement,
         r.id_product,
+        r.id_product_batch,
         r.product_code,
         r.product_name,
+        r.batch_code,
+        r.buy_per_pcs,
         r.movement_type,
         r.adjustment_type,
         r.adjustment_reason,
@@ -660,6 +678,7 @@ const getStockAdjustments = async (req, res) => {
         r.reason,
         r.notes,
         r.movement_date,
+        r.total_loss,
         r.operator_id,
         r.operator_name,
         CONCAT('STA/', r.date_token, '/', r.type_token, '/', LPAD(r.sequence_no::text, 5, '0')) AS adjustment_code
@@ -691,6 +710,7 @@ const createStockAdjustment = async (req, res) => {
   const {
     id_user,
     id_product,
+    id_product_batch,
     adjustment_type,
     quantity,
     notes,
@@ -705,6 +725,9 @@ const createStockAdjustment = async (req, res) => {
   }
   if (!id_product) {
     return res.status(400).json({ message: "id_product is required." });
+  }
+  if (!id_product_batch) {
+    return res.status(400).json({ message: "id_product_batch is required." });
   }
   if (!["INCREASE", "DECREASE"].includes(normalizedType)) {
     return res.status(400).json({ message: "adjustment_type must be INCREASE or DECREASE." });
@@ -731,7 +754,26 @@ const createStockAdjustment = async (req, res) => {
       SELECT
         p.id_product,
         p.product_code,
-        p.product_name,
+        p.product_name
+      FROM tbl_products p
+      WHERE p.id_product = $1
+        AND p.is_active = 'Y'
+      LIMIT 1;
+      `,
+      [id_product]
+    );
+
+    if (productResult.rowCount === 0) {
+      throw new Error("Product not found or inactive.");
+    }
+
+    const product = productResult.rows[0];
+    const batchResult = await client.query(
+      `
+      SELECT
+        pb.id_product_batch,
+        pb.batch_code,
+        pb.purchase_price::float AS purchase_price,
         GREATEST(
           COALESCE(
             SUM(
@@ -743,27 +785,26 @@ const createStockAdjustment = async (req, res) => {
             0
           ),
           0
-        )::int AS available_stock
-      FROM tbl_products p
+        )::int AS available_qty
+      FROM tbl_product_batches pb
       LEFT JOIN tbl_stock_movements sm
-        ON sm.id_product = p.id_product
+        ON sm.id_product_batch = pb.id_product_batch
        AND sm.is_active = 'Y'
-      WHERE p.id_product = $1
-        AND p.is_active = 'Y'
-      GROUP BY p.id_product, p.product_code, p.product_name
+      WHERE pb.id_product_batch = $1
+        AND pb.id_product = $2
+      GROUP BY pb.id_product_batch, pb.batch_code, pb.purchase_price
       LIMIT 1;
       `,
-      [id_product]
+      [id_product_batch, id_product]
     );
-
-    if (productResult.rowCount === 0) {
-      throw new Error("Product not found or inactive.");
+    if (batchResult.rowCount === 0) {
+      throw new Error("Selected batch not found for this product.");
     }
 
-    const product = productResult.rows[0];
-    const availableStock = Number(product.available_stock || 0);
-    if (normalizedType === "DECREASE" && qty > availableStock) {
-      throw new Error(`Insufficient stock. Available: ${availableStock}.`);
+    const batch = batchResult.rows[0];
+    const availableQty = Number(batch.available_qty || 0);
+    if (normalizedType === "DECREASE" && qty > availableQty) {
+      throw new Error(`Insufficient batch stock. Available in batch ${batch.batch_code}: ${availableQty}.`);
     }
 
     const movementType = normalizedType === "DECREASE" ? "OUT" : "IN";
@@ -776,16 +817,17 @@ const createStockAdjustment = async (req, res) => {
       `
       INSERT INTO tbl_stock_movements (
         id_product,
+        id_product_batch,
         movement_type,
         quantity,
         reason,
         notes,
         source_type,
         created_by
-      ) VALUES ($1, $2, $3, $4, $5, 'ADJUSTMENT', $6)
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'ADJUSTMENT', $7)
       RETURNING id_stock_movement, movement_date;
       `,
-      [id_product, movementType, qty, reasonCode, normalizedNotes, id_user]
+      [id_product, id_product_batch, movementType, qty, reasonCode, normalizedNotes, id_user]
     );
 
     await client.query("COMMIT");
@@ -798,8 +840,12 @@ const createStockAdjustment = async (req, res) => {
         id_product: product.id_product,
         product_code: product.product_code,
         product_name: product.product_name,
+        id_product_batch: batch.id_product_batch,
+        batch_code: batch.batch_code,
+        buy_per_pcs: Number(batch.purchase_price || 0),
         adjustment_type: normalizedType,
         quantity: qty,
+        total_loss: normalizedType === "DECREASE" ? Number(batch.purchase_price || 0) * qty : 0,
         reason: reasonCode,
         notes: normalizedNotes,
       },
@@ -1286,6 +1332,8 @@ const getStockOutManualDocumentById = async (req, res) => {
         p.product_name,
         pb.batch_code,
         sm.quantity,
+        pb.purchase_price::float AS buy_per_pcs,
+        (COALESCE(pb.purchase_price, 0) * sm.quantity)::float AS total_buy,
         sm.reason,
         sm.notes
       FROM tbl_stock_movements sm
@@ -1368,6 +1416,7 @@ const createStockOutManual = async (req, res) => {
     for (const item of items) {
       const idProduct = String(item.id_product);
       const requestedQuantity = Number(item.quantity);
+      const selectedBatchId = String(item.id_product_batch || "").trim();
 
       const productResult = await client.query(
         `
@@ -1401,38 +1450,39 @@ const createStockOutManual = async (req, res) => {
         throw new Error(`Insufficient stock for ${product.product_name}. Available: ${availableStock}.`);
       }
 
-      const batchesResult = await client.query(
-        `
-        SELECT
-          pb.id_product_batch,
-          pb.batch_code,
-          GREATEST(
-            COALESCE(
-              SUM(CASE WHEN sm.movement_type = 'OUT' THEN -sm.quantity ELSE sm.quantity END),
+      if (selectedBatchId) {
+        const batchResult = await client.query(
+          `
+          SELECT
+            pb.id_product_batch,
+            pb.batch_code,
+            GREATEST(
+              COALESCE(
+                SUM(CASE WHEN sm.movement_type = 'OUT' THEN -sm.quantity ELSE sm.quantity END),
+                0
+              ),
               0
-            ),
-            0
-          )::int AS available_qty
-        FROM tbl_product_batches pb
-        LEFT JOIN tbl_stock_movements sm
-          ON sm.id_product_batch = pb.id_product_batch
-         AND sm.is_active = 'Y'
-        WHERE pb.id_product = $1
-        GROUP BY pb.id_product_batch, pb.batch_code, pb.expired_date, pb.created_date
-        HAVING GREATEST(
-          COALESCE(SUM(CASE WHEN sm.movement_type = 'OUT' THEN -sm.quantity ELSE sm.quantity END), 0),
-          0
-        ) > 0
-        ORDER BY pb.expired_date ASC NULLS LAST, pb.created_date ASC;
-        `,
-        [idProduct]
-      );
+            )::int AS available_qty
+          FROM tbl_product_batches pb
+          LEFT JOIN tbl_stock_movements sm
+            ON sm.id_product_batch = pb.id_product_batch
+           AND sm.is_active = 'Y'
+          WHERE pb.id_product = $1
+            AND pb.id_product_batch = $2
+          GROUP BY pb.id_product_batch, pb.batch_code
+          LIMIT 1;
+          `,
+          [idProduct, selectedBatchId]
+        );
+        if (batchResult.rowCount === 0) {
+          throw new Error(`Selected batch is invalid for ${product.product_name}.`);
+        }
 
-      let remaining = requestedQuantity;
-      for (const batch of batchesResult.rows) {
-        if (remaining <= 0) break;
-        const takeQty = Math.min(remaining, Number(batch.available_qty || 0));
-        if (takeQty <= 0) continue;
+        const selectedBatch = batchResult.rows[0];
+        const availableBatchQty = Number(selectedBatch.available_qty || 0);
+        if (requestedQuantity > availableBatchQty) {
+          throw new Error(`Insufficient stock in selected batch ${selectedBatch.batch_code}. Available: ${availableBatchQty}.`);
+        }
 
         const insertResult = await client.query(
           `
@@ -1449,7 +1499,7 @@ const createStockOutManual = async (req, res) => {
           ) VALUES ($1, $2, 'OUT', $3, $4, $5, 'NON_SALE_OUT', $6, $7)
           RETURNING id_stock_movement;
           `,
-          [idProduct, batch.id_product_batch, takeQty, `NON_SALE_OUT:${finalizedReason}`, normalizedNotes, sourceId, id_user]
+          [idProduct, selectedBatch.id_product_batch, requestedQuantity, `NON_SALE_OUT:${finalizedReason}`, normalizedNotes, sourceId, id_user]
         );
 
         insertedItems.push({
@@ -1457,14 +1507,75 @@ const createStockOutManual = async (req, res) => {
           id_product: idProduct,
           product_code: product.product_code,
           product_name: product.product_name,
-          batch_code: batch.batch_code,
-          quantity: takeQty,
+          batch_code: selectedBatch.batch_code,
+          quantity: requestedQuantity,
         });
-        remaining -= takeQty;
-      }
+      } else {
+        const batchesResult = await client.query(
+          `
+          SELECT
+            pb.id_product_batch,
+            pb.batch_code,
+            GREATEST(
+              COALESCE(
+                SUM(CASE WHEN sm.movement_type = 'OUT' THEN -sm.quantity ELSE sm.quantity END),
+                0
+              ),
+              0
+            )::int AS available_qty
+          FROM tbl_product_batches pb
+          LEFT JOIN tbl_stock_movements sm
+            ON sm.id_product_batch = pb.id_product_batch
+           AND sm.is_active = 'Y'
+          WHERE pb.id_product = $1
+          GROUP BY pb.id_product_batch, pb.batch_code, pb.expired_date, pb.created_date
+          HAVING GREATEST(
+            COALESCE(SUM(CASE WHEN sm.movement_type = 'OUT' THEN -sm.quantity ELSE sm.quantity END), 0),
+            0
+          ) > 0
+          ORDER BY pb.expired_date ASC NULLS LAST, pb.created_date ASC;
+          `,
+          [idProduct]
+        );
 
-      if (remaining > 0) {
-        throw new Error(`Failed to allocate batch stock for ${product.product_name}.`);
+        let remaining = requestedQuantity;
+        for (const batch of batchesResult.rows) {
+          if (remaining <= 0) break;
+          const takeQty = Math.min(remaining, Number(batch.available_qty || 0));
+          if (takeQty <= 0) continue;
+
+          const insertResult = await client.query(
+            `
+            INSERT INTO tbl_stock_movements (
+              id_product,
+              id_product_batch,
+              movement_type,
+              quantity,
+              reason,
+              notes,
+              source_type,
+              source_id,
+              created_by
+            ) VALUES ($1, $2, 'OUT', $3, $4, $5, 'NON_SALE_OUT', $6, $7)
+            RETURNING id_stock_movement;
+            `,
+            [idProduct, batch.id_product_batch, takeQty, `NON_SALE_OUT:${finalizedReason}`, normalizedNotes, sourceId, id_user]
+          );
+
+          insertedItems.push({
+            id_stock_movement: insertResult.rows[0].id_stock_movement,
+            id_product: idProduct,
+            product_code: product.product_code,
+            product_name: product.product_name,
+            batch_code: batch.batch_code,
+            quantity: takeQty,
+          });
+          remaining -= takeQty;
+        }
+
+        if (remaining > 0) {
+          throw new Error(`Failed to allocate batch stock for ${product.product_name}.`);
+        }
       }
     }
 

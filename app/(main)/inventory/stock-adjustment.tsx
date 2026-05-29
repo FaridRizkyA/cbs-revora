@@ -1,12 +1,14 @@
-import { Feather } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import ActiveFilterBadges from "../../../components/inventory/ActiveFilterBadges";
 import DatePickerField from "../../../components/inventory/DatePickerField";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
-import IconFilterButton from "../../../components/inventory/IconFilterButton";
 import PrimaryActionButton from "../../../components/inventory/PrimaryActionButton";
+import InventoryPageHeader from "../../../components/inventory/InventoryPageHeader";
+import InventoryRowActionsMenu from "../../../components/inventory/InventoryRowActionsMenu";
+import InventoryFilterSection from "../../../components/inventory/InventoryFilterSection";
+import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
+import { InventoryConfirmModal, InventoryResultModal } from "../../../components/inventory/ActionModals";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import { API_BASE_URL } from "../../../utils/api";
 import { canInsertStockMovement, getAuthSession, normalizeRole } from "../../../utils/authSession";
@@ -15,8 +17,12 @@ type Movement = {
   id_stock_movement: string;
   adjustment_code?: string;
   id_product: string;
+  id_product_batch?: string | null;
   product_code: string;
   product_name: string;
+  batch_code?: string | null;
+  buy_per_pcs?: number | null;
+  total_loss?: number | null;
   movement_type: "IN" | "OUT" | "ADJUSTMENT";
   adjustment_type: "INCREASE" | "DECREASE" | "ADJUSTMENT";
   adjustment_reason?: string;
@@ -35,7 +41,15 @@ type Product = {
   is_active?: string;
 };
 
+type ProductBatch = {
+  id_product_batch: string;
+  batch_code: string;
+  expired_date?: string | null;
+  batch_qty: number;
+};
+
 const displayText = (value?: string | null) => String(value || "-").replaceAll("_", " ");
+const formatCurrency = (value: number) => `Rp ${Math.round(value || 0).toLocaleString("id-ID")}`;
 
 export default function StockAdjustmentScreen() {
   const [rows, setRows] = useState<Movement[]>([]);
@@ -68,6 +82,8 @@ export default function StockAdjustmentScreen() {
   const [draftDateEndFilter, setDraftDateEndFilter] = useState("");
 
   const [selectedProductId, setSelectedProductId] = useState("");
+  const [selectedBatchId, setSelectedBatchId] = useState("");
+  const [productBatches, setProductBatches] = useState<ProductBatch[]>([]);
   const [adjustmentType, setAdjustmentType] = useState<"INCREASE" | "DECREASE">("INCREASE");
   const [quantity, setQuantity] = useState("");
   const [notes, setNotes] = useState("");
@@ -115,6 +131,41 @@ export default function StockAdjustmentScreen() {
     () => Array.from(new Set(rows.map((item) => item.product_name).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
     [rows]
   );
+  const batchOptions = useMemo(
+    () =>
+      productBatches
+        .filter((item) => (adjustmentType === "DECREASE" ? Number(item.batch_qty || 0) > 0 : true))
+        .map((item) => ({
+          value: item.id_product_batch,
+          label: `${item.batch_code} • Qty ${item.batch_qty}${item.expired_date ? ` • Exp ${new Date(item.expired_date).toLocaleDateString("id-ID")}` : ""}`,
+        })),
+    [productBatches, adjustmentType]
+  );
+  const selectedBatchQty = useMemo(
+    () => Number(productBatches.find((item) => item.id_product_batch === selectedBatchId)?.batch_qty || 0),
+    [productBatches, selectedBatchId]
+  );
+
+  useEffect(() => {
+    if (!selectedProductId) {
+      setProductBatches([]);
+      setSelectedBatchId("");
+      return;
+    }
+    fetch(`${API_BASE_URL}/api/products/${selectedProductId}/batches`)
+      .then((response) => response.json())
+      .then((payload) => {
+        const safeRows = Array.isArray(payload?.data) ? payload.data : [];
+        setProductBatches(safeRows as ProductBatch[]);
+      })
+      .catch(() => setProductBatches([]));
+  }, [selectedProductId]);
+
+  useEffect(() => {
+    if (!selectedBatchId) return;
+    const allowed = batchOptions.some((item) => item.value === selectedBatchId);
+    if (!allowed) setSelectedBatchId("");
+  }, [batchOptions, selectedBatchId]);
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -157,6 +208,61 @@ export default function StockAdjustmentScreen() {
     return items;
   }, [typeFilter, productFilter, minQtyFilter, maxQtyFilter, dateStartFilter, dateEndFilter]);
 
+  const tableColumns = useMemo<InventoryDataTableColumn<Movement>[]>(() => [
+    {
+      key: "adjustment_code",
+      title: "Adjustment Code",
+      weight: 32,
+      sortable: true,
+      sortValue: (row) => row.adjustment_code || "",
+      render: (row) => <Text style={styles.rowCell} numberOfLines={1}>{row.adjustment_code || "-"}</Text>,
+    },
+    {
+      key: "product_name",
+      title: "Product",
+      weight: 30,
+      sortable: true,
+      sortValue: (row) => row.product_name || "",
+      render: (row) => <Text style={styles.rowCell} numberOfLines={1}>{row.product_name}</Text>,
+    },
+    {
+      key: "adjustment_type",
+      title: "Type",
+      weight: 12,
+      sortable: true,
+      sortValue: (row) => row.adjustment_type || "",
+      render: (row) => <Text style={styles.rowCell}>{row.adjustment_type}</Text>,
+    },
+    {
+      key: "quantity",
+      title: "Qty",
+      weight: 10,
+      align: "center",
+      sortable: true,
+      sortValue: (row) => Number(row.quantity || 0),
+      render: (row) => <Text style={styles.rowCell}>{row.quantity}</Text>,
+    },
+    {
+      key: "action",
+      title: "Action",
+      weight: 16,
+      align: "center",
+      render: (row, meta) => (
+        <View style={[styles.actionWrap, openActionAdjustmentId === row.id_stock_movement ? styles.actionWrapOpen : null]}>
+          <InventoryRowActionsMenu
+            open={openActionAdjustmentId === row.id_stock_movement}
+            onToggle={() => setOpenActionAdjustmentId((prev) => (prev === row.id_stock_movement ? null : row.id_stock_movement))}
+            direction={meta.rowIndex >= meta.totalRows - 2 ? "up" : "down"}
+          >
+            <Pressable style={[styles.actionOutlineBtn, styles.actionOutlineInfo]} onPress={() => { setOpenActionAdjustmentId(null); setSelectedRow(row); }}>
+              <Text style={[styles.actionOutlineBtnText, styles.actionOutlineInfoText]}>See Details</Text>
+            </Pressable>
+          </InventoryRowActionsMenu>
+        </View>
+      ),
+    },
+  ], [openActionAdjustmentId]);
+
   const submitAdjustment = async () => {
     if (!selectedProductId) {
       setResultStatus("error");
@@ -172,10 +278,24 @@ export default function StockAdjustmentScreen() {
       setResultModalOpen(true);
       return;
     }
+    if (!selectedBatchId) {
+      setResultStatus("error");
+      setResultTitle("Validation Error");
+      setResultMessage("Please select a batch first.");
+      setResultModalOpen(true);
+      return;
+    }
+    if (adjustmentType === "DECREASE" && Number(quantity) > selectedBatchQty) {
+      setResultStatus("error");
+      setResultTitle("Validation Error");
+      setResultMessage(`Quantity exceeds selected batch stock (${selectedBatchQty}).`);
+      setResultModalOpen(true);
+      return;
+    }
     if (!notes.trim()) {
       setResultStatus("error");
       setResultTitle("Validation Error");
-      setResultMessage("Notes are required for stock opname correction.");
+      setResultMessage("Notes are required for stock count correction.");
       setResultModalOpen(true);
       return;
     }
@@ -196,6 +316,7 @@ export default function StockAdjustmentScreen() {
         body: JSON.stringify({
           id_user: userId,
           id_product: selectedProductId,
+          id_product_batch: selectedBatchId,
           adjustment_type: adjustmentType,
           quantity: Number(quantity),
           reason,
@@ -209,6 +330,8 @@ export default function StockAdjustmentScreen() {
 
       setFormOpen(false);
       setSelectedProductId("");
+      setSelectedBatchId("");
+      setProductBatches([]);
       setAdjustmentType("INCREASE");
       setQuantity("");
       setNotes("");
@@ -229,88 +352,49 @@ export default function StockAdjustmentScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.title}>Stock Adjustment</Text>
-          <Text style={styles.subtitle}>Manual stock correction journal with full audit trail.</Text>
-        </View>
-        {canInsert ? (
-          <PrimaryActionButton label="Add Adjustment" onPress={() => setFormOpen(true)} />
-        ) : null}
-      </View>
+      <InventoryPageHeader
+        title="Stock Adjustment"
+        subtitle="Manual stock correction journal with full audit trail."
+        action={canInsert ? <PrimaryActionButton label="Add Adjustment" onPress={() => setFormOpen(true)} /> : undefined}
+      />
 
-      <View style={styles.filterCard}>
-        <View style={styles.searchRow}>
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search product, reason, notes, operator"
-            placeholderTextColor="#94a3b8"
-            style={styles.searchInput}
-          />
-          <IconFilterButton
-            onPress={() => {
-              setDraftTypeFilter(typeFilter);
-              setDraftProductFilter(productFilter);
-              setDraftMinQtyFilter(minQtyFilter);
-              setDraftMaxQtyFilter(maxQtyFilter);
-              setDraftDateStartFilter(dateStartFilter);
-              setDraftDateEndFilter(dateEndFilter);
-              setFilterOpen(true);
-            }}
-          />
-        </View>
-        <ActiveFilterBadges
-          items={activeFilters}
-          onClearAll={() => {
-            setTypeFilter("ALL");
-            setProductFilter("ALL");
-            setMinQtyFilter("");
-            setMaxQtyFilter("");
-            setDateStartFilter("");
-            setDateEndFilter("");
-            setDraftTypeFilter("ALL");
-            setDraftProductFilter("ALL");
-            setDraftMinQtyFilter("");
-            setDraftMaxQtyFilter("");
-            setDraftDateStartFilter("");
-            setDraftDateEndFilter("");
-          }}
-        />
-      </View>
+      <InventoryFilterSection
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search product, reason, notes, operator"
+        onOpenFilter={() => {
+          setDraftTypeFilter(typeFilter);
+          setDraftProductFilter(productFilter);
+          setDraftMinQtyFilter(minQtyFilter);
+          setDraftMaxQtyFilter(maxQtyFilter);
+          setDraftDateStartFilter(dateStartFilter);
+          setDraftDateEndFilter(dateEndFilter);
+          setFilterOpen(true);
+        }}
+        activeFilters={activeFilters}
+        onClearAllFilters={() => {
+          setTypeFilter("ALL");
+          setProductFilter("ALL");
+          setMinQtyFilter("");
+          setMaxQtyFilter("");
+          setDateStartFilter("");
+          setDateEndFilter("");
+          setDraftTypeFilter("ALL");
+          setDraftProductFilter("ALL");
+          setDraftMinQtyFilter("");
+          setDraftMaxQtyFilter("");
+          setDraftDateStartFilter("");
+          setDraftDateEndFilter("");
+        }}
+      />
 
-      <View style={styles.tableCard}>
-        <View style={styles.tableHeader}>
-          <Text style={[styles.headCell, styles.colCode]}>Adjustment Code</Text>
-          <Text style={[styles.headCell, styles.colProduct]}>Product</Text>
-          <Text style={[styles.headCell, styles.colType]}>Type</Text>
-          <Text style={[styles.headCell, styles.colQty]}>Qty</Text>
-          <Text style={[styles.headCell, styles.colAction]}>Action</Text>
-        </View>
-        {(Array.isArray(filteredRows) ? filteredRows : []).map((row) => (
-          <View key={row.id_stock_movement} style={[styles.tableRow, openActionAdjustmentId === row.id_stock_movement && styles.tableRowActiveLayer]}>
-            <Text style={[styles.rowCell, styles.colCode]} numberOfLines={1}>{row.adjustment_code || "-"}</Text>
-            <Text style={[styles.rowCell, styles.colProduct]} numberOfLines={1}>{row.product_name}</Text>
-            <Text style={[styles.rowCell, styles.colType]}>{row.adjustment_type}</Text>
-            <Text style={[styles.rowCell, styles.colQty]}>{row.quantity}</Text>
-            <View style={[styles.colAction, styles.actionWrap]}>
-              <View style={styles.actionDropdownWrap}>
-                <Pressable style={styles.actionMenuButton} onPress={() => setOpenActionAdjustmentId((prev) => (prev === row.id_stock_movement ? null : row.id_stock_movement))}>
-                  <Text style={styles.actionMenuButtonText}>Actions</Text>
-                </Pressable>
-                {openActionAdjustmentId === row.id_stock_movement ? (
-                  <View style={styles.actionMenu}>
-                    <Pressable style={[styles.actionOutlineBtn, styles.actionOutlineInfo]} onPress={() => { setOpenActionAdjustmentId(null); setSelectedRow(row); }}>
-                      <Text style={[styles.actionOutlineBtnText, styles.actionOutlineInfoText]}>See Details</Text>
-                    </Pressable>
-                  </View>
-                ) : null}
-              </View>
-            </View>
-          </View>
-        ))}
-        {filteredRows.length === 0 ? <Text style={styles.emptyText}>No stock adjustment records found.</Text> : null}
-      </View>
+      <InventoryDataTable
+        columns={tableColumns}
+        rows={Array.isArray(filteredRows) ? filteredRows : []}
+        rowKey={(row) => row.id_stock_movement}
+        isRowActive={(row) => openActionAdjustmentId === row.id_stock_movement}
+        emptyText="No stock adjustment records found."
+      />
 
       <FilterSheetModal
         title="Filter Adjustments"
@@ -425,8 +509,20 @@ export default function StockAdjustmentScreen() {
                 label="Product"
                 value={selectedProductId}
                 options={productOptions}
-                onChange={setSelectedProductId}
+                onChange={(value) => {
+                  setSelectedProductId(value);
+                  setSelectedBatchId("");
+                }}
               />
+              <FilterSelectField
+                label="Batch"
+                value={selectedBatchId}
+                options={batchOptions}
+                onChange={setSelectedBatchId}
+              />
+              {adjustmentType === "DECREASE" && selectedBatchId ? (
+                <Text style={styles.batchHint}>Available in selected batch: {selectedBatchQty}</Text>
+              ) : null}
               <FilterSelectField
                 label="Adjustment Type"
                 value={adjustmentType}
@@ -455,7 +551,7 @@ export default function StockAdjustmentScreen() {
                 <TextInput
                   value={notes}
                   onChangeText={setNotes}
-                  placeholder="Required (example: stock opname difference on rack A)"
+                  placeholder="Required (example: stock count difference on rack A)"
                   placeholderTextColor="#94a3b8"
                   style={styles.fieldInput}
                 />
@@ -471,43 +567,20 @@ export default function StockAdjustmentScreen() {
             </View>
       </ResponsiveModal>
 
-      <ResponsiveModal
+      <InventoryConfirmModal
         visible={confirmOpen}
-        onClose={() => setConfirmOpen(false)}
-        maxWidthDesktop={420}
-        maxWidthPhoneRatio={0.96}
-        maxHeightDesktopRatio={0.84}
-        maxHeightPhoneRatio={0.9}
-        cardStyle={styles.confirmModalCard}
-      >
-        <Text style={styles.modalTitle}>Please Confirm</Text>
-        <Text style={styles.confirmText}>Create this stock adjustment data?</Text>
-        <View style={styles.confirmActionRow}>
-          <Pressable style={styles.cancelBtn} onPress={() => setConfirmOpen(false)}>
-            <Text style={styles.cancelBtnText}>Cancel</Text>
-          </Pressable>
-          <Pressable style={styles.submitBtn} onPress={async () => { setConfirmOpen(false); await submitAdjustment(); }}>
-            <Text style={styles.submitBtnText}>Yes, Continue</Text>
-          </Pressable>
-        </View>
-      </ResponsiveModal>
+        message="Create this stock adjustment data?"
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={async () => { setConfirmOpen(false); await submitAdjustment(); }}
+      />
 
-      <ResponsiveModal
+      <InventoryResultModal
         visible={resultModalOpen}
+        status={resultStatus}
+        title={resultTitle}
+        message={resultMessage}
         onClose={() => setResultModalOpen(false)}
-        maxWidthDesktop={380}
-        maxWidthPhoneRatio={0.94}
-        maxHeightDesktopRatio={0.82}
-        maxHeightPhoneRatio={0.9}
-        cardStyle={styles.resultModalCard}
-      >
-        <Feather name={resultStatus === "success" ? "check-circle" : "x-circle"} size={42} color={resultStatus === "success" ? "#16a34a" : "#dc2626"} />
-        <Text style={styles.resultTitle}>{resultTitle}</Text>
-        <Text style={styles.resultMessage}>{resultMessage}</Text>
-        <Pressable style={styles.resultCloseBtn} onPress={() => setResultModalOpen(false)}>
-          <Text style={styles.resultCloseBtnText}>OK</Text>
-        </Pressable>
-      </ResponsiveModal>
+      />
 
       <ResponsiveModal
         visible={Boolean(selectedRow)}
@@ -524,8 +597,11 @@ export default function StockAdjustmentScreen() {
               <View style={styles.detailGrid}>
                 <View style={styles.detailItem}><Text style={styles.detailLabel}>Adjustment Code</Text><Text style={styles.detailValue}>{selectedRow?.adjustment_code || "-"}</Text></View>
                 <View style={styles.detailItem}><Text style={styles.detailLabel}>Product</Text><Text style={styles.detailValue}>{selectedRow?.product_name || "-"}</Text></View>
+                <View style={styles.detailItem}><Text style={styles.detailLabel}>Batch</Text><Text style={styles.detailValue}>{selectedRow?.batch_code || "-"}</Text></View>
                 <View style={styles.detailItem}><Text style={styles.detailLabel}>Type</Text><Text style={styles.detailValue}>{selectedRow?.adjustment_type || "-"}</Text></View>
                 <View style={styles.detailItem}><Text style={styles.detailLabel}>Qty</Text><Text style={styles.detailValue}>{selectedRow?.quantity || 0}</Text></View>
+                <View style={styles.detailItem}><Text style={styles.detailLabel}>Buy/Pcs</Text><Text style={styles.detailValue}>{formatCurrency(Number(selectedRow?.buy_per_pcs || 0))}</Text></View>
+                <View style={styles.detailItem}><Text style={styles.detailLabel}>Total Loss</Text><Text style={styles.detailValue}>{formatCurrency(Number(selectedRow?.total_loss || 0))}</Text></View>
                 <View style={styles.detailItem}><Text style={styles.detailLabel}>Reason</Text><Text style={styles.detailValue}>{displayText(
                   String(selectedRow?.adjustment_reason || selectedRow?.reason || "")
                     .replace("ADJUSTMENT_INCREASE:", "")
@@ -549,24 +625,10 @@ export default function StockAdjustmentScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f3f6fb" },
   content: { padding: 14, gap: 12 },
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  title: { fontSize: 30, color: "#0f2852", fontWeight: "800" },
-  subtitle: { color: "#64748b", fontSize: 13 },
-  filterCard: { borderRadius: 12, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", padding: 12 },
-  searchRow: { flexDirection: "row", gap: 8, alignItems: "center" },
-  searchInput: { flex: 1, height: 40, borderRadius: 10, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#f8fafc", paddingHorizontal: 12, color: "#0f172a" },
-  tableCard: { borderRadius: 12, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", overflow: "visible" },
-  tableHeader: { minHeight: 42, backgroundColor: "#f1f5f9", flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#dbe3ee" },
-  tableRow: { minHeight: 44, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#eef2f7", position: "relative", zIndex: 1 },
-  tableRowActiveLayer: { zIndex: 40 },
-  headCell: { fontSize: 12, fontWeight: "700", color: "#334155", paddingHorizontal: 10, textAlign: "left" },
   rowCell: { fontSize: 12, color: "#0f172a", paddingHorizontal: 10, textAlign: "left" },
   colCode: { width: "32%" }, colProduct: { width: "30%" }, colType: { width: "12%" }, colQty: { width: "10%" }, colAction: { width: "16%", textAlign: "center" },
   actionWrap: { alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
-  actionDropdownWrap: { position: "relative", alignItems: "flex-end" },
-  actionMenuButton: { minHeight: 28, borderRadius: 8, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
-  actionMenuButtonText: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
-  actionMenu: { position: "absolute", top: 30, right: 0, minWidth: 132, backgroundColor: "#fff", borderRadius: 8, borderWidth: 1, borderColor: "#dbe3ee", padding: 6, gap: 6, zIndex: 50, elevation: 6 },
+  actionWrapOpen: { position: "relative", zIndex: 4000 },
   actionOutlineBtn: { minHeight: 30, borderRadius: 7, borderWidth: 1, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
   actionOutlineBtnText: { fontSize: 11, fontWeight: "700" },
   actionOutlineInfo: { borderColor: "#93c5fd", backgroundColor: "#eff6ff" },
@@ -575,7 +637,6 @@ const styles = StyleSheet.create({
   actionOutlineEditText: { color: "#c2410c" },
   actionOutlineDanger: { borderColor: "#fca5a5", backgroundColor: "#fef2f2" },
   actionOutlineDangerText: { color: "#b91c1c" },
-  emptyText: { color: "#64748b", fontSize: 12, padding: 12 },
   filterLabel: { color: "#334155", fontSize: 12, fontWeight: "700" },
   rangeRow: { flexDirection: "row", gap: 8 },
   dateFieldWrap: { flex: 1 },
@@ -586,6 +647,7 @@ const styles = StyleSheet.create({
   fieldWrap: { gap: 6 },
   fieldLabel: { color: "#334155", fontSize: 12, fontWeight: "700" },
   fieldInput: { height: 38, borderRadius: 10, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff", paddingHorizontal: 12, color: "#0f172a" },
+  batchHint: { marginTop: -4, color: "#64748b", fontSize: 11, fontWeight: "600" },
   modalActions: { borderTopWidth: 1, borderTopColor: "#eef2f7", padding: 12, flexDirection: "row", justifyContent: "flex-end", gap: 8 },
   cancelBtn: { minHeight: 36, borderRadius: 10, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" },
   cancelBtnText: { color: "#334155", fontSize: 12, fontWeight: "700" },
@@ -601,12 +663,4 @@ const styles = StyleSheet.create({
   detailScrollContent: { gap: 10, paddingBottom: 6 },
   closePrimaryBtn: { marginTop: 6, minHeight: 38, borderRadius: 10, backgroundColor: "#1d4ed8", alignItems: "center", justifyContent: "center" },
   closePrimaryBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  confirmModalCard: { width: "100%", maxWidth: 420, backgroundColor: "#fff", borderRadius: 12, padding: 16, gap: 12 },
-  confirmText: { color: "#334155", fontSize: 13, lineHeight: 20 },
-  confirmActionRow: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
-  resultModalCard: { width: "100%", maxWidth: 380, backgroundColor: "#fff", borderRadius: 14, padding: 18, alignItems: "center", gap: 10 },
-  resultTitle: { color: "#0f172a", fontSize: 18, fontWeight: "800" },
-  resultMessage: { color: "#475569", fontSize: 13, textAlign: "center", lineHeight: 20 },
-  resultCloseBtn: { marginTop: 4, width: "100%", height: 38, borderRadius: 10, backgroundColor: "#1d4ed8", alignItems: "center", justifyContent: "center" },
-  resultCloseBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
 });

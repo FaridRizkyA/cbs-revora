@@ -6,6 +6,9 @@ import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import IconFilterButton from "../../../components/inventory/IconFilterButton";
 import ActiveFilterBadges from "../../../components/inventory/ActiveFilterBadges";
 import PrimaryActionButton from "../../../components/inventory/PrimaryActionButton";
+import InventoryPageHeader from "../../../components/inventory/InventoryPageHeader";
+import InventoryRowActionsMenu from "../../../components/inventory/InventoryRowActionsMenu";
+import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import { canManageInventoryMaster, getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { API_BASE_URL } from "../../../utils/api";
@@ -301,6 +304,135 @@ export default function SuppliersScreen() {
     return items;
   }, [cityFilter]);
 
+  const supplierColumns = useMemo<InventoryDataTableColumn<Supplier>[]>(() => [
+    {
+      key: "supplier_code",
+      title: "Code",
+      weight: 14,
+      sortable: true,
+      sortValue: (row) => row.supplier_code || "",
+      render: (row) => <Text style={styles.rowCell}>{row.supplier_code}</Text>,
+    },
+    {
+      key: "supplier_name",
+      title: "Supplier Name",
+      weight: 36,
+      sortable: true,
+      sortValue: (row) => row.supplier_name || "",
+      render: (row) => <Text style={styles.rowCell} numberOfLines={1}>{row.supplier_name}</Text>,
+    },
+    {
+      key: "city",
+      title: "City",
+      weight: 20,
+      sortable: true,
+      sortValue: (row) => row.city || "",
+      render: (row) => <Text style={styles.rowCell}>{row.city}</Text>,
+    },
+    {
+      key: "phone_number",
+      title: "Phone",
+      weight: 16,
+      sortable: true,
+      sortValue: (row) => row.phone_number || "",
+      render: (row) => <Text style={styles.rowCell}>{row.phone_number || "-"}</Text>,
+    },
+    {
+      key: "action",
+      title: "Action",
+      weight: 14,
+      align: "center",
+      render: (item, meta) => (
+        <View style={[styles.actionCellWrap, openActionSupplierId === item.id_supplier ? styles.actionCellWrapOpen : null]}>
+          <InventoryRowActionsMenu
+            open={openActionSupplierId === item.id_supplier}
+            onToggle={() => setOpenActionSupplierId((prev) => (prev === item.id_supplier ? null : item.id_supplier))}
+            direction={meta.rowIndex >= meta.totalRows - 2 ? "up" : "down"}
+          >
+            <Pressable
+              style={[styles.actionOutlineBtn, styles.actionOutlineInfo]}
+              onPress={() => {
+                setOpenActionSupplierId(null);
+                openProducts(item);
+              }}
+            >
+              <Text style={[styles.actionOutlineBtnText, styles.actionOutlineInfoText]}>Products</Text>
+            </Pressable>
+            {canManage ? (
+              <>
+                <Pressable
+                  style={[styles.actionOutlineBtn, styles.actionOutlineEdit]}
+                  onPress={() => {
+                    setOpenActionSupplierId(null);
+                    openEditForm(item);
+                  }}
+                >
+                  <Text style={[styles.actionOutlineBtnText, styles.actionOutlineEditText]}>Edit</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.actionOutlineBtn, styles.actionOutlineDanger]}
+                  onPress={() => {
+                    setOpenActionSupplierId(null);
+                    openConfirm("deactivate", item);
+                  }}
+                >
+                  <Text style={[styles.actionOutlineBtnText, styles.actionOutlineDangerText]}>Deactivate</Text>
+                </Pressable>
+              </>
+            ) : null}
+          </InventoryRowActionsMenu>
+        </View>
+      ),
+    },
+  ], [canManage, openActionSupplierId]);
+
+  const inactiveSupplierColumns = useMemo<InventoryDataTableColumn<Supplier>[]>(() => [
+    {
+      key: "supplier_code",
+      title: "Code",
+      weight: 14,
+      sortable: true,
+      sortValue: (row) => row.supplier_code || "",
+      render: (item) => <Text style={styles.rowCell}>{item.supplier_code}</Text>,
+    },
+    {
+      key: "supplier_name",
+      title: "Supplier Name",
+      weight: 36,
+      sortable: true,
+      sortValue: (row) => row.supplier_name || "",
+      render: (item) => <Text style={styles.rowCell} numberOfLines={1}>{item.supplier_name}</Text>,
+    },
+    {
+      key: "city",
+      title: "City",
+      weight: 20,
+      sortable: true,
+      sortValue: (row) => row.city || "",
+      render: (item) => <Text style={styles.rowCell}>{item.city}</Text>,
+    },
+    {
+      key: "phone_number",
+      title: "Phone",
+      weight: 16,
+      sortable: true,
+      sortValue: (row) => row.phone_number || "",
+      render: (item) => <Text style={styles.rowCell}>{item.phone_number || "-"}</Text>,
+    },
+    {
+      key: "action",
+      title: "Action",
+      weight: 14,
+      align: "center",
+      render: (item) =>
+        canManage ? (
+          <Pressable style={styles.activateButton} onPress={() => openConfirm("activate", item)}>
+            <Text style={styles.activateButtonText}>Activate</Text>
+          </Pressable>
+        ) : null,
+    },
+  ], [canManage]);
+
   const openProducts = async (supplier: Supplier) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/suppliers/${supplier.id_supplier}/products`);
@@ -316,22 +448,49 @@ export default function SuppliersScreen() {
     }
   };
 
+  const supplierProductDetailColumns = useMemo<InventoryDataTableColumn<SupplierProduct>[]>(() => [
+    {
+      key: "product_code",
+      title: "Code",
+      weight: 24,
+      sortable: true,
+      sortValue: (row) => row.product_code || "",
+      render: (row) => <Text style={styles.detailCell}>{row.product_code}</Text>,
+    },
+    {
+      key: "product_name",
+      title: "Product",
+      weight: 48,
+      sortable: true,
+      sortValue: (row) => row.product_name || "",
+      render: (row) => <Text style={styles.detailCell} numberOfLines={1}>{row.product_name}</Text>,
+    },
+    {
+      key: "barcode",
+      title: "Barcode",
+      weight: 28,
+      sortable: true,
+      sortValue: (row) => row.barcode || "",
+      render: (row) => <Text style={styles.detailCell} numberOfLines={1}>{row.barcode || "-"}</Text>,
+    },
+  ], []);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.pageTitle}>Suppliers</Text>
-          <Text style={styles.pageSubtitle}>Manage supplier master data for inventory sourcing.</Text>
-        </View>
-        {canManage ? (
-          <View style={styles.headerActionRow}>
-            <Pressable style={styles.secondaryButton} onPress={() => setInactiveModalOpen(true)}>
-              <Text style={styles.secondaryButtonText}>Show Inactive</Text>
-            </Pressable>
-            <PrimaryActionButton label="Add Supplier" onPress={openCreateForm} />
-          </View>
-        ) : null}
-      </View>
+      <InventoryPageHeader
+        title="Suppliers"
+        subtitle="Manage supplier master data for inventory sourcing."
+        action={
+          canManage ? (
+            <View style={styles.headerActionRow}>
+              <Pressable style={styles.secondaryButton} onPress={() => setInactiveModalOpen(true)}>
+                <Text style={styles.secondaryButtonText}>Show Inactive</Text>
+              </Pressable>
+              <PrimaryActionButton label="Add Supplier" onPress={openCreateForm} />
+            </View>
+          ) : undefined
+        }
+      />
 
       <View style={styles.filterCard}>
         <View style={styles.searchRow}>
@@ -356,76 +515,13 @@ export default function SuppliersScreen() {
         />
       </View>
 
-      <View style={styles.tableCard}>
-        <View style={styles.tableHeader}>
-          <View style={[styles.colCode, styles.leftCell]}><Text style={styles.headCell}>Code</Text></View>
-          <View style={[styles.colName, styles.leftCell]}><Text style={styles.headCell}>Supplier Name</Text></View>
-          <View style={[styles.colCity, styles.leftCell]}><Text style={styles.headCell}>City</Text></View>
-          <View style={[styles.colPhone, styles.leftCell]}><Text style={styles.headCell}>Phone</Text></View>
-          <View style={[styles.colAction, styles.actionCellWrap]}><Text style={[styles.headCell, styles.actionHeadText]}>Action</Text></View>
-        </View>
-        {activeRows.map((item) => (
-          <View
-            key={item.id_supplier}
-            style={[
-              styles.tableRow,
-              openActionSupplierId === item.id_supplier && styles.tableRowActiveLayer,
-            ]}
-          >
-            <View style={[styles.colCode, styles.leftCell]}><Text style={styles.rowCell}>{item.supplier_code}</Text></View>
-            <View style={[styles.colName, styles.leftCell]}><Text style={styles.rowCell} numberOfLines={1}>{item.supplier_name}</Text></View>
-            <View style={[styles.colCity, styles.leftCell]}><Text style={styles.rowCell}>{item.city}</Text></View>
-            <View style={[styles.colPhone, styles.leftCell]}><Text style={styles.rowCell}>{item.phone_number || "-"}</Text></View>
-            <View style={[styles.colAction, styles.actionCellWrap]}>
-              <View style={styles.actionDropdownWrap}>
-                <Pressable
-                  style={styles.actionMenuButton}
-                  onPress={() =>
-                    setOpenActionSupplierId((prev) => (prev === item.id_supplier ? null : item.id_supplier))
-                  }
-                >
-                  <Text style={styles.actionMenuButtonText}>Actions</Text>
-                </Pressable>
-                {openActionSupplierId === item.id_supplier ? (
-                  <View style={styles.actionMenu}>
-                    <Pressable
-                      style={[styles.actionOutlineBtn, styles.actionOutlineInfo]}
-                      onPress={() => {
-                        setOpenActionSupplierId(null);
-                        openProducts(item);
-                      }}
-                    >
-                      <Text style={[styles.actionOutlineBtnText, styles.actionOutlineInfoText]}>Products</Text>
-                    </Pressable>
-                    {canManage ? (
-                      <>
-                        <Pressable
-                          style={[styles.actionOutlineBtn, styles.actionOutlineEdit]}
-                          onPress={() => {
-                            setOpenActionSupplierId(null);
-                            openEditForm(item);
-                          }}
-                        >
-                          <Text style={[styles.actionOutlineBtnText, styles.actionOutlineEditText]}>Edit</Text>
-                        </Pressable>
-                        <Pressable
-                          style={[styles.actionOutlineBtn, styles.actionOutlineDanger]}
-                          onPress={() => {
-                            setOpenActionSupplierId(null);
-                            openConfirm("deactivate", item);
-                          }}
-                        >
-                          <Text style={[styles.actionOutlineBtnText, styles.actionOutlineDangerText]}>Deactivate</Text>
-                        </Pressable>
-                      </>
-                    ) : null}
-                  </View>
-                ) : null}
-              </View>
-            </View>
-          </View>
-        ))}
-      </View>
+      <InventoryDataTable
+        columns={supplierColumns}
+        rows={activeRows}
+        rowKey={(item) => item.id_supplier}
+        isRowActive={(item) => openActionSupplierId === item.id_supplier}
+        emptyText="No supplier data found."
+      />
 
       <FilterSheetModal
         title="Filter Suppliers"
@@ -456,30 +552,12 @@ export default function SuppliersScreen() {
           {inactiveRows.length === 0 ? (
             <Text style={styles.modalEmpty}>No inactive supplier data.</Text>
           ) : (
-            <View style={styles.inactiveTableCard}>
-              <View style={styles.tableHeader}>
-                <View style={[styles.colCode, styles.leftCell]}><Text style={styles.headCell}>Code</Text></View>
-                <View style={[styles.colName, styles.leftCell]}><Text style={styles.headCell}>Supplier Name</Text></View>
-                <View style={[styles.colCity, styles.leftCell]}><Text style={styles.headCell}>City</Text></View>
-                <View style={[styles.colPhone, styles.leftCell]}><Text style={styles.headCell}>Phone</Text></View>
-                <View style={[styles.colAction, styles.actionCellWrap]}><Text style={[styles.headCell, styles.actionHeadText]}>Action</Text></View>
-              </View>
-              {inactiveRows.map((item) => (
-                <View key={item.id_supplier} style={styles.tableRow}>
-                  <View style={[styles.colCode, styles.leftCell]}><Text style={styles.rowCell}>{item.supplier_code}</Text></View>
-                  <View style={[styles.colName, styles.leftCell]}><Text style={styles.rowCell} numberOfLines={1}>{item.supplier_name}</Text></View>
-                  <View style={[styles.colCity, styles.leftCell]}><Text style={styles.rowCell}>{item.city}</Text></View>
-                  <View style={[styles.colPhone, styles.leftCell]}><Text style={styles.rowCell}>{item.phone_number || "-"}</Text></View>
-                  <View style={[styles.colAction, styles.actionCellWrap]}>
-                    {canManage ? (
-                      <Pressable style={styles.activateButton} onPress={() => openConfirm("activate", item)}>
-                        <Text style={styles.activateButtonText}>Activate</Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-                </View>
-              ))}
-            </View>
+            <InventoryDataTable
+              columns={inactiveSupplierColumns}
+              rows={inactiveRows}
+              rowKey={(item) => item.id_supplier}
+              emptyText="No inactive supplier data."
+            />
           )}
         </ScrollView>
         <Pressable style={styles.closeButton} onPress={() => setInactiveModalOpen(false)}>
@@ -504,21 +582,13 @@ export default function SuppliersScreen() {
             <View style={styles.metaItem}><Text style={styles.metaLabel}>City</Text><Text style={styles.metaValue}>{selectedSupplier?.city || "-"}</Text></View>
             <View style={styles.metaItem}><Text style={styles.metaLabel}>Products</Text><Text style={styles.metaValue}>{selectedSupplierProducts.length}</Text></View>
           </View>
-          <View style={styles.detailTableCard}>
-            <View style={styles.detailHeaderRow}>
-              <Text style={[styles.detailHead, styles.detailCodeCol]}>Code</Text>
-              <Text style={[styles.detailHead, styles.detailNameCol]}>Product</Text>
-              <Text style={[styles.detailHead, styles.detailBarcodeCol]}>Barcode</Text>
-            </View>
-            {selectedSupplierProducts.map((item) => (
-              <View key={item.id_product} style={styles.detailBodyRow}>
-                <Text style={[styles.detailCell, styles.detailCodeCol]}>{item.product_code}</Text>
-                <Text style={[styles.detailCell, styles.detailNameCol]} numberOfLines={1}>{item.product_name}</Text>
-                <Text style={[styles.detailCell, styles.detailBarcodeCol]} numberOfLines={1}>{item.barcode || "-"}</Text>
-              </View>
-            ))}
-            {selectedSupplierProducts.length === 0 ? <Text style={styles.modalEmpty}>No linked products.</Text> : null}
-          </View>
+          <InventoryDataTable
+            columns={supplierProductDetailColumns}
+            rows={selectedSupplierProducts}
+            rowKey={(item) => item.id_product}
+            emptyText="No linked products."
+            enablePagination={false}
+          />
         </ScrollView>
         <Pressable style={styles.closeButton} onPress={() => setSelectedSupplier(null)}>
           <Text style={styles.closeButtonText}>Close</Text>
@@ -637,9 +707,6 @@ export default function SuppliersScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f3f6fb" },
   content: { padding: 14, gap: 14 },
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  pageTitle: { fontSize: 30, color: "#0f2852", fontWeight: "800" },
-  pageSubtitle: { marginTop: 4, color: "#64748b", fontSize: 13 },
   headerActionRow: { flexDirection: "row", gap: 8, alignItems: "center" },
   secondaryButton: { height: 40, borderRadius: 10, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" },
   secondaryButtonText: { color: "#1d4ed8", fontWeight: "700", fontSize: 12 },
@@ -656,28 +723,8 @@ const styles = StyleSheet.create({
   colCode: { width: "14%" }, colName: { width: "36%" }, colCity: { width: "20%" }, colPhone: { width: "16%" }, colAction: { width: "14%", textAlign: "center" },
   leftCell: { justifyContent: "center", alignItems: "flex-start", paddingHorizontal: 8 },
   actionCellWrap: { alignItems: "center", justifyContent: "center" },
+  actionCellWrapOpen: { position: "relative", zIndex: 4000 },
   actionHeadText: { textAlign: "center" },
-  actionDropdownWrap: { position: "relative", alignItems: "flex-end" },
-  actionMenuButton: { height: 28, borderRadius: 8, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", paddingHorizontal: 8, alignItems: "center", justifyContent: "center" },
-  actionMenuButtonText: { color: "#1d4ed8", fontSize: 11, fontWeight: "700" },
-  actionMenu: {
-    position: "absolute",
-    top: 30,
-    right: 0,
-    minWidth: 116,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#dbe3ee",
-    padding: 6,
-    gap: 6,
-    zIndex: 30,
-    shadowColor: "#0f172a",
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 6,
-  },
   actionOutlineBtn: { minHeight: 30, borderRadius: 7, borderWidth: 1, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
   actionOutlineBtnText: { fontSize: 11, fontWeight: "700" },
   actionOutlineInfo: { borderColor: "#93c5fd", backgroundColor: "#eff6ff" },
@@ -703,12 +750,8 @@ const styles = StyleSheet.create({
   metaItem: { width: "48%", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#f8fafc", padding: 10, gap: 3 },
   metaLabel: { color: "#64748b", fontSize: 11, fontWeight: "700" },
   metaValue: { color: "#0f172a", fontSize: 13, fontWeight: "700" },
-  detailTableCard: { borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#fff", overflow: "hidden" },
-  detailHeaderRow: { minHeight: 38, backgroundColor: "#f1f5f9", borderBottomWidth: 1, borderBottomColor: "#e2e8f0", flexDirection: "row", alignItems: "center" },
-  detailBodyRow: { minHeight: 36, borderBottomWidth: 1, borderBottomColor: "#f1f5f9", flexDirection: "row", alignItems: "center" },
   detailHead: { color: "#334155", fontSize: 11, fontWeight: "800", paddingHorizontal: 10 },
   detailCell: { color: "#0f172a", fontSize: 12, paddingHorizontal: 10 },
-  detailCodeCol: { width: "24%" }, detailNameCol: { width: "48%" }, detailBarcodeCol: { width: "28%" },
   formGroup: { gap: 6 },
   formInput: { height: 40, borderRadius: 10, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#f8fafc", paddingHorizontal: 12, color: "#0f172a" },
   formInputDisabled: { backgroundColor: "#e2e8f0", color: "#64748b" },

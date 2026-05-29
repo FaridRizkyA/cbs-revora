@@ -1,13 +1,15 @@
 import { Feather } from "@expo/vector-icons";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
-import IconFilterButton from "../../../components/inventory/IconFilterButton";
 import StockInFormModal from "../../../components/inventory/StockInFormModal";
 import DatePickerField from "../../../components/inventory/DatePickerField";
-import ActiveFilterBadges from "../../../components/inventory/ActiveFilterBadges";
 import PrimaryActionButton from "../../../components/inventory/PrimaryActionButton";
+import InventoryPageHeader from "../../../components/inventory/InventoryPageHeader";
+import InventoryRowActionsMenu from "../../../components/inventory/InventoryRowActionsMenu";
+import InventoryFilterSection from "../../../components/inventory/InventoryFilterSection";
+import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import { API_BASE_URL } from "../../../utils/api";
 import { canInsertStockMovement, getAuthSession, normalizeRole } from "../../../utils/authSession";
@@ -104,6 +106,12 @@ export default function StockInScreen() {
   const todayDayNumber = useMemo(() => Number(new Date().toISOString().slice(0, 10).replaceAll("-", "")), []);
 
   const canInsert = canInsertStockMovement(roleName);
+  const formatDateTime = useCallback((value?: string | null) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString("id-ID");
+  }, []);
 
   const loadRows = () => {
     fetch(`${API_BASE_URL}/api/stock-in-documents`)
@@ -247,6 +255,119 @@ export default function StockInScreen() {
     return items;
   }, [supplierFilter, productFilter, dateStartFilter, dateEndFilter, minItemCountFilter, maxItemCountFilter, minTotalQtyFilter, maxTotalQtyFilter]);
 
+  const tableColumns = useMemo<InventoryDataTableColumn<StockInDocument>[]>(() => [
+    {
+      key: "stock_in_code",
+      title: "Stock In Code",
+      weight: 22,
+      sortable: true,
+      sortValue: (row) => row.stock_in_code || "",
+      render: (row) => <Text style={styles.rowCell} numberOfLines={1}>{row.stock_in_code}</Text>,
+    },
+    {
+      key: "supplier_name",
+      title: "Supplier",
+      weight: 20,
+      sortable: true,
+      sortValue: (row) => row.supplier_name || "",
+      render: (row) => <Text style={styles.rowCell} numberOfLines={1}>{row.supplier_name}</Text>,
+    },
+    {
+      key: "received_by_name",
+      title: "Receiver",
+      weight: 20,
+      sortable: true,
+      sortValue: (row) => row.received_by_name || "",
+      render: (row) => <Text style={styles.rowCell} numberOfLines={1}>{row.received_by_name || "-"}</Text>,
+    },
+    {
+      key: "total_qty",
+      title: "Total Qty",
+      weight: 8,
+      align: "center",
+      sortable: true,
+      sortValue: (row) => Number(row.total_qty || 0),
+      render: (row) => <Text style={styles.rowCell}>{row.total_qty}</Text>,
+    },
+    {
+      key: "stock_in_date",
+      title: "Date",
+      weight: 16,
+      sortable: true,
+      sortValue: (row) => new Date(row.stock_in_date).getTime(),
+      render: (row) => <Text style={styles.rowCell}>{new Date(row.stock_in_date).toLocaleString("id-ID")}</Text>,
+    },
+    {
+      key: "action",
+      title: "Action",
+      weight: 14,
+      align: "center",
+      render: (row, meta) => (
+        <View style={[styles.actionWrap, openActionStockInId === row.id_stock_in ? styles.actionWrapOpen : null]}>
+          <InventoryRowActionsMenu
+            open={openActionStockInId === row.id_stock_in}
+            onToggle={() => setOpenActionStockInId((prev) => (prev === row.id_stock_in ? null : row.id_stock_in))}
+            direction={meta.rowIndex >= meta.totalRows - 2 ? "up" : "down"}
+          >
+            <Pressable style={[styles.actionOutlineBtn, styles.actionOutlineInfo]} onPress={() => { setOpenActionStockInId(null); openDetail(row.id_stock_in); }}>
+              <Text style={[styles.actionOutlineBtnText, styles.actionOutlineInfoText]}>See Details</Text>
+            </Pressable>
+          </InventoryRowActionsMenu>
+        </View>
+      ),
+    },
+  ], [openActionStockInId]);
+
+  const detailColumns = useMemo<InventoryDataTableColumn<StockInDocumentItem>[]>(() => [
+    {
+      key: "product_name",
+      title: "Product",
+      weight: 28,
+      sortable: true,
+      sortValue: (row) => row.product_name || "",
+      render: (row) => <Text style={styles.detailCell} numberOfLines={1}>{row.product_name}</Text>,
+    },
+    {
+      key: "batch_code",
+      title: "Batch",
+      weight: 24,
+      sortable: true,
+      sortValue: (row) => row.batch_code || "",
+      render: (row) => <Text style={styles.detailCell} numberOfLines={1}>{row.batch_code || "-"}</Text>,
+    },
+    {
+      key: "purchase_price",
+      title: "Buy Price",
+      weight: 22,
+      sortable: true,
+      sortValue: (row) => Number(row.purchase_price || 0),
+      render: (row) => (
+        <Text style={styles.detailCell}>
+          {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })
+            .format(Number(row.purchase_price || 0))
+            .replace(/\s/g, " ")}
+        </Text>
+      ),
+    },
+    {
+      key: "quantity",
+      title: "Qty",
+      weight: 8,
+      align: "center",
+      sortable: true,
+      sortValue: (row) => Number(row.quantity || 0),
+      render: (row) => <Text style={styles.detailCell}>{row.quantity}</Text>,
+    },
+    {
+      key: "expired_date",
+      title: "Exp",
+      weight: 18,
+      sortable: true,
+      sortValue: (row) => new Date(row.expired_date).getTime(),
+      render: (row) => <Text style={styles.detailCell}>{formatDateTime(row.expired_date)}</Text>,
+    },
+  ], [formatDateTime]);
+
   const openForm = () => {
     const firstSupplierId = suppliers[0]?.id_supplier || "";
     setSelectedSupplierId(firstSupplierId);
@@ -313,97 +434,53 @@ export default function StockInScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.title}>Stock In</Text>
-          <Text style={styles.subtitle}>Integrated with real stock movement data.</Text>
-        </View>
-        {canInsert ? (
-          <PrimaryActionButton label="Add Stock In" onPress={openForm} />
-        ) : null}
-      </View>
-      <View style={styles.filterCard}>
-        <View style={styles.searchRow}>
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search stock in code, supplier, or notes"
-            placeholderTextColor="#94a3b8"
-            style={styles.searchInput}
-          />
-          <IconFilterButton
-            onPress={() => {
-              setDraftSupplierFilter(supplierFilter);
-              setDraftProductFilter(productFilter);
-              setDraftDateStartFilter(dateStartFilter);
-              setDraftDateEndFilter(dateEndFilter);
-              setDraftMinItemCountFilter(minItemCountFilter);
-              setDraftMaxItemCountFilter(maxItemCountFilter);
-              setDraftMinTotalQtyFilter(minTotalQtyFilter);
-              setDraftMaxTotalQtyFilter(maxTotalQtyFilter);
-              setFilterOpen(true);
-            }}
-          />
-        </View>
-        <ActiveFilterBadges
-          items={activeFilters}
-          onClearAll={() => {
-            setSupplierFilter("ALL");
-            setProductFilter("ALL");
-            setDateStartFilter("");
-            setDateEndFilter("");
-            setMinItemCountFilter("");
-            setMaxItemCountFilter("");
-            setMinTotalQtyFilter("");
-            setMaxTotalQtyFilter("");
-            setDraftSupplierFilter("ALL");
-            setDraftProductFilter("ALL");
-            setDraftDateStartFilter("");
-            setDraftDateEndFilter("");
-            setDraftMinItemCountFilter("");
-            setDraftMaxItemCountFilter("");
-            setDraftMinTotalQtyFilter("");
-            setDraftMaxTotalQtyFilter("");
-          }}
-        />
-      </View>
-      <View style={styles.tableCard}>
-        <View style={styles.tableInner}>
-          <View style={styles.tableHeader}>
-            <Text style={[styles.headCell, styles.colCode]}>Stock In Code</Text>
-            <Text style={[styles.headCell, styles.colSupplier]}>Supplier</Text>
-            <Text style={[styles.headCell, styles.colReceiver]}>Receiver</Text>
-            <Text style={[styles.headCell, styles.colQty]}>Total Qty</Text>
-            <Text style={[styles.headCell, styles.colDate]}>Date</Text>
-            <Text style={[styles.headCell, styles.colAction]}>Action</Text>
-          </View>
-
-          {(Array.isArray(filteredRows) ? filteredRows : []).map((row) => (
-            <Pressable key={row.id_stock_in} style={[styles.tableRow, openActionStockInId === row.id_stock_in && styles.tableRowActiveLayer]}>
-              <Text style={[styles.rowCell, styles.colCode]} numberOfLines={1}>{row.stock_in_code}</Text>
-              <Text style={[styles.rowCell, styles.colSupplier]} numberOfLines={1}>{row.supplier_name}</Text>
-              <Text style={[styles.rowCell, styles.colReceiver]} numberOfLines={1}>{row.received_by_name || "-"}</Text>
-              <Text style={[styles.rowCell, styles.colQty]}>{row.total_qty}</Text>
-              <Text style={[styles.rowCell, styles.colDate]}>{new Date(row.stock_in_date).toLocaleString("id-ID")}</Text>
-              <View style={[styles.colAction, styles.actionWrap]}>
-                <View style={styles.actionDropdownWrap}>
-                  <Pressable style={styles.actionMenuButton} onPress={() => setOpenActionStockInId((prev) => (prev === row.id_stock_in ? null : row.id_stock_in))}>
-                    <Text style={styles.actionMenuButtonText}>Actions</Text>
-                  </Pressable>
-                  {openActionStockInId === row.id_stock_in ? (
-                    <View style={styles.actionMenu}>
-                      <Pressable style={[styles.actionOutlineBtn, styles.actionOutlineInfo]} onPress={() => { setOpenActionStockInId(null); openDetail(row.id_stock_in); }}>
-                        <Text style={[styles.actionOutlineBtnText, styles.actionOutlineInfoText]}>See Details</Text>
-                      </Pressable>
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-            </Pressable>
-          ))}
-          {filteredRows.length === 0 ? <Text style={styles.emptyText}>No stock in documents found.</Text> : null}
-        </View>
-      </View>
+      <InventoryPageHeader
+        title="Stock In"
+        subtitle="Integrated with real stock movement data."
+        action={canInsert ? <PrimaryActionButton label="Add Stock In" onPress={openForm} /> : undefined}
+      />
+      <InventoryFilterSection
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search stock in code, supplier, or notes"
+        onOpenFilter={() => {
+          setDraftSupplierFilter(supplierFilter);
+          setDraftProductFilter(productFilter);
+          setDraftDateStartFilter(dateStartFilter);
+          setDraftDateEndFilter(dateEndFilter);
+          setDraftMinItemCountFilter(minItemCountFilter);
+          setDraftMaxItemCountFilter(maxItemCountFilter);
+          setDraftMinTotalQtyFilter(minTotalQtyFilter);
+          setDraftMaxTotalQtyFilter(maxTotalQtyFilter);
+          setFilterOpen(true);
+        }}
+        activeFilters={activeFilters}
+        onClearAllFilters={() => {
+          setSupplierFilter("ALL");
+          setProductFilter("ALL");
+          setDateStartFilter("");
+          setDateEndFilter("");
+          setMinItemCountFilter("");
+          setMaxItemCountFilter("");
+          setMinTotalQtyFilter("");
+          setMaxTotalQtyFilter("");
+          setDraftSupplierFilter("ALL");
+          setDraftProductFilter("ALL");
+          setDraftDateStartFilter("");
+          setDraftDateEndFilter("");
+          setDraftMinItemCountFilter("");
+          setDraftMaxItemCountFilter("");
+          setDraftMinTotalQtyFilter("");
+          setDraftMaxTotalQtyFilter("");
+        }}
+      />
+      <InventoryDataTable
+        columns={tableColumns}
+        rows={Array.isArray(filteredRows) ? filteredRows : []}
+        rowKey={(row) => row.id_stock_in}
+        isRowActive={(row) => openActionStockInId === row.id_stock_in}
+        emptyText="No stock in documents found."
+      />
       
 
       <FilterSheetModal
@@ -601,7 +678,7 @@ export default function StockInScreen() {
               <View style={styles.metaItem}><Text style={styles.metaLabel}>Stock In Code</Text><Text style={styles.metaValue}>{selectedDoc?.stock_in_code || "-"}</Text></View>
               <View style={styles.metaItem}>
                 <Text style={styles.metaLabel}>Stock In Date</Text>
-                <Text style={styles.metaValue}>{selectedDoc ? new Date(selectedDoc.stock_in_date).toLocaleString("id-ID") : "-"}</Text>
+                <Text style={styles.metaValue}>{formatDateTime(selectedDoc?.stock_in_date)}</Text>
               </View>
               <View style={styles.metaItem}><Text style={styles.metaLabel}>Supplier</Text><Text style={styles.metaValue}>{selectedDoc?.supplier_name || "-"}</Text></View>
               <View style={styles.metaItem}><Text style={styles.metaLabel}>Receiver</Text><Text style={styles.metaValue}>{selectedDoc?.received_by_name || "-"}</Text></View>
@@ -613,30 +690,13 @@ export default function StockInScreen() {
               <Text style={styles.metaValue}>{selectedDoc?.notes || "-"}</Text>
             </View>
 
-            <View style={styles.detailTableCard}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.detailInner}>
-                  <View style={styles.detailHeaderRow}>
-                    <Text style={[styles.detailHead, styles.detailColProduct]}>Product</Text>
-                    <Text style={[styles.detailHead, styles.detailColBatch]}>Batch</Text>
-                    <Text style={[styles.detailHead, styles.detailColPrice]}>Buy Price</Text>
-                    <Text style={[styles.detailHead, styles.detailColQty]}>Qty</Text>
-                    <Text style={[styles.detailHead, styles.detailColExp]}>Exp</Text>
-                  </View>
-                  {(selectedDoc?.items || []).map((item) => (
-                    <View key={item.id_stock_in_item} style={styles.detailBodyRow}>
-                      <Text style={[styles.detailCell, styles.detailColProduct]} numberOfLines={1}>{item.product_name}</Text>
-                      <Text style={[styles.detailCell, styles.detailColBatch]} numberOfLines={1}>{item.batch_code || "-"}</Text>
-                      <Text style={[styles.detailCell, styles.detailColPrice]}>
-                        {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(item.purchase_price || 0)).replace(/\s/g, " ")}
-                      </Text>
-                      <Text style={[styles.detailCell, styles.detailColQty]}>{item.quantity}</Text>
-                      <Text style={[styles.detailCell, styles.detailColExp]}>{item.expired_date}</Text>
-                    </View>
-                  ))}
-                </View>
-              </ScrollView>
-            </View>
+            <InventoryDataTable
+              columns={detailColumns}
+              rows={selectedDoc?.items || []}
+              rowKey={(item) => item.id_stock_in_item}
+              emptyText="No detail items."
+              enablePagination={false}
+            />
             </ScrollView>
             <Pressable style={styles.closeBtn} onPress={() => setSelectedDoc(null)}>
               <Text style={styles.closeBtnText}>Close</Text>
@@ -649,26 +709,10 @@ export default function StockInScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f3f6fb" },
   content: { padding: 14, gap: 12 },
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  title: { fontSize: 30, color: "#0f2852", fontWeight: "800" },
-  subtitle: { color: "#64748b", fontSize: 13 },
-  filterCard: { borderRadius: 12, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", padding: 12 },
-  searchRow: { flexDirection: "row", gap: 8, alignItems: "center" },
-  searchInput: { flex: 1, height: 40, borderRadius: 10, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#f8fafc", paddingHorizontal: 12, color: "#0f172a" },
-  tableCard: { borderRadius: 12, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", overflow: "visible" },
-  tableInner: { width: "100%" },
-  tableHeader: { minHeight: 42, backgroundColor: "#f1f5f9", flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#dbe3ee" },
-  tableRow: { minHeight: 44, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#eef2f7", position: "relative", zIndex: 1, overflow: "visible" },
-  tableRowActiveLayer: { zIndex: 40 },
-  headCell: { fontSize: 12, fontWeight: "700", color: "#334155", paddingHorizontal: 10, textAlign: "left" },
   rowCell: { fontSize: 12, color: "#0f172a", paddingHorizontal: 10, textAlign: "left" },
   colCode: { width: "22%" }, colSupplier: { width: "20%" }, colReceiver: { width: "20%" }, colQty: { width: "8%" }, colDate: { width: "16%" }, colAction: { width: "14%", textAlign: "center" },
-  emptyText: { color: "#64748b", fontSize: 12, padding: 12 },
   actionWrap: { alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
-  actionDropdownWrap: { position: "relative", alignItems: "flex-end" },
-  actionMenuButton: { minHeight: 28, borderRadius: 8, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
-  actionMenuButtonText: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
-  actionMenu: { position: "absolute", top: 30, right: 0, minWidth: 132, backgroundColor: "#fff", borderRadius: 8, borderWidth: 1, borderColor: "#dbe3ee", padding: 6, gap: 6, zIndex: 50, elevation: 6 },
+  actionWrapOpen: { position: "relative", zIndex: 4000 },
   actionOutlineBtn: { minHeight: 30, borderRadius: 7, borderWidth: 1, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
   actionOutlineBtnText: { fontSize: 11, fontWeight: "700" },
   actionOutlineInfo: { borderColor: "#93c5fd", backgroundColor: "#eff6ff" },

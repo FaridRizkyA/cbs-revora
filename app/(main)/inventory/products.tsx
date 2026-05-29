@@ -7,6 +7,9 @@ import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import IconFilterButton from "../../../components/inventory/IconFilterButton";
 import ActiveFilterBadges from "../../../components/inventory/ActiveFilterBadges";
 import PrimaryActionButton from "../../../components/inventory/PrimaryActionButton";
+import InventoryPageHeader from "../../../components/inventory/InventoryPageHeader";
+import InventoryRowActionsMenu from "../../../components/inventory/InventoryRowActionsMenu";
+import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import { canManageInventoryMaster, getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { API_BASE_URL } from "../../../utils/api";
@@ -247,18 +250,21 @@ export default function ProductsScreen() {
     setFormOpen(true);
   };
 
-  const loadProductDetailBatches = (idProduct: string) => {
+  const loadProductDetailBatches = useCallback((idProduct: string) => {
     fetch(`${API_BASE_URL}/api/products/${idProduct}/batches`)
       .then((response) => response.json())
-      .then((payload) => setSelectedProductBatches(Array.isArray(payload?.data) ? payload.data : []))
+      .then((payload) => {
+        const source = Array.isArray(payload?.data) ? payload.data : [];
+        setSelectedProductBatches(source.filter((item) => Number(item?.batch_qty || 0) > 0));
+      })
       .catch(() => setSelectedProductBatches([]));
-  };
+  }, []);
 
-  const openProductDetail = (product: Product) => {
+  const openProductDetail = useCallback((product: Product) => {
     setDetailImageLoadError(false);
     setSelectedProduct(product);
     loadProductDetailBatches(product.id_product);
-  };
+  }, [loadProductDetailBatches]);
 
   const closeProductForm = () => {
     if (saving) return;
@@ -525,22 +531,231 @@ export default function ProductsScreen() {
     return date.toISOString().slice(0, 10);
   };
 
+  const batchDetailColumns = useMemo<InventoryDataTableColumn<ProductBatchSummary>[]>(() => [
+    {
+      key: "batch_code",
+      title: "Batch Code",
+      weight: 52,
+      sortable: true,
+      sortValue: (row) => row.batch_code || "",
+      render: (row) => <Text style={styles.batchCell}>{row.batch_code}</Text>,
+    },
+    {
+      key: "batch_qty",
+      title: "Qty",
+      weight: 12,
+      align: "center",
+      sortable: true,
+      sortValue: (row) => Number(row.batch_qty || 0),
+      render: (row) => <Text style={styles.batchCell}>{row.batch_qty}</Text>,
+    },
+    {
+      key: "expired_date",
+      title: "Expired",
+      weight: 36,
+      sortable: true,
+      sortValue: (row) => new Date(row.expired_date).getTime(),
+      render: (row) => <Text style={styles.batchCell}>{formatDateOnly(row.expired_date)}</Text>,
+    },
+  ], []);
+
+  const productColumns = useMemo<InventoryDataTableColumn<Product>[]>(() => [
+    {
+      key: "product_code",
+      title: "Code",
+      weight: 15,
+      sortable: true,
+      sortValue: (row) => row.product_code || "",
+      render: (item) => <Text style={styles.rowCell} numberOfLines={1}>{item.product_code}</Text>,
+    },
+    {
+      key: "product_name",
+      title: "Product",
+      weight: 29,
+      sortable: true,
+      sortValue: (row) => row.product_name || "",
+      render: (item) => <Text style={styles.rowCell} numberOfLines={1}>{item.product_name}</Text>,
+    },
+    {
+      key: "barcode",
+      title: "Barcode",
+      weight: 17,
+      sortable: true,
+      sortValue: (row) => row.barcode || "",
+      render: (item) => <Text style={styles.rowCell} numberOfLines={1}>{item.barcode || "-"}</Text>,
+    },
+    {
+      key: "selling_price",
+      title: "Price",
+      weight: 16,
+      sortable: true,
+      sortValue: (row) => Number(row.selling_price || 0),
+      render: (item) => <Text style={styles.rowCell} numberOfLines={1}>{formatRupiah(item.selling_price)}</Text>,
+    },
+    {
+      key: "available_stock",
+      title: "Stock",
+      weight: 9,
+      align: "center",
+      sortable: true,
+      sortValue: (row) => Number(row.available_stock || 0),
+      render: (item) => (
+        <View style={styles.stockCellWrap}>
+          <View
+            style={[
+              styles.stockBadge,
+              getStockStatus(item) === "OUT_OF_STOCK"
+                ? styles.stockBadgeOut
+                : getStockStatus(item) === "LOW_STOCK"
+                  ? styles.stockBadgeLow
+                  : styles.stockBadgeSafe,
+            ]}
+          >
+            <Text
+              style={[
+                styles.stockBadgeText,
+                getStockStatus(item) === "OUT_OF_STOCK"
+                  ? styles.stockTextOut
+                  : getStockStatus(item) === "LOW_STOCK"
+                    ? styles.stockTextLow
+                    : styles.stockTextSafe,
+              ]}
+            >
+              {item.available_stock}
+            </Text>
+          </View>
+        </View>
+      ),
+    },
+    {
+      key: "action",
+      title: "Action",
+      weight: 14,
+      align: "center",
+      render: (item, meta) => (
+        <View style={[styles.actionWrap, openActionProductId === item.id_product ? styles.actionWrapOpen : null]}>
+          <InventoryRowActionsMenu
+            open={openActionProductId === item.id_product}
+            onToggle={() => setOpenActionProductId((prev) => (prev === item.id_product ? null : item.id_product))}
+            direction={meta.rowIndex >= meta.totalRows - 2 ? "up" : "down"}
+          >
+            <Pressable style={[styles.actionOutlineBtn, styles.actionOutlineInfo]} onPress={() => { setOpenActionProductId(null); openProductDetail(item); }}>
+              <Text style={[styles.actionOutlineBtnText, styles.actionOutlineInfoText]}>See Details</Text>
+            </Pressable>
+            {canManage ? (
+              <>
+                <Pressable style={[styles.actionOutlineBtn, styles.actionOutlineEdit]} onPress={() => { setOpenActionProductId(null); openEditForm(item); }}>
+                  <Text style={[styles.actionOutlineBtnText, styles.actionOutlineEditText]}>Edit</Text>
+                </Pressable>
+                <Pressable style={[styles.actionOutlineBtn, styles.actionOutlineDanger]} onPress={() => { setOpenActionProductId(null); openConfirm("deactivate", item); }}>
+                  <Text style={[styles.actionOutlineBtnText, styles.actionOutlineDangerText]}>Deactivate</Text>
+                </Pressable>
+              </>
+            ) : null}
+          </InventoryRowActionsMenu>
+        </View>
+      ),
+    },
+  ], [canManage, openActionProductId, openProductDetail]);
+
+  const inactiveProductColumns = useMemo<InventoryDataTableColumn<Product>[]>(() => [
+    {
+      key: "product_code",
+      title: "Code",
+      weight: 15,
+      sortable: true,
+      sortValue: (row) => row.product_code || "",
+      render: (item) => <Text style={styles.rowCell} numberOfLines={1}>{item.product_code}</Text>,
+    },
+    {
+      key: "product_name",
+      title: "Product",
+      weight: 29,
+      sortable: true,
+      sortValue: (row) => row.product_name || "",
+      render: (item) => <Text style={styles.rowCell} numberOfLines={1}>{item.product_name}</Text>,
+    },
+    {
+      key: "barcode",
+      title: "Barcode",
+      weight: 17,
+      sortable: true,
+      sortValue: (row) => row.barcode || "",
+      render: (item) => <Text style={styles.rowCell} numberOfLines={1}>{item.barcode || "-"}</Text>,
+    },
+    {
+      key: "selling_price",
+      title: "Price",
+      weight: 16,
+      sortable: true,
+      sortValue: (row) => Number(row.selling_price || 0),
+      render: (item) => <Text style={styles.rowCell} numberOfLines={1}>{formatRupiah(item.selling_price)}</Text>,
+    },
+    {
+      key: "available_stock",
+      title: "Stock",
+      weight: 9,
+      align: "center",
+      sortable: true,
+      sortValue: (row) => Number(row.available_stock || 0),
+      render: (item) => (
+        <View style={styles.stockCellWrap}>
+          <View
+            style={[
+              styles.stockBadge,
+              getStockStatus(item) === "OUT_OF_STOCK"
+                ? styles.stockBadgeOut
+                : getStockStatus(item) === "LOW_STOCK"
+                  ? styles.stockBadgeLow
+                  : styles.stockBadgeSafe,
+            ]}
+          >
+            <Text
+              style={[
+                styles.stockBadgeText,
+                getStockStatus(item) === "OUT_OF_STOCK"
+                  ? styles.stockTextOut
+                  : getStockStatus(item) === "LOW_STOCK"
+                    ? styles.stockTextLow
+                    : styles.stockTextSafe,
+              ]}
+            >
+              {item.available_stock}
+            </Text>
+          </View>
+        </View>
+      ),
+    },
+    {
+      key: "action",
+      title: "Action",
+      weight: 14,
+      align: "center",
+      render: (item) =>
+        canManage ? (
+          <Pressable style={styles.activateButton} onPress={() => openConfirm("activate", item)}>
+            <Text style={styles.activateButtonText}>Activate</Text>
+          </Pressable>
+        ) : null,
+    },
+  ], [canManage]);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.pageTitle}>Products</Text>
-          <Text style={styles.pageSubtitle}>Manage product master data for inventory and sales operations.</Text>
-        </View>
-        {canManage ? (
-          <View style={styles.headerActionRow}>
-            <Pressable style={styles.secondaryButton} onPress={() => setInactiveModalOpen(true)}>
-              <Text style={styles.secondaryButtonText}>Show Inactive</Text>
-            </Pressable>
-            <PrimaryActionButton label="Add Product" onPress={openCreateForm} />
-          </View>
-        ) : null}
-      </View>
+      <InventoryPageHeader
+        title="Products"
+        subtitle="Manage product master data for inventory and sales operations."
+        action={
+          canManage ? (
+            <View style={styles.headerActionRow}>
+              <Pressable style={styles.secondaryButton} onPress={() => setInactiveModalOpen(true)}>
+                <Text style={styles.secondaryButtonText}>Show Inactive</Text>
+              </Pressable>
+              <PrimaryActionButton label="Add Product" onPress={openCreateForm} />
+            </View>
+          ) : undefined
+        }
+      />
 
       <View style={styles.filterCard}>
         <View style={styles.searchRow}>
@@ -589,87 +804,13 @@ export default function ProductsScreen() {
           </Pressable>
         </View>
       ) : (
-        <View style={styles.tableWrap}>
-            <View style={styles.tableInner}>
-              <View style={styles.tableHeader}>
-                <Text style={[styles.headCell, styles.codeCol]}>Code</Text>
-                <Text style={[styles.headCell, styles.nameCol]}>Product</Text>
-                <Text style={[styles.headCell, styles.barcodeCol]}>Barcode</Text>
-                <Text style={[styles.headCell, styles.priceCol]}>Price</Text>
-                <Text style={[styles.headCell, styles.stockCol]}>Stock</Text>
-                <Text style={[styles.headCell, styles.actionCol]}>Action</Text>
-              </View>
-
-              {filteredProducts.map((item) => (
-                <View key={item.id_product} style={[styles.tableRow, openActionProductId === item.id_product && styles.tableRowActiveLayer]}>
-                  <Text style={[styles.rowCell, styles.codeCol]} numberOfLines={1}>
-                    {item.product_code}
-                  </Text>
-                  <Text style={[styles.rowCell, styles.nameCol]} numberOfLines={1}>
-                    {item.product_name}
-                  </Text>
-                  <Text style={[styles.rowCell, styles.barcodeCol]} numberOfLines={1}>{item.barcode || "-"}</Text>
-                  <Text style={[styles.rowCell, styles.priceCol]} numberOfLines={1}>
-                    {formatRupiah(item.selling_price)}
-                  </Text>
-              <View style={[styles.stockCol, styles.stockCellWrap]}>
-                <View
-                  style={[
-                    styles.stockBadge,
-                    getStockStatus(item) === "OUT_OF_STOCK"
-                      ? styles.stockBadgeOut
-                      : getStockStatus(item) === "LOW_STOCK"
-                        ? styles.stockBadgeLow
-                        : styles.stockBadgeSafe,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.stockBadgeText,
-                      getStockStatus(item) === "OUT_OF_STOCK"
-                        ? styles.stockTextOut
-                        : getStockStatus(item) === "LOW_STOCK"
-                          ? styles.stockTextLow
-                          : styles.stockTextSafe,
-                    ]}
-                  >
-                    {item.available_stock}
-                  </Text>
-                </View>
-              </View>
-                  <View style={[styles.actionCol, styles.actionWrap]}>
-                    <View style={styles.actionDropdownWrap}>
-                      <Pressable
-                        style={styles.actionMenuButton}
-                        onPress={() =>
-                          setOpenActionProductId((prev) => (prev === item.id_product ? null : item.id_product))
-                        }
-                      >
-                        <Text style={styles.actionMenuButtonText}>Actions</Text>
-                      </Pressable>
-                      {openActionProductId === item.id_product ? (
-                        <View style={styles.actionMenu}>
-                          <Pressable style={[styles.actionOutlineBtn, styles.actionOutlineInfo]} onPress={() => { setOpenActionProductId(null); openProductDetail(item); }}>
-                            <Text style={[styles.actionOutlineBtnText, styles.actionOutlineInfoText]}>See Details</Text>
-                          </Pressable>
-                          {canManage ? (
-                            <>
-                              <Pressable style={[styles.actionOutlineBtn, styles.actionOutlineEdit]} onPress={() => { setOpenActionProductId(null); openEditForm(item); }}>
-                                <Text style={[styles.actionOutlineBtnText, styles.actionOutlineEditText]}>Edit</Text>
-                              </Pressable>
-                              <Pressable style={[styles.actionOutlineBtn, styles.actionOutlineDanger]} onPress={() => { setOpenActionProductId(null); openConfirm("deactivate", item); }}>
-                                <Text style={[styles.actionOutlineBtnText, styles.actionOutlineDangerText]}>Deactivate</Text>
-                              </Pressable>
-                            </>
-                          ) : null}
-                        </View>
-                      ) : null}
-                    </View>
-                  </View>
-                </View>
-              ))}
-            </View>
-        </View>
+        <InventoryDataTable
+          columns={productColumns}
+          rows={filteredProducts}
+          rowKey={(item) => item.id_product}
+          isRowActive={(item) => openActionProductId === item.id_product}
+          emptyText="No product data found."
+        />
       )}
 
       <Text style={styles.footnote}>Stock is read-only and calculated automatically from Stock Movements.</Text>
@@ -733,23 +874,13 @@ export default function ProductsScreen() {
               </Text>
             </View>
 
-            <View style={styles.batchTableCard}>
-              <View style={styles.batchTableHeader}>
-                <Text style={[styles.batchHeadCell, styles.batchColCode]}>Batch Code</Text>
-                <Text style={[styles.batchHeadCell, styles.batchColQty]}>Qty</Text>
-                <Text style={[styles.batchHeadCell, styles.batchColExp]}>Expired</Text>
-              </View>
-              {selectedProductBatches.map((batch) => (
-                <View key={batch.id_product_batch} style={styles.batchTableRow}>
-                  <Text style={[styles.batchCell, styles.batchColCode]}>{batch.batch_code}</Text>
-                  <Text style={[styles.batchCell, styles.batchColQty]}>{batch.batch_qty}</Text>
-                  <Text style={[styles.batchCell, styles.batchColExp]}>{formatDateOnly(batch.expired_date)}</Text>
-                </View>
-              ))}
-              {selectedProductBatches.length === 0 ? (
-                <Text style={styles.batchEmpty}>No batch data for this product.</Text>
-              ) : null}
-            </View>
+            <InventoryDataTable
+              columns={batchDetailColumns}
+              rows={selectedProductBatches}
+              rowKey={(batch) => batch.id_product_batch}
+              emptyText="No batch data for this product."
+              enablePagination={false}
+            />
             </ScrollView>
             <Pressable style={styles.closeButton} onPress={() => setSelectedProduct(null)}>
               <Text style={styles.closeButtonText}>Close</Text>
@@ -943,56 +1074,12 @@ export default function ProductsScreen() {
               {inactiveProducts.length === 0 ? (
                 <Text style={styles.modalEmpty}>No inactive product data.</Text>
               ) : (
-                <View style={styles.inactiveTableCard}>
-                  <View style={styles.tableHeader}>
-                    <Text style={[styles.headCell, styles.codeCol]}>Code</Text>
-                    <Text style={[styles.headCell, styles.nameCol]}>Product</Text>
-                    <Text style={[styles.headCell, styles.barcodeCol]}>Barcode</Text>
-                    <Text style={[styles.headCell, styles.priceCol]}>Price</Text>
-                    <Text style={[styles.headCell, styles.stockCol]}>Stock</Text>
-                    <Text style={[styles.headCell, styles.actionCol]}>Action</Text>
-                  </View>
-                  {inactiveProducts.map((item) => (
-                    <View key={item.id_product} style={styles.tableRow}>
-                      <Text style={[styles.rowCell, styles.codeCol]} numberOfLines={1}>{item.product_code}</Text>
-                      <Text style={[styles.rowCell, styles.nameCol]} numberOfLines={1}>{item.product_name}</Text>
-                      <Text style={[styles.rowCell, styles.barcodeCol]} numberOfLines={1}>{item.barcode || "-"}</Text>
-                      <Text style={[styles.rowCell, styles.priceCol]} numberOfLines={1}>{formatRupiah(item.selling_price)}</Text>
-                      <View style={[styles.stockCol, styles.stockCellWrap]}>
-                        <View
-                          style={[
-                            styles.stockBadge,
-                            getStockStatus(item) === "OUT_OF_STOCK"
-                              ? styles.stockBadgeOut
-                              : getStockStatus(item) === "LOW_STOCK"
-                                ? styles.stockBadgeLow
-                                : styles.stockBadgeSafe,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.stockBadgeText,
-                              getStockStatus(item) === "OUT_OF_STOCK"
-                                ? styles.stockTextOut
-                                : getStockStatus(item) === "LOW_STOCK"
-                                  ? styles.stockTextLow
-                                  : styles.stockTextSafe,
-                            ]}
-                          >
-                            {item.available_stock}
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={[styles.actionCol, styles.actionCellWrap]}>
-                        {canManage ? (
-                          <Pressable style={styles.activateButton} onPress={() => openConfirm("activate", item)}>
-                            <Text style={styles.activateButtonText}>Activate</Text>
-                          </Pressable>
-                        ) : null}
-                      </View>
-                    </View>
-                  ))}
-                </View>
+                <InventoryDataTable
+                  columns={inactiveProductColumns}
+                  rows={inactiveProducts}
+                  rowKey={(item) => item.id_product}
+                  emptyText="No inactive product data."
+                />
               )}
             </ScrollView>
             <Pressable style={styles.closeButton} onPress={() => setInactiveModalOpen(false)}>
@@ -1048,14 +1135,6 @@ export default function ProductsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f3f6fb" },
   content: { padding: 14, gap: 14 },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  pageTitle: { fontSize: 30, color: "#0f2852", fontWeight: "800" },
-  pageSubtitle: { marginTop: 4, color: "#64748b", fontSize: 13 },
   headerActionRow: { flexDirection: "row", gap: 8, alignItems: "center" },
   secondaryButton: {
     height: 40,
@@ -1152,33 +1231,8 @@ const styles = StyleSheet.create({
   stockTextSafe: { color: "#166534" },
   footnote: { color: "#64748b", fontSize: 12 },
   actionWrap: { alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
+  actionWrapOpen: { position: "relative", zIndex: 4000 },
   actionCellWrap: { alignItems: "center", justifyContent: "center" },
-  actionDropdownWrap: { position: "relative", alignItems: "flex-end" },
-  actionMenuButton: {
-    minHeight: 28,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#bfdbfe",
-    backgroundColor: "#eff6ff",
-    paddingHorizontal: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionMenuButtonText: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
-  actionMenu: {
-    position: "absolute",
-    top: 30,
-    right: 0,
-    minWidth: 132,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#dbe3ee",
-    padding: 6,
-    gap: 6,
-    zIndex: 50,
-    elevation: 6,
-  },
   actionOutlineBtn: { minHeight: 30, borderRadius: 7, borderWidth: 1, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
   actionOutlineBtnText: { fontSize: 11, fontWeight: "700" },
   actionOutlineInfo: { borderColor: "#93c5fd", backgroundColor: "#eff6ff" },
@@ -1342,6 +1396,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
+  batchHeadPressable: { justifyContent: "center" },
   batchTableRow: {
     minHeight: 36,
     borderBottomWidth: 1,
