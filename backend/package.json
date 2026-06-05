@@ -21,9 +21,12 @@
     "fs": "^0.0.1-security",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
+    "nodemailer": "^8.0.10",
     "path": "^0.12.7",
     "pdfkit": "^0.18.0",
-    "pg": "^8.21.0"
+    "pdfkit-table": "^0.2.11",
+    "pg": "^8.21.0",
+    "playwright": "^1.60.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

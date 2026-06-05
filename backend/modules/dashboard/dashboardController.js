@@ -191,13 +191,15 @@ const recentTransaction = async (req, res) => {
         s.id_sale,
         s.sale_number,
         s.sale_date,
-        COALESCE(m.full_name, 'General') AS member_name,
+        COALESCE(NULLIF(TRIM(CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, ''))), ''), 'General') AS member_name,
         COALESCE(items.item_count, 0)::int AS item_count,
         s.total_amount::float AS total_amount,
         LOWER(s.payment_method) AS payment_method
       FROM tbl_sales s
       LEFT JOIN tbl_members m
         ON m.id_member = s.id_member
+      LEFT JOIN tbl_profiles p
+        ON p.id_profile = m.id_profile
       LEFT JOIN (
         SELECT
           si.id_sale,

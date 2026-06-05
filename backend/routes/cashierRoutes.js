@@ -18,6 +18,7 @@ const {
   getStockInDocumentById,
   getStockOutDocuments,
   getStockOutDocumentById,
+  getSalesItems,
   createSupplier,
   updateSupplier,
   setSupplierActiveState,
@@ -25,7 +26,8 @@ const {
   uploadProductImage,
   updateProduct,
   setProductActiveState,
-} = require("../modules/cashier/cashierController");
+  getReceiptEmailStatus,
+} = require("../modules/cashier");
 
 const router = express.Router();
 
@@ -47,6 +49,7 @@ router.get("/stock-in-documents", getStockInDocuments);
 router.get("/stock-in-documents/:idStockIn", getStockInDocumentById);
 router.get("/stock-out-documents", getStockOutDocuments);
 router.get("/stock-out-documents/:idStockOut", getStockOutDocumentById);
+router.get("/sales-items", getSalesItems);
 router.get("/suppliers", getSuppliers);
 router.post("/suppliers", createSupplier);
 router.put("/suppliers/:idSupplier", updateSupplier);
@@ -54,6 +57,7 @@ router.patch("/suppliers/:idSupplier/status", setSupplierActiveState);
 router.get("/suppliers/:idSupplier/products", getProductsBySupplier);
 router.get("/members", getMembers);
 router.post("/sales/checkout", checkoutSale);
+router.get("/sales/:idSale/receipt-email-status", getReceiptEmailStatus);
 
 module.exports = router;
 
