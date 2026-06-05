@@ -4,10 +4,14 @@ import * as SecureStore from "expo-secure-store";
 export type AuthUser = {
   id_user: string;
   id_role: string;
+  first_name?: string | null;
+  last_name?: string | null;
   full_name: string;
-  username: string;
   email: string | null;
   role_name: string;
+  profile_image?: string | null;
+  staff_grade_name?: string | null;
+  staff_grade_code?: string | null;
 };
 
 export type AuthSession = {
@@ -87,7 +91,20 @@ export const normalizeRole = (roleNameRaw: string | null | undefined) =>
 
 export const canAccessCashierMode = (roleNameRaw: string | null | undefined) => {
   const roleName = normalizeRole(roleNameRaw);
-  return roleName === "CASHIER" || roleName === "STAFF" || roleName === "ADMIN";
+  return roleName === "CASHIER";
+};
+
+export const canAccessCashierModeWithGrade = (
+  roleNameRaw: string | null | undefined,
+  staffGradeNameRaw: string | null | undefined
+) => {
+  const roleName = normalizeRole(roleNameRaw);
+  if (roleName === "CASHIER") {
+    return true;
+  }
+
+  const gradeName = String(staffGradeNameRaw || "").trim().toUpperCase();
+  return gradeName.includes("OPERATIONAL STAFF");
 };
 
 export const canAccessMainApp = (roleNameRaw: string | null | undefined) => {
@@ -98,6 +115,51 @@ export const canAccessMainApp = (roleNameRaw: string | null | undefined) => {
 export const canManageInventoryMaster = (roleNameRaw: string | null | undefined) => {
   const roleName = normalizeRole(roleNameRaw);
   return roleName === "STAFF" || roleName === "ADMIN";
+};
+
+export const canViewInventory = (roleNameRaw: string | null | undefined) => {
+  const roleName = normalizeRole(roleNameRaw);
+  return roleName === "CASHIER" || roleName === "STAFF" || roleName === "ADMIN";
+};
+
+export const canManagePeople = (roleNameRaw: string | null | undefined) => {
+  const roleName = normalizeRole(roleNameRaw);
+  return roleName === "ADMIN";
+};
+
+export const canViewPeople = (roleNameRaw: string | null | undefined) => {
+  const roleName = normalizeRole(roleNameRaw);
+  return roleName === "STAFF" || roleName === "ADMIN";
+};
+
+export const canManageExternalFinancial = (roleNameRaw: string | null | undefined) => {
+  const roleName = normalizeRole(roleNameRaw);
+  return roleName === "ADMIN";
+};
+
+export const canViewExternalFinancial = (roleNameRaw: string | null | undefined) => {
+  const roleName = normalizeRole(roleNameRaw);
+  return roleName === "STAFF" || roleName === "ADMIN";
+};
+
+export const canManageShu = (roleNameRaw: string | null | undefined) => {
+  const roleName = normalizeRole(roleNameRaw);
+  return roleName === "ADMIN";
+};
+
+export const canViewShu = (roleNameRaw: string | null | undefined) => {
+  const roleName = normalizeRole(roleNameRaw);
+  return roleName === "STAFF" || roleName === "ADMIN";
+};
+
+export const canAccessReports = (roleNameRaw: string | null | undefined) => {
+  const roleName = normalizeRole(roleNameRaw);
+  return roleName === "CASHIER" || roleName === "STAFF" || roleName === "ADMIN";
+};
+
+export const canAccessLogs = (roleNameRaw: string | null | undefined) => {
+  const roleName = normalizeRole(roleNameRaw);
+  return roleName === "ADMIN";
 };
 
 export const canInsertStockMovement = (roleNameRaw: string | null | undefined) => {
@@ -111,32 +173,25 @@ export const canManageStockMovementRecord = (roleNameRaw: string | null | undefi
 };
 
 const CASHIER_MAIN_ALLOWED_PATHS = new Set([
-  "/(main)/dashboard",
-  "/dashboard",
   "/(main)/inventory/products",
   "/inventory/products",
   "/(main)/inventory/suppliers",
   "/inventory/suppliers",
   "/(main)/inventory/batches",
   "/inventory/batches",
-  "/(main)/inventory/stock",
-  "/inventory/stock",
-  "/(main)/inventory/stock-in",
-  "/inventory/stock-in",
-  "/(main)/inventory/stock-out",
-  "/inventory/stock-out",
-  "/(main)/inventory/stock-out-manual",
-  "/inventory/stock-out-manual",
-  "/(main)/inventory/stock-adjustment",
-  "/inventory/stock-adjustment",
   "/(main)/stock-movements/stock-in",
   "/stock-movements/stock-in",
   "/(main)/stock-movements/stock-out",
   "/stock-movements/stock-out",
+  "/(main)/stock-movements/sales",
+  "/stock-movements/sales",
   "/(main)/stock-movements/stock-out-manual",
   "/stock-movements/stock-out-manual",
   "/(main)/stock-movements/stock-adjustment",
   "/stock-movements/stock-adjustment",
+  "/(main)/reports",
+  "/reports",
+  "/profile",
 ]);
 
 export const canCashierAccessMainPath = (pathname: string) => {
@@ -147,4 +202,24 @@ export const canCashierAccessMainPath = (pathname: string) => {
   return CASHIER_MAIN_ALLOWED_PATHS.has(pathname);
 };
 
+export const canAccessMainPath = (roleNameRaw: string | null | undefined, pathname: string) => {
+  const roleName = normalizeRole(roleNameRaw);
+  if (!canAccessMainApp(roleName)) return false;
+
+  if (pathname === "/(main)" || pathname === "/main" || pathname === "/") {
+    return roleName !== "CASHIER";
+  }
+
+  if (roleName === "CASHIER") return canCashierAccessMainPath(pathname);
+
+  if (pathname.startsWith("/(main)/users") || pathname.startsWith("/(main)/members") || pathname.startsWith("/(main)/staffs")) {
+    return canViewPeople(roleName);
+  }
+  if (pathname.startsWith("/(main)/external-financial")) return canViewExternalFinancial(roleName);
+  if (pathname.startsWith("/(main)/shu")) return canViewShu(roleName);
+  if (pathname.startsWith("/(main)/logs")) return canAccessLogs(roleName);
+  if (pathname.startsWith("/(main)/reports")) return canAccessReports(roleName);
+
+  return true;
+};
 
