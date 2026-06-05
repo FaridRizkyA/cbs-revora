@@ -25,7 +25,7 @@ export default function LoginScreen() {
   const { width, height } = useWindowDimensions();
   const shortSide = Math.min(width, height);
   const isPhoneLandscape = shortSide < 768 && width > height;
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -48,10 +48,10 @@ export default function LoginScreen() {
   const subtitleWidth = 320;
 
   const handleLogin = async () => {
-    const identifier = username.trim();
+    const identifier = email.trim();
 
     if (!identifier || !password) {
-      setLoginError("Username/email and password are required.");
+      setLoginError("Email and password are required.");
       return;
     }
 
@@ -65,7 +65,7 @@ export default function LoginScreen() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          identifier,
+          email: identifier,
           password,
         }),
       });
@@ -135,11 +135,12 @@ export default function LoginScreen() {
                 <View style={styles.card}>
                   <AppInput
                     label="Username or Email"
-                    placeholder="Enter your username or email"
+                    placeholder="Enter your email"
                     autoCapitalize="none"
                     autoCorrect={false}
-                    value={username}
-                    onChangeText={setUsername}
+                    keyboardType="email-address"
+                    value={email}
+                    onChangeText={setEmail}
                   />
 
                   <View style={styles.passwordSection}>

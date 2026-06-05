@@ -12,8 +12,15 @@ export default function DataTable({ headers = [], children }: DataTableProps) {
       <View style={styles.table}>
         {headers.length ? (
           <View style={styles.headerRow}>
-            {headers.map((header) => (
-              <Text key={header} style={styles.headerCell}>
+            {headers.map((header, index) => (
+              <Text
+                key={header}
+                style={[
+                  styles.headerCell,
+                  index === 0 && styles.headerCellFirst,
+                  index === headers.length - 1 && styles.headerCellLast,
+                ]}
+              >
                 {header}
               </Text>
             ))}
@@ -34,7 +41,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: "hidden",
   },
-  headerRow: { flexDirection: "row", backgroundColor: "#f8fafc" },
+  headerRow: { flexDirection: "row", backgroundColor: "#f8fafc", borderTopLeftRadius: 8, borderTopRightRadius: 8 },
   headerCell: {
     flex: 1,
     color: "#53657f",
@@ -42,4 +49,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     padding: 12,
   },
+  headerCellFirst: { borderTopLeftRadius: 8 },
+  headerCellLast: { borderTopRightRadius: 8 },
 });

@@ -36,7 +36,6 @@ type Props = {
 export default function DashboardChartsSection({ graphs, width }: Props) {
   const topStockProducts = useMemo(() => (graphs?.pie_graph ?? []).slice(0, 8), [graphs?.pie_graph]);
   const topTransactions = graphs?.bar_graph ?? [];
-  const donut = graphs?.donut_graph ?? { safe_stock: 0, low_stock: 0, out_of_stock: 0 };
   const lineRows = graphs?.line_graph ?? [];
   const chartConfig = {
     backgroundGradientFrom: "#ffffff",
@@ -52,8 +51,6 @@ export default function DashboardChartsSection({ graphs, width }: Props) {
       fontSize: 11,
     },
   } as const;
-  const donutTotal = donut.safe_stock + donut.low_stock + donut.out_of_stock;
-  const donutData = donutTotal > 0 ? [donut.safe_stock / donutTotal, donut.low_stock / donutTotal, donut.out_of_stock / donutTotal] : [0, 0, 0];
   const stockShareData = topStockProducts.map((item) => Math.max(0, item.percentage / 100));
   const effectiveWidth = width;
   const stackedCharts = effectiveWidth < 860;
@@ -175,13 +172,6 @@ export default function DashboardChartsSection({ graphs, width }: Props) {
               style={styles.chartKit}
             />
           )}
-          <View style={styles.legendRow}>
-            {topStockProducts.map((item) => (
-              <Text key={item.id_product} style={styles.legendText}>
-                {item.product_name}: {item.percentage.toFixed(1)}%
-              </Text>
-            ))}
-          </View>
         </View>
 
         <View style={styles.chartCard}>
@@ -215,36 +205,6 @@ export default function DashboardChartsSection({ graphs, width }: Props) {
         </View>
       </View>
 
-      <View style={styles.chartCard}>
-        <Text style={styles.cardTitle}>Stock Health (Safe / Low / Out)</Text>
-        {isWeb ? (
-          <View style={styles.webChartWrap}>
-            <WebDoughnutChart
-              options={webChartOptions}
-              data={{
-                labels: ["Safe", "Low", "Out"],
-                datasets: [{ data: [donut.safe_stock, donut.low_stock, donut.out_of_stock], backgroundColor: ["#16a34a", "#d97706", "#dc2626"] }],
-              }}
-            />
-          </View>
-        ) : (
-          <ProgressChart
-            data={{ labels: ["Safe", "Low", "Out"], data: donutData }}
-            width={chartWidth}
-            height={220}
-            strokeWidth={20}
-            radius={38}
-            chartConfig={chartConfig}
-            hideLegend
-            style={styles.chartKit}
-          />
-        )}
-        <View style={styles.legendRow}>
-          <Text style={styles.legendText}>Safe: {donut.safe_stock}</Text>
-          <Text style={styles.legendText}>Low: {donut.low_stock}</Text>
-          <Text style={styles.legendText}>Out: {donut.out_of_stock}</Text>
-        </View>
-      </View>
     </>
   );
 }
@@ -256,6 +216,4 @@ const styles = StyleSheet.create({
   cardTitle: { color: "#0f2852", fontSize: 17, fontWeight: "700" },
   chartKit: { borderRadius: 10 },
   webChartWrap: { height: 230 },
-  legendRow: { gap: 6 },
-  legendText: { color: "#334155", fontSize: 13 },
 });

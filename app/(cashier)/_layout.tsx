@@ -1,7 +1,7 @@
 import { Stack, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { canAccessCashierMode, getAuthSession, getRouteByRole } from "../../utils/authSession";
+import { canAccessCashierModeWithGrade, getAuthSession, getRouteByRole } from "../../utils/authSession";
 
 export default function CashierLayout() {
   const router = useRouter();
@@ -19,7 +19,7 @@ export default function CashierLayout() {
         return;
       }
 
-      if (!canAccessCashierMode(roleName)) {
+      if (!canAccessCashierModeWithGrade(roleName, session?.user?.staff_grade_name || null)) {
         router.replace(getRouteByRole(roleName));
         return;
       }

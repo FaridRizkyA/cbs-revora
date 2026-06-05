@@ -12,6 +12,7 @@ type FilterSelectFieldProps = {
   value: string;
   options: Option[];
   onChange: (value: string) => void;
+  disabled?: boolean;
 };
 
 export default function FilterSelectField({
@@ -19,6 +20,7 @@ export default function FilterSelectField({
   value,
   options,
   onChange,
+  disabled = false,
 }: FilterSelectFieldProps) {
   const { width, height } = useWindowDimensions();
   const shortSide = Math.min(width, height);
@@ -33,17 +35,18 @@ export default function FilterSelectField({
   }, [options, query]);
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, disabled && styles.wrapDisabled]}>
       <Text style={styles.label}>{label}</Text>
       <Pressable
-        style={styles.field}
+        style={[styles.field, disabled && styles.fieldDisabled]}
         onPress={() => {
+          if (disabled) return;
           setQuery("");
           setOpen(true);
         }}
       >
-        <Text style={styles.valueText}>{selected?.label || "Select option"}</Text>
-        <Feather name="chevron-down" size={14} color="#64748b" />
+        <Text style={[styles.valueText, disabled && styles.valueTextDisabled]}>{selected?.label || "Select option"}</Text>
+        {!disabled && <Feather name="chevron-down" size={14} color="#64748b" />}
       </Pressable>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <View style={styles.backdrop}>
@@ -111,6 +114,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   valueText: { color: "#334155", fontSize: 12, fontWeight: "600" },
+  valueTextDisabled: { color: "#94a3b8" },
+  wrapDisabled: { opacity: 0.8 },
+  fieldDisabled: { backgroundColor: "#f1f5f9", borderColor: "#e2e8f0" },
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(15,23,42,0.45)",

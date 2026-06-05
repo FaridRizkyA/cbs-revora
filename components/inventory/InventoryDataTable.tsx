@@ -124,12 +124,17 @@ export default function InventoryDataTable<T>({
               const direction = isSorted ? sortRules[ruleIndex].direction : null;
               const icon = !isSorted ? "<>" : direction === "asc" ? "^" : "v";
               const orderLabel = isSorted && sortRules.length > 1 ? `${ruleIndex + 1}` : "";
+              const columnIndex = columns.findIndex((item) => item.key === column.key);
+              const isFirstColumn = columnIndex === 0;
+              const isLastColumn = columnIndex === columns.length - 1;
               return (
                 <Pressable
                   key={column.key}
                   style={[
                     styles.headerCell,
                     { width: resolveColumnWidth(column) },
+                    isFirstColumn && styles.headerCellFirst,
+                    isLastColumn && styles.headerCellLast,
                     column.align === "center" && styles.centerBox,
                     column.align === "right" && styles.rightBox,
                   ]}
@@ -216,10 +221,12 @@ const styles = StyleSheet.create({
   scrollViewport: { overflow: "visible" },
   scrollContent: { overflow: "visible" },
   tableInner: { width: "100%" },
-  tableHeader: { backgroundColor: "#f1f5f9", flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#dbe3ee", paddingVertical: 10 },
+  tableHeader: { backgroundColor: "#f1f5f9", flexDirection: "row", alignItems: "center", borderTopLeftRadius: 12, borderTopRightRadius: 12, borderBottomWidth: 1, borderBottomColor: "#dbe3ee", paddingVertical: 10 },
   tableRow: { flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#eef2f7", paddingVertical: 4, position: "relative" },
   tableRowActive: { zIndex: 5000, elevation: 20 },
   headerCell: { paddingHorizontal: 10, justifyContent: "center" },
+  headerCellFirst: { borderTopLeftRadius: 12 },
+  headerCellLast: { borderTopRightRadius: 12 },
   bodyCell: { paddingHorizontal: 10, justifyContent: "center" },
   headCellText: { fontSize: 12, fontWeight: "700", color: "#334155" },
   cellContent: { justifyContent: "center", paddingVertical: 8 },

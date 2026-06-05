@@ -1,4 +1,5 @@
 import { Image } from "expo-image";
+import * as Print from "expo-print";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "expo-router";
@@ -7,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Platform,
   Pressable,
   ScrollView,
   StyleProp,
@@ -18,14 +20,13 @@ import {
   View,
 } from "react-native";
 import ResponsiveModal from "../../components/common/ResponsiveModal";
+import { buildReceiptPrintHtml, formatReceiptProductLabel, ReceiptData, ReceiptItem } from "../../components/cashier/ReceiptPrintTemplate";
 import { AuthUser, clearAuthSession, getAuthSession } from "../../utils/authSession";
 import { API_BASE_URL } from "../../utils/api";
+import { logClientActivity } from "../../utils/activityLog";
 
 const PRODUCT_PLACEHOLDER = require("../../assets/images/placeholders/default-product.png");
-const PROFILE_PLACEHOLDER = require("../../assets/images/placeholders/default-profile.png");
 const SIDEBAR_LOGO = require("../../assets/images/ui/logo_horizontal.png");
-const CASHIER_PICTURE: string | null = null;
-
 
 type AppIconName =
   | "monitor"
@@ -105,13 +106,22 @@ type CartItem = Product & {
 type PaymentMethod = "CASH" | "QRIS";
 
 type CheckoutResult = {
+  id_sale: string;
   sale_number: string;
   sale_date: string;
   total_amount: number;
   payment_method: PaymentMethod;
   amount_paid: number;
   change_amount: number;
+  receipt_email_status?: "queued" | "skipped" | "failed";
+  receipt_email_error?: string | null;
 };
+
+type ReceiptEmailToastState = {
+  kind: "info" | "success" | "error";
+  title: string;
+  message: string;
+} | null;
 
 const formatRupiah = (value: number) =>
   new Intl.NumberFormat("id-ID", {
@@ -121,19 +131,6 @@ const formatRupiah = (value: number) =>
   })
     .format(value)
     .replace(/\s/g, " ");
-
-const formatReceiptProductLabel = (product: CartItem) => {
-  const normalizedCode = String(product.product_code || "")
-    .replace(/^PRD[-_\s]*/i, "")
-    .replace(/-/g, " ")
-    .trim();
-
-  if (normalizedCode) {
-    return normalizedCode.toUpperCase();
-  }
-
-  return product.product_name;
-};
 
 export default function Index() {
   const router = useRouter();
@@ -160,11 +157,19 @@ export default function Index() {
   const [cashAmountInput, setCashAmountInput] = useState("");
   const [submittedCashAmount, setSubmittedCashAmount] = useState(0);
   const [checkoutResult, setCheckoutResult] = useState<CheckoutResult | null>(null);
+  const [receiptItemsSnapshot, setReceiptItemsSnapshot] = useState<ReceiptItem[]>([]);
+  const [receiptMemberSnapshot, setReceiptMemberSnapshot] = useState<{ code?: string | null; name?: string | null } | null>(null);
   const [receiptPaymentMethod, setReceiptPaymentMethod] = useState<PaymentMethod>("CASH");
+  const [receiptEmailTracking, setReceiptEmailTracking] = useState<{ saleId: string; saleNumber: string } | null>(null);
+  const [receiptEmailToast, setReceiptEmailToast] = useState<ReceiptEmailToastState>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const ignoreNextProductCardPressRef = useRef(false);
   const successScale = useRef(new Animated.Value(0.7)).current;
   const barcodeInputRef = useRef<TextInput | null>(null);
+  const barcodeAutoSubmitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchFocusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const receiptToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const receiptEmailPollBusyRef = useRef(false);
   const cashierId = sessionUser?.id_user ?? null;
   const cashierName = sessionUser?.full_name?.trim() || "Cashier";
 
@@ -174,7 +179,7 @@ export default function Index() {
   );
 
   const subtotal = useMemo(
-    () => cart.reduce((total, item) => total + item.selling_price * item.quantity, 0),
+    () => cart.reduce((total, item) => total + item.selling_price * Math.max(item.quantity, 0), 0),
     [cart]
   );
 
@@ -184,6 +189,24 @@ export default function Index() {
   );
 
   const cashChangePreview = Math.max(parsedCashAmount - subtotal, 0);
+
+  const clearReceiptToastTimer = useCallback(() => {
+    if (receiptToastTimerRef.current) {
+      clearTimeout(receiptToastTimerRef.current);
+      receiptToastTimerRef.current = null;
+    }
+  }, []);
+
+  const showReceiptToast = useCallback((toast: Exclude<ReceiptEmailToastState, null>, autoDismissMs: number | null = null) => {
+    clearReceiptToastTimer();
+    setReceiptEmailToast(toast);
+    if (autoDismissMs && autoDismissMs > 0) {
+      receiptToastTimerRef.current = setTimeout(() => {
+        setReceiptEmailToast(null);
+        receiptToastTimerRef.current = null;
+      }, autoDismissMs);
+    }
+  }, [clearReceiptToastTimer]);
 
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -275,6 +298,9 @@ export default function Index() {
       if (searchFocusTimeoutRef.current) {
         clearTimeout(searchFocusTimeoutRef.current);
       }
+      if (barcodeAutoSubmitTimeoutRef.current) {
+        clearTimeout(barcodeAutoSubmitTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -296,9 +322,97 @@ export default function Index() {
     }).start();
   }, [checkoutResult, isReceiptModalOpen, successScale]);
 
+  useEffect(() => {
+    if (!receiptEmailTracking?.saleId) {
+      return;
+    }
+
+    let active = true;
+
+    const pollReceiptEmailStatus = async () => {
+      if (receiptEmailPollBusyRef.current) {
+        return;
+      }
+
+      receiptEmailPollBusyRef.current = true;
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/sales/${receiptEmailTracking.saleId}/receipt-email-status`);
+        const payload = await response.json();
+
+        if (!active || !response.ok) {
+          return;
+        }
+
+        const status = String(payload?.data?.status || "").trim().toUpperCase();
+
+        if (status === "PENDING" || status === "QUEUED") {
+          showReceiptToast(
+            {
+              kind: "info",
+              title: "Receipt email in progress",
+              message: `Sending receipt for ${receiptEmailTracking.saleNumber}.`,
+            },
+            null
+          );
+          return;
+        }
+
+        if (status === "SENT") {
+          showReceiptToast(
+            {
+              kind: "success",
+              title: "Receipt email sent",
+              message: `Receipt for ${receiptEmailTracking.saleNumber} was delivered successfully.`,
+            },
+            4500
+          );
+          setReceiptEmailTracking(null);
+          return;
+        }
+
+        if (status === "FAILED") {
+          showReceiptToast(
+            {
+              kind: "error",
+              title: "Receipt email failed",
+              message: payload?.data?.failed_reason || `Receipt for ${receiptEmailTracking.saleNumber} could not be sent.`,
+            },
+            6000
+          );
+          setReceiptEmailTracking(null);
+          return;
+        }
+
+        if (status === "SKIPPED") {
+          setReceiptEmailTracking(null);
+          return;
+        }
+      } catch {
+        // keep polling on transient failures
+      } finally {
+        receiptEmailPollBusyRef.current = false;
+      }
+    };
+
+    pollReceiptEmailStatus();
+    const timer = setInterval(() => {
+      pollReceiptEmailStatus().catch(() => {});
+    }, 3000);
+
+    return () => {
+      active = false;
+      clearInterval(timer);
+      receiptEmailPollBusyRef.current = false;
+    };
+  }, [receiptEmailTracking, showReceiptToast]);
+
+  useEffect(() => () => {
+    clearReceiptToastTimer();
+  }, [clearReceiptToastTimer]);
+
   const getProductSource = (product: Product) => {
     if (product.product_image) {
-      return product.product_image;
+      return { uri: product.product_image };
     }
 
     return PRODUCT_PLACEHOLDER;
@@ -330,48 +444,74 @@ export default function Index() {
     });
   };
 
-  const updateQuantity = (idProduct: string, change: number) => {
+  const setItemQuantity = (idProduct: string, nextQuantity: number) => {
     setCart((currentCart) =>
-      currentCart.flatMap((item) => {
+      currentCart.map((item) => {
         if (item.id_product !== idProduct) {
-          return [item];
+          return item;
         }
 
-        const nextQuantity = item.quantity + change;
-
-        if (nextQuantity <= 0) {
-          return [];
-        }
-
+        const clampedQuantity = Math.max(0, Math.min(nextQuantity, item.available_stock));
         if (nextQuantity > item.available_stock) {
           Alert.alert("Insufficient stock", `Only ${item.available_stock} item(s) available.`);
-          return [item];
         }
 
-        return [{ ...item, quantity: nextQuantity }];
+        return { ...item, quantity: clampedQuantity };
       })
     );
   };
 
+  const findProductByBarcodeQuery = (query: string) => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return null;
+
+    return products.find((product) => (
+      product.product_code.toLowerCase() === normalized ||
+      (product.barcode ? product.barcode.toLowerCase() === normalized : false)
+    )) ?? null;
+  };
+
+  const clearBarcodeAutoSubmit = () => {
+    if (barcodeAutoSubmitTimeoutRef.current) {
+      clearTimeout(barcodeAutoSubmitTimeoutRef.current);
+      barcodeAutoSubmitTimeoutRef.current = null;
+    }
+  };
+
+  const submitBarcodeProduct = (product: Product) => {
+    clearBarcodeAutoSubmit();
+    addToCart(product);
+    setBarcode("");
+    barcodeInputRef.current?.focus();
+  };
+
+  const handleBarcodeChange = (value: string) => {
+    setBarcode(value);
+    clearBarcodeAutoSubmit();
+
+    const query = value.trim();
+    const localMatch = findProductByBarcodeQuery(query);
+    if (!localMatch) {
+      return;
+    }
+
+    barcodeAutoSubmitTimeoutRef.current = setTimeout(() => {
+      submitBarcodeProduct(localMatch);
+    }, 180);
+  };
+
   const handleBarcodeSubmit = async () => {
+    clearBarcodeAutoSubmit();
     const query = barcode.trim();
 
     if (!query) {
       return;
     }
 
-    const localMatch = products.find((product) => {
-      const normalized = query.toLowerCase();
-      return (
-        product.product_code.toLowerCase() === normalized ||
-        (product.barcode ? product.barcode.toLowerCase() === normalized : false)
-      );
-    });
+    const localMatch = findProductByBarcodeQuery(query);
 
     if (localMatch) {
-      addToCart(localMatch);
-      setBarcode("");
-      barcodeInputRef.current?.focus();
+      submitBarcodeProduct(localMatch);
       return;
     }
 
@@ -398,9 +538,7 @@ export default function Index() {
         return;
       }
 
-      addToCart(apiMatch);
-      setBarcode("");
-      barcodeInputRef.current?.focus();
+      submitBarcodeProduct(apiMatch);
     } catch (error) {
       Alert.alert(
         "Barcode search failed",
@@ -441,10 +579,10 @@ export default function Index() {
           discount_amount: 0,
           notes: null,
           items: cart.map((item) => ({
+            quantity: Math.max(item.quantity, 0),
             id_product: item.id_product,
-            quantity: item.quantity,
             unit_price: item.selling_price,
-          })),
+          })).filter((item) => item.quantity > 0),
         }),
       });
       const payload = await response.json();
@@ -454,13 +592,40 @@ export default function Index() {
       }
 
       setCheckoutResult({
+        id_sale: payload.data.id_sale,
         sale_number: payload.data.sale_number,
         sale_date: payload.data.sale_date,
         total_amount: payload.data.total_amount,
         payment_method: method,
         amount_paid: payload.data.amount_paid,
         change_amount: payload.data.change_amount,
+        receipt_email_status: payload.data.receipt_email_status,
+        receipt_email_error: payload.data.receipt_email_error || null,
       });
+
+      if (payload.data.receipt_email_status === "queued" && payload.data.id_sale) {
+        setReceiptEmailTracking({
+          saleId: payload.data.id_sale,
+          saleNumber: payload.data.sale_number,
+        });
+        showReceiptToast(
+          {
+            kind: "info",
+            title: "Receipt email queued",
+            message: `Sending receipt for ${payload.data.sale_number}.`,
+          },
+          null
+        );
+      } else if (payload.data.receipt_email_status === "failed") {
+        showReceiptToast(
+          {
+            kind: "error",
+            title: "Receipt email queue failed",
+            message: payload.data.receipt_email_error || `Receipt for ${payload.data.sale_number} could not be queued.`,
+          },
+          6000
+        );
+      }
 
       setCart([]);
       await fetchProducts();
@@ -473,12 +638,24 @@ export default function Index() {
     }
   };
 
+  const captureReceiptSnapshot = () => {
+    setReceiptItemsSnapshot(cart.map((item) => ({
+      productCode: item.product_code,
+      productName: item.product_name,
+      quantity: Math.max(item.quantity, 0),
+      unitPrice: item.selling_price,
+      lineTotal: item.selling_price * Math.max(item.quantity, 0),
+    })).filter((item) => item.quantity > 0));
+    setReceiptMemberSnapshot(selectedMember ? { code: selectedMember.member_code, name: selectedMember.full_name } : null);
+  };
+
   const handleCheckoutPress = async () => {
     if (cart.length === 0 || checkoutLoading) {
       return;
     }
 
     if (paymentMethod === "CASH") {
+      captureReceiptSnapshot();
       setCashAmountInput("");
       setSubmittedCashAmount(0);
       setReceiptPaymentMethod("CASH");
@@ -488,6 +665,7 @@ export default function Index() {
     }
 
     setSubmittedCashAmount(subtotal);
+    captureReceiptSnapshot();
     setReceiptPaymentMethod("QRIS");
     setCheckoutResult(null);
     setIsReceiptModalOpen(true);
@@ -514,13 +692,97 @@ export default function Index() {
     await submitCheckout(submittedCashAmount, receiptPaymentMethod);
   };
 
+  const buildCurrentReceiptData = (): ReceiptData | null => {
+    if (!checkoutResult) return null;
+
+    return {
+      saleNumber: checkoutResult.sale_number,
+      saleDate: checkoutResult.sale_date,
+      cashierName,
+      member: receiptMemberSnapshot,
+      paymentMethod: checkoutResult.payment_method,
+      amountPaid: checkoutResult.amount_paid,
+      changeAmount: checkoutResult.change_amount,
+      discountAmount: 0,
+      items: receiptItemsSnapshot,
+    };
+  };
+
+  const handlePrintReceipt = async () => {
+    const receiptData = buildCurrentReceiptData();
+    if (!receiptData) return;
+
+    const html = buildReceiptPrintHtml(receiptData);
+    await logClientActivity({
+      activityType: "PRINT_RECEIPT",
+      tableName: "tbl_sales",
+      description: `Printed sale receipt ${checkoutResult?.sale_number || ""}`.trim(),
+    });
+
+    if (Platform.OS !== "web") {
+      try {
+        await Print.printAsync({ html });
+      } catch (error) {
+        Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print receipt.");
+      }
+      return;
+    }
+
+    if (typeof window === "undefined") return;
+
+    const printWindow = window.open("", "_blank", "width=420,height=720");
+    if (!printWindow) {
+      Alert.alert("Print blocked", "Please allow pop-ups to print the receipt.");
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.setTimeout(() => {
+      printWindow.print();
+    }, 250);
+  };
+
   const handleLogout = async () => {
+    clearReceiptToastTimer();
     await clearAuthSession();
     router.replace("/login");
   };
 
   return (
     <View style={styles.viewportShell}>
+      {receiptEmailToast ? (
+        <View style={styles.toastHost} pointerEvents="box-none">
+          <View
+            style={[
+              styles.toastCard,
+              { width: Math.min(360, Math.max(280, width - 32)) },
+              receiptEmailToast.kind === "success" && styles.toastCardSuccess,
+              receiptEmailToast.kind === "error" && styles.toastCardError,
+              receiptEmailToast.kind === "info" && styles.toastCardInfo,
+            ]}
+          >
+            <MaterialCommunityIcons
+              name={
+                receiptEmailToast.kind === "success"
+                  ? "check-circle"
+                  : receiptEmailToast.kind === "error"
+                    ? "alert-circle"
+                    : "clock-outline"
+              }
+              size={20}
+              color={receiptEmailToast.kind === "success" ? "#16a34a" : receiptEmailToast.kind === "error" ? "#dc2626" : "#2563eb"}
+            />
+            <View style={styles.toastTextWrap}>
+              <Text style={styles.toastTitle}>{receiptEmailToast.title}</Text>
+              <Text style={styles.toastMessage}>{receiptEmailToast.message}</Text>
+            </View>
+            {receiptEmailToast.kind === "info" ? <ActivityIndicator size="small" color="#2563eb" /> : null}
+          </View>
+        </View>
+      ) : null}
       <View
         style={[
           styles.scaledCanvas,
@@ -542,24 +804,32 @@ export default function Index() {
       >
         <Image source={SIDEBAR_LOGO} style={styles.topBarLogo} contentFit="contain" />
         <View style={styles.topBarRight}>
-          <Pressable style={styles.mainAppButton} onPress={() => router.push("/(main)/dashboard")}>
-            <Feather name="arrow-right-circle" size={16} color="#ffffff" />
-            <Text style={styles.mainAppButtonText}>Enter Main App</Text>
-          </Pressable>
           <View style={styles.profileMenuWrap}>
             <Pressable style={styles.profileTrigger} onPress={() => setProfileMenuOpen((prev) => !prev)}>
               <View style={styles.topAvatar}>
-                <Image
-                  source={CASHIER_PICTURE ? { uri: CASHIER_PICTURE } : PROFILE_PLACEHOLDER}
-                  style={styles.topAvatarImage}
-                  contentFit="cover"
-                />
+                {sessionUser?.profile_image ? (
+                  <Image source={{ uri: sessionUser.profile_image }} style={styles.avatarImage} contentFit="cover" />
+                ) : (
+                  <Text style={styles.topAvatarText}>{cashierName.slice(0, 2).toUpperCase()}</Text>
+                )}
               </View>
-              <Text style={styles.profileTriggerText}>{cashierName}</Text>
+              <Text style={styles.profileTriggerText} numberOfLines={1}>
+                {cashierName}
+              </Text>
               <Feather name="chevron-down" size={16} color="#475569" />
             </Pressable>
             {profileMenuOpen ? (
               <View style={styles.profileDropdown}>
+                <Pressable
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                    setProfileMenuOpen(false);
+                    router.push("/(main)/dashboard");
+                  }}
+                >
+                  <Feather name="arrow-right-circle" size={14} color="#2563eb" />
+                  <Text style={styles.dropdownItemTextBlue}>Enter Main App</Text>
+                </Pressable>
                 <Pressable
                   style={styles.dropdownItem}
                   onPress={() => {
@@ -599,7 +869,7 @@ export default function Index() {
               <TextInput
                 ref={barcodeInputRef}
                 value={barcode}
-                onChangeText={setBarcode}
+                onChangeText={handleBarcodeChange}
                 onSubmitEditing={handleBarcodeSubmit}
                 placeholder="Scan barcode..."
                 placeholderTextColor="#64748b"
@@ -623,18 +893,25 @@ export default function Index() {
           ) : (
             <ScrollView style={styles.productListScroll} contentContainerStyle={styles.productGrid}>
               {filteredProducts.map((product) => {
-                const inCartQuantity =
-                  cart.find((item) => item.id_product === product.id_product)?.quantity ?? 0;
+                const inCartItem = cart.find((item) => item.id_product === product.id_product) ?? null;
+                const inCartQuantity = inCartItem?.quantity ?? 0;
+                const hasCartItem = Boolean(inCartItem);
 
                 return (
                   <Pressable
                     key={product.id_product}
                     style={({ pressed }) => [
                       styles.productCard,
-                      (pressed || inCartQuantity > 0) && styles.productCardActive,
+                      (pressed || hasCartItem) && styles.productCardActive,
                       product.available_stock <= 0 && styles.productCardDisabled,
                     ]}
-                    onPress={() => addToCart(product)}
+                    onPress={() => {
+                      if (ignoreNextProductCardPressRef.current) {
+                        ignoreNextProductCardPressRef.current = false;
+                        return;
+                      }
+                      addToCart(product);
+                    }}
                     disabled={product.available_stock <= 0}
                   >
                     <View style={styles.cardTopSpacer} />
@@ -643,7 +920,7 @@ export default function Index() {
                         <Image
                           source={getProductSource(product)}
                           style={styles.productImage}
-                          contentFit="contain"
+                          contentFit="cover"
                         />
                       </View>
                       <Text style={styles.productName} numberOfLines={2}>
@@ -653,20 +930,53 @@ export default function Index() {
                       <Text style={styles.stockText}>
                         Stock: {product.available_stock}
                       </Text>
-                      {inCartQuantity > 0 ? (
-                        <View style={styles.quantityBadge}>
+                      {hasCartItem ? (
+                        <View
+                          style={styles.quantityBadge}
+                          onStartShouldSetResponderCapture={() => {
+                            ignoreNextProductCardPressRef.current = true;
+                            return true;
+                          }}
+                        >
                           <Pressable
-                            style={styles.quantityBadgeButton}
-                            onPress={() => updateQuantity(product.id_product, -1)}
+                            style={styles.quantityStepButton}
+                            onPressIn={(event) => {
+                              event.stopPropagation();
+                              ignoreNextProductCardPressRef.current = true;
+                            }}
+                            onPress={() => setItemQuantity(product.id_product, inCartQuantity - 1)}
                           >
-                            <Text style={styles.quantityBadgeButtonText}>-</Text>
+                            <Text style={styles.quantityStepButtonText}>-</Text>
                           </Pressable>
-                          <Text style={styles.quantityBadgeText}>{inCartQuantity}</Text>
+                          <TextInput
+                            value={String(inCartQuantity)}
+                            onChangeText={(text) => {
+                              const digits = text.replace(/[^0-9]/g, "");
+                              setItemQuantity(product.id_product, digits ? Number(digits) : 0);
+                            }}
+                            onPressIn={(event) => {
+                              event.stopPropagation();
+                              ignoreNextProductCardPressRef.current = true;
+                            }}
+                            onFocus={() => {
+                              ignoreNextProductCardPressRef.current = true;
+                            }}
+                            selectTextOnFocus
+                            keyboardType="number-pad"
+                            returnKeyType="done"
+                            style={[styles.quantityBadgeInput, styles.qtyInputCentered]}
+                            textAlignVertical="center"
+                            textAlign="center"
+                          />
                           <Pressable
-                            style={styles.quantityBadgeButton}
-                            onPress={() => updateQuantity(product.id_product, 1)}
+                            style={styles.quantityStepButton}
+                            onPressIn={(event) => {
+                              event.stopPropagation();
+                              ignoreNextProductCardPressRef.current = true;
+                            }}
+                            onPress={() => setItemQuantity(product.id_product, inCartQuantity + 1)}
                           >
-                            <Text style={styles.quantityBadgeButtonText}>+</Text>
+                            <Text style={styles.quantityStepButtonText}>+</Text>
                           </Pressable>
                         </View>
                       ) : null}
@@ -767,19 +1077,38 @@ export default function Index() {
                     <Text style={styles.cartItemPrice}>{formatRupiah(item.selling_price)}</Text>
                   </View>
                   <View style={styles.cartItemBottom}>
-                    <View style={styles.quantityControl}>
+                    <View
+                      style={styles.quantityControl}
+                      onStartShouldSetResponderCapture={() => true}
+                    >
                       <Pressable
-                        style={styles.qtyButton}
-                        onPress={() => updateQuantity(item.id_product, -1)}
+                        style={styles.quantityStepButtonSmall}
+                        onPressIn={(event) => event.stopPropagation()}
+                        onPress={() => setItemQuantity(item.id_product, item.quantity - 1)}
                       >
-                        <Text style={styles.qtyButtonText}>-</Text>
+                        <Text style={styles.quantityStepButtonText}>-</Text>
                       </Pressable>
-                      <Text style={styles.qtyText}>{item.quantity}</Text>
+                      <TextInput
+                        value={String(item.quantity)}
+                        onChangeText={(text) => {
+                          const digits = text.replace(/[^0-9]/g, "");
+                          setItemQuantity(item.id_product, digits ? Number(digits) : 0);
+                        }}
+                        onPressIn={(event) => event.stopPropagation()}
+                        onFocus={() => {}}
+                        selectTextOnFocus
+                        keyboardType="number-pad"
+                        returnKeyType="done"
+                        style={[styles.qtyInput, styles.qtyInputCentered]}
+                        textAlignVertical="center"
+                        textAlign="center"
+                      />
                       <Pressable
-                        style={styles.qtyButton}
-                        onPress={() => updateQuantity(item.id_product, 1)}
+                        style={styles.quantityStepButtonSmall}
+                        onPressIn={(event) => event.stopPropagation()}
+                        onPress={() => setItemQuantity(item.id_product, item.quantity + 1)}
                       >
-                        <Text style={styles.qtyButtonText}>+</Text>
+                        <Text style={styles.quantityStepButtonText}>+</Text>
                       </Pressable>
                     </View>
                     <Text style={styles.cartItemTotal}>
@@ -906,6 +1235,12 @@ export default function Index() {
             </View>
             <Text style={styles.sweetTitle}>Payment Successful!</Text>
             <Text style={styles.sweetMeta}>Transaction No.: {checkoutResult.sale_number}</Text>
+            {checkoutResult.receipt_email_status === "queued" ? (
+              <Text style={styles.sweetMeta}>Receipt email queued for delivery.</Text>
+            ) : null}
+            {checkoutResult.receipt_email_status === "failed" ? (
+              <Text style={styles.sweetMeta}>Receipt email could not be queued.</Text>
+            ) : null}
             <View style={styles.modalActions}>
               <Pressable
                 style={[styles.modalSecondaryButton, styles.successSecondaryButton]}
@@ -913,13 +1248,16 @@ export default function Index() {
                   setIsReceiptModalOpen(false);
                   setCheckoutResult(null);
                   setSubmittedCashAmount(0);
+                  if (!receiptEmailTracking) {
+                    clearReceiptToastTimer();
+                  }
                 }}
               >
                 <Text style={[styles.modalSecondaryText, styles.successButtonText]}>Done</Text>
               </Pressable>
               <Pressable
                 style={[styles.modalPrimaryButton, styles.successPrimaryButton]}
-                onPress={() => Alert.alert("Print", "Receipt printing will be connected to printer.")}
+                onPress={handlePrintReceipt}
               >
                 <Text style={[styles.modalPrimaryText, styles.successButtonText]}>Print Receipt</Text>
               </Pressable>
@@ -941,7 +1279,9 @@ export default function Index() {
               <View style={styles.receiptItems}>
                 {cart.map((item) => (
                   <View key={item.id_product} style={styles.receiptRow}>
-                    <Text style={styles.receiptItemName}>{formatReceiptProductLabel(item)} x{item.quantity}</Text>
+                    <Text style={styles.receiptItemName}>
+                      {formatReceiptProductLabel({ productCode: item.product_code, productName: item.product_name })} x{item.quantity}
+                    </Text>
                     <Text style={styles.receiptItemPrice}>{formatRupiah(item.selling_price * item.quantity)}</Text>
                   </View>
                 ))}
@@ -999,6 +1339,57 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
   },
+  toastHost: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    zIndex: 500,
+    elevation: 30,
+    alignItems: "flex-end",
+  },
+  toastCard: {
+    minHeight: 54,
+    borderRadius: 14,
+    borderWidth: 1,
+    backgroundColor: "#ffffff",
+    borderColor: "#dbe3ee",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  toastCardInfo: {
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+  },
+  toastCardSuccess: {
+    borderColor: "#bbf7d0",
+    backgroundColor: "#f0fdf4",
+  },
+  toastCardError: {
+    borderColor: "#fecaca",
+    backgroundColor: "#fef2f2",
+  },
+  toastTextWrap: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  toastTitle: {
+    color: "#0f172a",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  toastMessage: {
+    color: "#475569",
+    fontSize: 12,
+    lineHeight: 16,
+  },
   scaledCanvas: {
     backgroundColor: "#f8fafc",
   },
@@ -1036,22 +1427,6 @@ const styles = StyleSheet.create({
   topBarRightCompact: {
     gap: 6,
   },
-  mainAppButton: {
-    height: 38,
-    minWidth: 168,
-    borderRadius: 10,
-    backgroundColor: "#1d4ed8",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 14,
-  },
-  mainAppButtonText: {
-    color: "#ffffff",
-    fontSize: 13,
-    fontWeight: "700",
-  },
   profileMenuWrap: {
     position: "relative",
     zIndex: 60,
@@ -1064,17 +1439,26 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 10,
+    gap: 10,
+    paddingLeft: 10,
+    paddingRight: 12,
+    minWidth: 180,
   },
   topAvatar: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     overflow: "hidden",
     backgroundColor: "#e2e8f0",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  topAvatarImage: {
+  topAvatarText: {
+    color: "#475569",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  avatarImage: {
     width: "100%",
     height: "100%",
   },
@@ -1082,12 +1466,13 @@ const styles = StyleSheet.create({
     color: "#1e293b",
     fontSize: 13,
     fontWeight: "600",
+    flex: 1,
   },
   profileDropdown: {
     position: "absolute",
     top: 46,
     right: 0,
-    width: 140,
+    width: 180,
     backgroundColor: "#ffffff",
     borderRadius: 10,
     borderWidth: 1,
@@ -1110,6 +1495,16 @@ const styles = StyleSheet.create({
   },
   dropdownItemText: {
     color: "#dc2626",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  dropdownItemTextBlue: {
+    color: "#2563eb",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  dropdownItemTextNormal: {
+    color: "#334155",
     fontSize: 13,
     fontWeight: "700",
   },
@@ -1270,40 +1665,54 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   quantityBadge: {
-    minWidth: 96,
-    height: 34,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
     flexDirection: "row",
+    alignItems: "center",
     gap: 6,
-    paddingHorizontal: 6,
+    paddingHorizontal: 0,
     marginTop: 8,
   },
-  quantityBadgeButton: {
+  quantityBadgeInput: {
+    width: 40,
+    height: 28,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#ffffff",
+    color: "#1d4ed8",
+    fontSize: 13,
+    fontWeight: "800",
+    padding: 0,
+    includeFontPadding: false,
+  },
+  quantityStepButton: {
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#3b82f6",
+    backgroundColor: "#ffffff",
     alignItems: "center",
     justifyContent: "center",
   },
-  quantityBadgeButtonText: {
-    color: "#3b82f6",
+  quantityStepButtonSmall: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quantityStepButtonText: {
+    color: "#1d4ed8",
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "900",
     lineHeight: 18,
   },
-  quantityBadgeText: {
-    color: "#3b82f6",
-    fontSize: 13,
-    fontWeight: "700",
-  },
   productImageWrap: {
-    width: 70,
-    height: 70,
+    width: 84,
+    height: 84,
     borderRadius: 14,
     backgroundColor: "#f1f5f9",
     borderWidth: 1,
@@ -1311,19 +1720,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 12,
+    overflow: "hidden",
   },
   productImageWrapPhone: {
-    width: 56,
-    height: 56,
+    width: 64,
+    height: 64,
     marginBottom: 8,
   },
   productImage: {
-    width: 52,
-    height: 52,
+    width: "100%",
+    height: "100%",
+    borderRadius: 14,
   },
   productImagePhone: {
-    width: 40,
-    height: 40,
+    width: "100%",
+    height: "100%",
   },
   productName: {
     color: "#1e293b",
@@ -1514,29 +1925,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    paddingHorizontal: 0,
   },
-  qtyButton: {
-    width: 34,
+  qtyInput: {
+    width: 52,
     height: 34,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "#cbd5e1",
     backgroundColor: "#ffffff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  qtyButtonText: {
-    color: "#334155",
-    fontSize: 18,
-    fontWeight: "700",
-    lineHeight: 20,
-  },
-  qtyText: {
     color: "#0f172a",
     fontSize: 14,
-    fontWeight: "700",
-    minWidth: 24,
+    fontWeight: "800",
+    padding: 0,
+    includeFontPadding: false,
+  },
+  qtyInputCentered: {
     textAlign: "center",
+    textAlignVertical: "center",
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   cartItemTotal: {
     color: "#0f172a",

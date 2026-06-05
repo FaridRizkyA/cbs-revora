@@ -1,0 +1,249 @@
+<style>
+  .receipt-email {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .receipt-email .eyebrow {
+    color: #1d4ed8;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-align: center;
+  }
+
+  .receipt-email .lead {
+    color: #0f172a;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: center;
+  }
+
+  .receipt-email .copy {
+    color: #475569;
+    font-size: 15px;
+    line-height: 1.7;
+    text-align: center;
+    margin: 0;
+  }
+
+  .receipt-email .panel {
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    background: #f8fafc;
+    padding: 18px;
+  }
+
+  .receipt-email .panel-title {
+    color: #0f172a;
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0 0 14px 0;
+  }
+
+  .receipt-email .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .receipt-email .meta-item {
+    background: #ffffff;
+    border: 1px solid #dbe3ee;
+    border-radius: 12px;
+    padding: 12px;
+  }
+
+  .receipt-email .meta-label {
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .receipt-email .meta-value {
+    color: #0f172a;
+    font-size: 14px;
+    font-weight: 700;
+    margin-top: 4px;
+    word-break: break-word;
+  }
+
+  .receipt-email .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .receipt-email .summary-item {
+    background: #ffffff;
+    border: 1px solid #dbe3ee;
+    border-radius: 12px;
+    padding: 12px;
+  }
+
+  .receipt-email .summary-label {
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .receipt-email .summary-value {
+    color: #0f172a;
+    font-size: 14px;
+    font-weight: 800;
+    margin-top: 4px;
+  }
+
+  .receipt-email .items-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 14px;
+    background: #ffffff;
+    border: 1px solid #dbe3ee;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .receipt-email .items-table th {
+    background: #e2e8f0;
+    color: #0f172a;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 10px 12px;
+    text-align: left;
+  }
+
+  .receipt-email .items-table th:last-child {
+    text-align: right;
+  }
+
+  .receipt-email .items-table td {
+    border-top: 1px solid #e2e8f0;
+  }
+
+  .receipt-email .notes {
+    margin-top: 16px;
+    background: #ffffff;
+    border: 1px solid #dbe3ee;
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+
+  .receipt-email .notes-label {
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .receipt-email .notes-value {
+    color: #334155;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .receipt-email .attachment-note {
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.6;
+    text-align: center;
+  }
+
+  @media (max-width: 520px) {
+    .receipt-email .meta-grid,
+    .receipt-email .summary-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<div class="receipt-email">
+  <div class="eyebrow">Receipt Email</div>
+  <div class="lead">Hello, {{RECIPIENT_NAME}}</div>
+  <p class="copy">
+    Your transaction receipt for <strong>{{SALE_NUMBER}}</strong> is ready.
+    The PDF receipt is attached to this email, and the summary below is provided for quick reference.
+  </p>
+
+  <div class="panel">
+    <div class="panel-title">Transaction Summary</div>
+    <div class="meta-grid">
+      <div class="meta-item">
+        <div class="meta-label">Receipt No.</div>
+        <div class="meta-value">{{SALE_NUMBER}}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Date</div>
+        <div class="meta-value">{{SALE_DATE}}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Cashier</div>
+        <div class="meta-value">{{CASHIER_NAME}}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Member</div>
+        <div class="meta-value">{{MEMBER_NAME}}</div>
+      </div>
+    </div>
+
+    <div class="summary-grid">
+      <div class="summary-item">
+        <div class="summary-label">Subtotal</div>
+        <div class="summary-value">{{SUBTOTAL}}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Discount</div>
+        <div class="summary-value">{{DISCOUNT}}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Total</div>
+        <div class="summary-value">{{TOTAL}}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Payment</div>
+        <div class="summary-value">{{PAYMENT_METHOD}}</div>
+      </div>
+    </div>
+
+    <table class="items-table" cellspacing="0" cellpadding="0">
+      <thead>
+        <tr>
+          <th>Items</th>
+          <th>Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ITEM_ROWS}}
+      </tbody>
+    </table>
+
+    <div class="summary-grid" style="margin-top: 14px;">
+      <div class="summary-item">
+        <div class="summary-label">Paid</div>
+        <div class="summary-value">{{AMOUNT_PAID}}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Change</div>
+        <div class="summary-value">{{CHANGE_AMOUNT}}</div>
+      </div>
+    </div>
+
+    {{NOTES_BLOCK}}
+  </div>
+
+  <p class="attachment-note">
+    The attached receipt uses the standard print receipt format.
+  </p>
+</div>

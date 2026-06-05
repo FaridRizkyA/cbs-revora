@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
+import * as Print from "expo-print";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import IconFilterButton from "../../../components/inventory/IconFilterButton";
@@ -8,10 +9,18 @@ import ActiveFilterBadges from "../../../components/inventory/ActiveFilterBadges
 import PrimaryActionButton from "../../../components/inventory/PrimaryActionButton";
 import InventoryPageHeader from "../../../components/inventory/InventoryPageHeader";
 import InventoryRowActionsMenu from "../../../components/inventory/InventoryRowActionsMenu";
+import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu";
 import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
+import SendEmailModal from "../../../components/modals/SendEmailModal";
+import {
+  buildSupplierDetailReportPrintHtml,
+  buildSupplierTableReportPrintHtml,
+} from "../../../components/reports/suppliers/SupplierReportPrintTemplate";
 import { canManageInventoryMaster, getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { API_BASE_URL } from "../../../utils/api";
+import { logClientActivity } from "../../../utils/activityLog";
+import { withEmailPdfAttachment } from "../../../utils/reportEmail";
 
 type Supplier = {
   id_supplier: string;
@@ -32,7 +41,34 @@ type SupplierProduct = {
 };
 
 type PendingActionType = "create" | "edit" | "deactivate" | "activate";
-const PHONE_ALLOWED_PATTERN = /^[0-9+\-\s]{6,25}$/;
+const PHONE_ALLOWED_PATTERN = /^[0-9+\-\s]{1,25}$/;
+
+const printReportHtml = async (html: string) => {
+  await logClientActivity({
+    activityType: "PRINT_REPORT",
+    tableName: "tbl_suppliers",
+    description: "Printed supplier report.",
+  });
+  if (Platform.OS !== "web") {
+    await Print.printAsync({ html });
+    return;
+  }
+
+  if (typeof window === "undefined") return;
+
+  const printWindow = window.open("", "_blank", "width=1024,height=720");
+  if (!printWindow) {
+    throw new Error("Please allow pop-ups to print this report.");
+  }
+
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.setTimeout(() => {
+    printWindow.print();
+  }, 250);
+};
 
 export default function SuppliersScreen() {
   const [roleName, setRoleName] = useState("CASHIER");
@@ -61,6 +97,9 @@ export default function SuppliersScreen() {
   const [resultStatus, setResultStatus] = useState<"success" | "error">("success");
   const [resultTitle, setResultTitle] = useState("");
   const [resultMessage, setResultMessage] = useState("");
+
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailTarget, setEmailTarget] = useState<"table" | "detail">("table");
 
   const canManage = canManageInventoryMaster(roleName);
 
@@ -138,7 +177,7 @@ export default function SuppliersScreen() {
     if (phone) {
       const digitsOnly = phone.replace(/\D/g, "");
       const plusCount = (phone.match(/\+/g) || []).length;
-      if (digitsOnly.length < 6 || digitsOnly.length > 20 || plusCount > 1 || (plusCount === 1 && !phone.startsWith("+"))) {
+      if (digitsOnly.length < 3 || digitsOnly.length > 20 || plusCount > 1 || (plusCount === 1 && !phone.startsWith("+"))) {
         setResultStatus("error");
         setResultTitle("Validation Error");
         setResultMessage("Phone number format is invalid.");
@@ -296,13 +335,127 @@ export default function SuppliersScreen() {
     });
   }, [rows, search, cityFilter]);
 
-  const activeRows = useMemo(() => filtered.filter((item) => item.is_active === "Y"), [filtered]);
-  const inactiveRows = useMemo(() => filtered.filter((item) => item.is_active !== "Y"), [filtered]);
+  const sortSuppliersByCodeAsc = (items: Supplier[]) =>
+    [...items].sort((a, b) => (a.supplier_code || "").localeCompare(b.supplier_code || "", undefined, { numeric: true, sensitivity: "base" }));
+
+  const activeRows = useMemo(() => sortSuppliersByCodeAsc(filtered.filter((item) => item.is_active === "Y")), [filtered]);
+  const inactiveRows = useMemo(() => sortSuppliersByCodeAsc(filtered.filter((item) => item.is_active !== "Y")), [filtered]);
   const activeFilters = useMemo(() => {
     const items: { key: string; label: string; value: string; onClear: () => void }[] = [];
     if (cityFilter !== "ALL") items.push({ key: "city", label: "City", value: cityFilter, onClear: () => setCityFilter("ALL") });
     return items;
   }, [cityFilter]);
+
+  const buildCurrentSupplierReportMeta = () => {
+    const items = [];
+    const trimmedSearch = search.trim();
+    if (trimmedSearch) items.push({ label: "Search", value: trimmedSearch });
+    if (cityFilter !== "ALL") items.push({ label: "City Filter", value: cityFilter });
+    return items;
+  };
+
+  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string) => {
+    try {
+      const isTable = emailTarget === "table";
+      const generatedAt = new Date();
+      const printHtml = isTable
+        ? buildSupplierTableReportPrintHtml({
+            rows: activeRows,
+            generatedAt,
+            generatedBy: roleName,
+            meta: buildCurrentSupplierReportMeta(),
+          })
+        : selectedSupplier
+          ? buildSupplierDetailReportPrintHtml({
+              supplier: selectedSupplier,
+              products: selectedSupplierProducts,
+              generatedAt,
+              generatedBy: roleName,
+              meta: [{ label: "Linked Products", value: selectedSupplierProducts.length }],
+            })
+          : "";
+      const payload = {
+        recipient_email: recipientEmail,
+        recipient_name: fullName,
+        subject: isTable ? "Supplier List Report" : `Supplier Detail - ${selectedSupplier?.supplier_name}`,     
+        message,
+        format: "PDF",
+        title: isTable ? "Supplier List" : "Supplier Detail",
+        generated_by: roleName,
+        print_html: printHtml,
+        meta: isTable ? buildCurrentSupplierReportMeta() : [
+          { label: "Supplier", value: selectedSupplier?.supplier_name },
+          { label: "Code", value: selectedSupplier?.supplier_code },
+        ],
+        columns: isTable ? [
+          { key: "supplier_code", title: "Code" },
+          { key: "supplier_name", title: "Name" },
+          { key: "city", title: "City" },
+          { key: "phone_number", title: "Phone" },
+        ] : [
+          { key: "product_code", title: "Product Code" },
+          { key: "product_name", title: "Product Name" },
+          { key: "available_stock", title: "Stock" },
+        ],
+        rows: isTable ? activeRows : selectedSupplierProducts,
+      };
+
+      const response = await fetch(`${API_BASE_URL}/api/reports/send-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(await withEmailPdfAttachment(payload)),
+      });
+
+      if (!response.ok) throw new Error("Failed to send email.");
+
+      await logClientActivity({
+        activityType: "SEND_REPORT_EMAIL",
+        tableName: "tbl_suppliers",
+        description: "Sent supplier report via email.",
+      });
+
+      setResultStatus("success");
+      setResultTitle("Email Sent");
+      setResultMessage("Report has been sent successfully.");
+      setResultModalOpen(true);
+    } catch (error) {
+      setResultStatus("error");
+      setResultTitle("Send Failed");
+      setResultMessage(error instanceof Error ? error.message : "An error occurred.");
+      setResultModalOpen(true);
+    }
+  };
+
+  const handlePrintSupplierTable = async () => {
+    try {
+      const html = buildSupplierTableReportPrintHtml({
+        rows: activeRows,
+        generatedAt: new Date(),
+        generatedBy: roleName,
+        meta: buildCurrentSupplierReportMeta(),
+      });
+      await printReportHtml(html);
+    } catch (error) {
+      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print supplier report."); 
+    }
+  };
+
+  const handlePrintSupplierDetail = async () => {
+    if (!selectedSupplier) return;
+
+    try {
+      const html = buildSupplierDetailReportPrintHtml({
+        supplier: selectedSupplier,
+        products: selectedSupplierProducts,
+        generatedAt: new Date(),
+        generatedBy: roleName,
+        meta: [{ label: "Linked Products", value: selectedSupplierProducts.length }],
+      });
+      await printReportHtml(html);
+    } catch (error) {
+      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print supplier detail."); 
+    }
+  };
 
   const supplierColumns = useMemo<InventoryDataTableColumn<Supplier>[]>(() => [
     {
@@ -356,7 +509,7 @@ export default function SuppliersScreen() {
                 openProducts(item);
               }}
             >
-              <Text style={[styles.actionOutlineBtnText, styles.actionOutlineInfoText]}>Products</Text>
+              <Text style={[styles.actionOutlineBtnText, styles.actionOutlineInfoText]}>Details</Text>
             </Pressable>
             {canManage ? (
               <>
@@ -376,7 +529,7 @@ export default function SuppliersScreen() {
                     openConfirm("deactivate", item);
                   }}
                 >
-                  <Text style={[styles.actionOutlineBtnText, styles.actionOutlineDangerText]}>Deactivate</Text>
+                  <Text style={[styles.actionOutlineBtnText, styles.actionOutlineDangerText]}>Deactivate</Text> 
                 </Pressable>
               </>
             ) : null}
@@ -481,14 +634,24 @@ export default function SuppliersScreen() {
         title="Suppliers"
         subtitle="Manage supplier master data for inventory sourcing."
         action={
-          canManage ? (
-            <View style={styles.headerActionRow}>
+          <View style={styles.headerActionRow}>
+            <ExportDropdownMenu
+              onExportPdf={handlePrintSupplierTable}
+              onExportExcel={() => Alert.alert("Export Excel", "This feature will be implemented soon.")}       
+              onSendEmail={() => {
+                setEmailTarget("table");
+                setEmailModalOpen(true);
+              }}       
+            />
+            {canManage ? (
+              <>
               <Pressable style={styles.secondaryButton} onPress={() => setInactiveModalOpen(true)}>
                 <Text style={styles.secondaryButtonText}>Show Inactive</Text>
               </Pressable>
               <PrimaryActionButton label="Add Supplier" onPress={openCreateForm} />
-            </View>
-          ) : undefined
+              </>
+            ) : null}
+          </View>
         }
       />
 
@@ -504,7 +667,7 @@ export default function SuppliersScreen() {
               style={styles.searchInput}
             />
           </View>
-          <IconFilterButton onPress={() => { setDraftCityFilter(cityFilter); setFilterModalOpen(true); }} />
+          <IconFilterButton onPress={() => { setDraftCityFilter(cityFilter); setFilterModalOpen(true); }} />    
         </View>
         <ActiveFilterBadges
           items={activeFilters}
@@ -574,7 +737,17 @@ export default function SuppliersScreen() {
         maxHeightPhoneRatio={0.9}
         cardStyle={styles.detailModalCard}
       >
-        <Text style={styles.modalTitle}>Supplier Products</Text>
+        <View style={styles.detailModalHeader}>
+          <Text style={styles.modalTitle}>Supplier Detail</Text>
+          <ExportDropdownMenu
+            variant="detail"
+            onExportPdf={handlePrintSupplierDetail}
+            onSendEmail={() => {
+              setEmailTarget("detail");
+              setEmailModalOpen(true);
+            }}
+          />
+        </View>
         <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.metaGrid}>
             <View style={styles.metaItem}><Text style={styles.metaLabel}>Supplier</Text><Text style={styles.metaValue}>{selectedSupplier?.supplier_name || "-"}</Text></View>
@@ -639,6 +812,7 @@ export default function SuppliersScreen() {
                 const sanitized = value.replace(/[^0-9+\-\s]/g, "");
                 setFormPhone(sanitized);
               }}
+              keyboardType="phone-pad"
               placeholder="Phone Number"
               placeholderTextColor="#94a3b8"
               style={styles.formInput}
@@ -700,6 +874,13 @@ export default function SuppliersScreen() {
           <Text style={styles.resultCloseBtnText}>OK</Text>
         </Pressable>
       </ResponsiveModal>
+
+      <SendEmailModal
+        visible={emailModalOpen}
+        onClose={() => setEmailModalOpen(false)}
+        reportTitle={emailTarget === "table" ? "Supplier List" : "Supplier Detail"}
+        onSend={handleSendEmailReport}
+      />
     </ScrollView>
   );
 }
@@ -708,6 +889,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f3f6fb" },
   content: { padding: 14, gap: 14 },
   headerActionRow: { flexDirection: "row", gap: 8, alignItems: "center" },
+  exportIconButton: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", alignItems: "center", justifyContent: "center" },
   secondaryButton: { height: 40, borderRadius: 10, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" },
   secondaryButtonText: { color: "#1d4ed8", fontWeight: "700", fontSize: 12 },
   filterCard: { borderRadius: 12, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", padding: 12 },
@@ -715,7 +897,7 @@ const styles = StyleSheet.create({
   searchWrap: { flex: 1, height: 40, borderRadius: 10, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#f8fafc", flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12 },
   searchInput: { flex: 1, color: "#334155", fontSize: 13, paddingVertical: 0 },
   tableCard: { borderRadius: 12, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", overflow: "visible" },
-  tableHeader: { minHeight: 40, flexDirection: "row", alignItems: "center", backgroundColor: "#f1f5fb", borderBottomWidth: 1, borderBottomColor: "#dbe3ee", paddingHorizontal: 8 },
+  tableHeader: { minHeight: 40, flexDirection: "row", alignItems: "center", backgroundColor: "#f1f5fb", borderTopLeftRadius: 12, borderTopRightRadius: 12, borderBottomWidth: 1, borderBottomColor: "#dbe3ee", paddingHorizontal: 8 },
   tableRow: { minHeight: 44, flexDirection: "row", alignItems: "center", borderTopWidth: 1, borderTopColor: "#eef2f7", paddingHorizontal: 8, position: "relative", zIndex: 1 },
   tableRowActiveLayer: { zIndex: 40 },
   headCell: { color: "#3c5477", fontWeight: "700", fontSize: 11, textAlign: "left" },
@@ -734,8 +916,11 @@ const styles = StyleSheet.create({
   actionOutlineDanger: { borderColor: "#fca5a5", backgroundColor: "#fef2f2" },
   actionOutlineDangerText: { color: "#b91c1c" },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", alignItems: "center", justifyContent: "center", padding: 16 },
-  modalCard: { width: "100%", maxWidth: 460, backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 8 },
+  modalCard: { width: "100%", maxWidth: 460, backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 8 },  
   detailModalCard: { width: "100%", maxWidth: 980, backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 10 },
+  detailModalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },  
+  detailPrintButton: { minHeight: 36, borderRadius: 10, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
+  detailPrintButtonText: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
   detailScroll: { maxHeight: "84%" },
   detailScrollContent: { gap: 10, paddingBottom: 6 },
   inactiveModalCard: { width: "100%", maxWidth: 900, backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 8 },

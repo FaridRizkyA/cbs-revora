@@ -12,6 +12,14 @@ export type NavigationItem = {
   children?: string[];
 };
 
+export type ProfileDropdownItem = {
+  key: string;
+  label: string;
+  icon: string;
+  tone?: "default" | "blue" | "danger";
+  onPress: () => void;
+};
+
 type AppNavigationSidebarProps = {
   logoSource: number;
   navItems: NavigationItem[];
@@ -26,7 +34,9 @@ type AppNavigationSidebarProps = {
   profileImageSource: number | { uri: string };
   profileMenuOpen?: boolean;
   onToggleProfileMenu?: () => void;
+  onProfilePress?: () => void;
   onLogoutPress?: () => void;
+  profileMenuItems?: ProfileDropdownItem[];
   footerAction?: ReactNode;
 };
 
@@ -44,7 +54,9 @@ export default function AppNavigationSidebar({
   profileImageSource,
   profileMenuOpen = false,
   onToggleProfileMenu,
+  onProfilePress,
   onLogoutPress,
+  profileMenuItems,
   footerAction,
 }: AppNavigationSidebarProps) {
   return (
@@ -108,10 +120,32 @@ export default function AppNavigationSidebar({
           </Pressable>
           {profileMenuOpen ? (
             <View style={styles.profileDropdown}>
-              <Pressable style={styles.dropdownItem} onPress={onLogoutPress}>
-                <Feather name="log-out" size={14} color="#dc2626" />
-                <Text style={styles.dropdownItemText}>Logout</Text>
-              </Pressable>
+              {(profileMenuItems && profileMenuItems.length > 0
+                ? profileMenuItems
+                : [
+                    { key: "profile", label: "Profile", icon: "user", tone: "default" as const, onPress: onProfilePress || (() => undefined) },
+                    { key: "logout", label: "Logout", icon: "log-out", tone: "danger" as const, onPress: onLogoutPress || (() => undefined) },
+                  ]
+              ).map((item) => (
+                <Pressable key={item.key} style={styles.dropdownItem} onPress={item.onPress}>
+                  <Feather
+                    name={item.icon as keyof typeof Feather.glyphMap}
+                    size={14}
+                    color={item.tone === "danger" ? "#dc2626" : item.tone === "blue" ? "#2563eb" : "#334155"}
+                  />
+                  <Text
+                    style={[
+                      styles.dropdownItemTextNormal,
+                      item.tone === "danger" && styles.dropdownItemTextDanger,
+                      item.tone === "blue" && styles.dropdownItemTextBlue,
+                    ]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {item.label}
+                  </Text>
+                </Pressable>
+              ))}
             </View>
           ) : null}
         </View>
@@ -237,7 +271,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     bottom: 50,
-    width: 160,
+    width: "90%",
     backgroundColor: "#ffffff",
     borderRadius: 10,
     borderWidth: 1,
@@ -255,12 +289,23 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 8,
+    gap: 6,
+    paddingHorizontal: 10,
   },
   dropdownItemText: {
     color: "#dc2626",
     fontSize: 13,
     fontWeight: "700",
+  },
+  dropdownItemTextNormal: {
+    color: "#334155",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  dropdownItemTextBlue: {
+    color: "#2563eb",
+  },
+  dropdownItemTextDanger: {
+    color: "#dc2626",
   },
 });

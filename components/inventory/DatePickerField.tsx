@@ -10,6 +10,7 @@ type DatePickerFieldProps = {
   onChange: (value: string) => void;
   minimumDate?: Date;
   maximumDate?: Date;
+  disabled?: boolean;
 };
 
 const formatDate = (date: Date) => {
@@ -32,6 +33,7 @@ export default function DatePickerField({
   onChange,
   minimumDate,
   maximumDate,
+  disabled = false,
 }: DatePickerFieldProps) {
   const { width, height } = useWindowDimensions();
   const shortSide = Math.min(width, height);
@@ -46,17 +48,19 @@ export default function DatePickerField({
       minHeight: 38,
       borderRadius: 10,
       border: "1px solid #cbd5e1",
-      backgroundColor: "#ffffff",
+      backgroundColor: disabled ? "#f1f5f9" : "#ffffff",
       padding: "0 12px",
-      color: "#0f172a",
+      color: disabled ? "#94a3b8" : "#0f172a",
       fontSize: 13,
       outline: "none",
       boxSizing: "border-box",
+      opacity: disabled ? 0.8 : 1,
     }),
-    []
+    [disabled]
   );
 
   const openPicker = () => {
+    if (disabled) return;
     setDraftDate(parseDate(value));
     setOpen(true);
   };
@@ -67,7 +71,7 @@ export default function DatePickerField({
   };
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, disabled && styles.wrapDisabled]}>
       <Text style={styles.label}>{label}</Text>
       {Platform.OS === "web" ? (
         <input
@@ -77,10 +81,11 @@ export default function DatePickerField({
           max={maximumDate ? formatDate(maximumDate) : undefined}
           onChange={(event) => onChange(event.currentTarget.value)}
           style={webInputStyle}
+          disabled={disabled}
         />
       ) : (
-      <Pressable style={styles.field} onPress={openPicker}>
-        <Text style={[styles.fieldText, !value ? styles.placeholderText : null]}>{displayValue}</Text>
+      <Pressable style={[styles.field, disabled && styles.fieldDisabled]} onPress={openPicker}>
+        <Text style={[styles.fieldText, !value ? styles.placeholderText : null, disabled && styles.fieldTextDisabled]}>{displayValue}</Text>
       </Pressable>
       )}
 
@@ -136,7 +141,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   fieldText: { color: "#0f172a", fontSize: 13 },
+  fieldTextDisabled: { color: "#94a3b8" },
   placeholderText: { color: "#94a3b8" },
+  wrapDisabled: { opacity: 0.8 },
+  fieldDisabled: { backgroundColor: "#f1f5f9", borderColor: "#e2e8f0" },
   backdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", alignItems: "center", justifyContent: "center", padding: 16 },
   card: { width: "100%", borderRadius: 14, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", padding: 12, gap: 10 },
   title: { color: "#0f172a", fontSize: 14, fontWeight: "800" },
