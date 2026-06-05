@@ -13,6 +13,7 @@ coverage
 .vscode/settings.json
 
 backend/package-lock.json
+backend/uploads
 
 markdown.md
 ui_reference
