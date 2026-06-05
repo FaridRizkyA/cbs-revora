@@ -6,10 +6,10 @@ INSERT INTO tbl_roles (
     created_date,
     created_by
 ) VALUES
-    ('2a2b8d3e-1b1c-4d63-b7f2-0f34c64dcf01', 'ADMIN', 'Administrator sistem dengan akses penuh.', 'Y', '2026-01-01 08:00:00', '0f1e2d3c-4b5a-49c8-8d7e-6f5a4b3c2d10'),
-    ('5c9d1b83-4e71-4d8f-9f84-3c9a1b9fcb02', 'STAFF', 'Staff koperasi untuk pengelolaan operasional.', 'Y', '2026-01-01 08:00:00', '0f1e2d3c-4b5a-49c8-8d7e-6f5a4b3c2d10'),
-    ('7d8f2a91-23ab-4569-8a90-7d12cb34ee03', 'CASHIER', 'Kasir untuk transaksi penjualan harian.', 'Y', '2026-01-01 08:00:00', '0f1e2d3c-4b5a-49c8-8d7e-6f5a4b3c2d10'),
-    ('9e4a6c71-8f02-4c11-9e7d-2b1c4f5a6d04', 'MEMBER', 'Anggota koperasi kampus.', 'Y', '2026-01-01 08:00:00', '0f1e2d3c-4b5a-49c8-8d7e-6f5a4b3c2d10')
+    ('a7d0c449-567b-422d-b0a2-e46628cdd49f', 'ADMIN', 'Administrator sistem dengan akses penuh.', 'Y', '2026-01-01 08:00:00', '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'),
+    ('9288fe0f-4cfc-461b-921f-8da51d7f0c0b', 'STAFF', 'Staff koperasi untuk pengelolaan operasional.', 'Y', '2026-01-01 08:00:00', '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'),
+    ('fc38822b-bab5-4ced-b49e-2b1d3560582f', 'CASHIER', 'Kasir untuk transaksi penjualan harian.', 'Y', '2026-01-01 08:00:00', '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'),
+    ('52870eef-332d-4c94-be67-92570b4633f3', 'MEMBER', 'Anggota koperasi kampus.', 'Y', '2026-01-01 08:00:00', '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc')
 ON CONFLICT (role_name) DO UPDATE SET
     description = EXCLUDED.description,
     is_active = EXCLUDED.is_active,

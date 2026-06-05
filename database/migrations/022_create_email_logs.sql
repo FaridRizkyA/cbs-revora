@@ -12,6 +12,8 @@ CREATE TABLE tbl_email_logs (
 
     sent_date TIMESTAMP,
     failed_reason TEXT,
+    attempt_count INT NOT NULL DEFAULT 0,
+    next_retry_at TIMESTAMP,
 
     reference_table VARCHAR(100),
     reference_id UUID,

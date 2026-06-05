@@ -7,6 +7,9 @@ CREATE TABLE tbl_shu_distributions (
     member_total_spending NUMERIC(15, 2) NOT NULL DEFAULT 0,
     spending_percentage NUMERIC(8, 4) NOT NULL DEFAULT 0,
 
+    eligible_shu_usaha BOOLEAN NOT NULL DEFAULT TRUE,
+    shu_belanja_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    shu_usaha_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
     shu_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
 
     distribution_status VARCHAR(30) NOT NULL DEFAULT 'CALCULATED',
@@ -44,6 +47,12 @@ CREATE TABLE tbl_shu_distributions (
 
     CONSTRAINT chk_shu_distributions_amount
         CHECK (shu_amount >= 0),
+
+    CONSTRAINT chk_shu_distributions_shu_belanja
+        CHECK (shu_belanja_amount >= 0),
+
+    CONSTRAINT chk_shu_distributions_shu_usaha
+        CHECK (shu_usaha_amount >= 0),
 
     CONSTRAINT chk_shu_distributions_status
         CHECK (distribution_status IN ('CALCULATED', 'DISTRIBUTED', 'CANCELLED')),

@@ -9,6 +9,9 @@ CREATE TABLE tbl_stock_movements (
 
     reason TEXT,
     notes TEXT,
+    source_type VARCHAR(40),
+    source_id UUID,
+    source_item_id UUID,
 
     movement_date TIMESTAMP NOT NULL DEFAULT NOW(),
 
@@ -46,3 +49,9 @@ CREATE TABLE tbl_stock_movements (
             OR reason IS NOT NULL
         )
 );
+
+CREATE INDEX IF NOT EXISTS idx_stock_movements_source_type_id
+    ON tbl_stock_movements(source_type, source_id);
+
+CREATE INDEX IF NOT EXISTS idx_stock_movements_source_item_id
+    ON tbl_stock_movements(source_item_id);

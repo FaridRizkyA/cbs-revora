@@ -11,28 +11,28 @@ INSERT INTO tbl_sale_items (
     created_by
 ) VALUES
     (
-        'a1111111-aaaa-4aaa-8aaa-111111111111',
-        '91111111-aaaa-4aaa-8aaa-111111111111',
-        '8b2c7e46-9fd0-43b8-87e6-5f4b3c2d1e68',
-        'b41507df-2869-4c41-9003-e2d4cfba0157',
+        '3a91e216-09af-4761-a0ab-efcf1f58cc6c',
+        '7a707f99-d9f3-4e2e-91ab-aed33a46c0d4',
+        '0ca9e2c5-28fe-4568-bb32-5e64f3d81828',
+        '794807a4-fb32-4c99-9e99-4a2ece3066f2',
         3,
         7000.00,
         21000.00,
         'Y',
         '2026-01-03 09:00:00',
-        '2b8c7d6e-5f4a-43b2-a1c0-e9f8a7b6c512'
+        'c6f1a22e-1f65-4355-be54-69ae3d326457'
     ),
     (
-        'b2222222-bbbb-4bbb-8bbb-222222222222',
-        '91111111-aaaa-4aaa-8aaa-111111111111',
-        'ad4e9068-b1f2-45da-89a8-7b6d5e4f3a80',
-        'd63729f1-4a8b-4e63-8225-a4f6e1dc2379',
+        '659af12d-5f1c-400b-a7d6-f43048d88e53',
+        '7a707f99-d9f3-4e2e-91ab-aed33a46c0d4',
+        '811ef873-c921-4b88-a497-129d53b76987',
+        'a74cf853-82b6-485d-a7db-5a47f902daf7',
         2,
         5000.00,
         10000.00,
         'Y',
         '2026-01-03 09:00:00',
-        '2b8c7d6e-5f4a-43b2-a1c0-e9f8a7b6c512'
+        'c6f1a22e-1f65-4355-be54-69ae3d326457'
     )
 ON CONFLICT (id_sale_item) DO UPDATE SET
     id_sale = EXCLUDED.id_sale,

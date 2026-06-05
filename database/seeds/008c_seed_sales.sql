@@ -17,10 +17,10 @@ INSERT INTO tbl_sales (
     created_by
 ) VALUES
     (
-        '91111111-aaaa-4aaa-8aaa-111111111111',
+        '7a707f99-d9f3-4e2e-91ab-aed33a46c0d4',
         'STO/20260103/S/00001',
-        '3c7d2f91-4a8b-4e63-b2f1-0a9c8d7e6f13',
-        '2b8c7d6e-5f4a-43b2-a1c0-e9f8a7b6c512',
+        '7ab2edb0-b27c-44bb-bf5e-bfedaa9458b4',
+        'c6f1a22e-1f65-4355-be54-69ae3d326457',
         'MEMBER',
         31000.00,
         1000.00,
@@ -32,7 +32,7 @@ INSERT INTO tbl_sales (
         'Seed sale for stock out document testing',
         'Y',
         '2026-01-03 09:00:00',
-        '2b8c7d6e-5f4a-43b2-a1c0-e9f8a7b6c512'
+        'c6f1a22e-1f65-4355-be54-69ae3d326457'
     )
 ON CONFLICT (sale_number) DO UPDATE SET
     id_member = EXCLUDED.id_member,

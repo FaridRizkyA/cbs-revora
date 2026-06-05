@@ -1,16 +1,13 @@
 CREATE TABLE tbl_members (
     id_member UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    id_user UUID,
+    id_user UUID UNIQUE,
+    id_profile UUID UNIQUE,
 
     member_code VARCHAR(50) NOT NULL UNIQUE,
-    full_name VARCHAR(150) NOT NULL,
-    phone_number VARCHAR(30),
-    address TEXT,
 
     join_date DATE NOT NULL DEFAULT CURRENT_DATE,
 
-    shopping_balance NUMERIC(15, 2) NOT NULL DEFAULT 0,
     total_spending NUMERIC(15, 2) NOT NULL DEFAULT 0,
 
     is_active CHAR(1) NOT NULL DEFAULT 'Y',
@@ -24,8 +21,9 @@ CREATE TABLE tbl_members (
         FOREIGN KEY (id_user)
         REFERENCES tbl_users(id_user),
 
-    CONSTRAINT chk_members_shopping_balance
-        CHECK (shopping_balance >= 0),
+    CONSTRAINT fk_members_profile
+        FOREIGN KEY (id_profile)
+        REFERENCES tbl_profiles(id_profile),
 
     CONSTRAINT chk_members_total_spending
         CHECK (total_spending >= 0),
