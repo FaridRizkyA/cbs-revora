@@ -187,77 +187,126 @@ const markReceiptEmailResult = async (client, job, status, reason = null) => {
 };
 
 const processOneReceiptEmailJob = async () => {
-  const client = await pool.connect();
+  let job = null;
+  let items = [];
 
+  // Phase 1: Lock and lease the job using a short-lived transaction
+  const client = await pool.connect();
   try {
     await client.query("BEGIN");
-
-    const job = await loadReceiptEmailJob(client);
+    job = await loadReceiptEmailJob(client);
+    
     if (!job) {
       await client.query("ROLLBACK");
-      return false;
+      return false; // Queue empty
     }
 
-    const items = await loadReceiptEmailItems(client, job.id_sale);
+    items = await loadReceiptEmailItems(client, job.id_sale);
+    
     if (items.length === 0) {
       await markReceiptEmailResult(client, job, "FAILED", "Receipt items were not found.");
       await client.query("COMMIT");
       return true;
     }
 
-    try {
-      await sendReceiptEmail({
-        to: job.email_to,
-        saleNumber: job.sale_number,
-        saleDate: job.sale_date,
-        cashierName: job.cashier_name || "-",
-        member: {
-          code: job.member_code || null,
-          name: job.member_name || job.member_email || "-",
-        },
-        paymentMethod: job.payment_method,
-        amountPaid: Number(job.amount_paid || 0),
-        changeAmount: Number(job.change_amount || 0),
-        discountAmount: Number(job.discount_amount || 0),
-        notes: job.notes || null,
-        items: items.map((item) => ({
-          productCode: item.product_code || null,
-          productName: item.product_name || item.product_code || "-",
-          quantity: Number(item.quantity || 0),
-          unitPrice: Number(item.unit_price || 0),
-          lineTotal: Number(item.subtotal || 0),
-        })),
-      });
+    // Acquire lease: increment attempt, set next retry to 1 minute in the future
+    await client.query(
+      `
+      UPDATE tbl_email_logs
+      SET
+        attempt_count = attempt_count + 1,
+        next_retry_at = NOW() + interval '1 minute',
+        last_modify_date = NOW(),
+        last_modify_by = $2
+      WHERE id_email_log = $1;
+      `,
+      [job.id_email_log, job.id_user]
+    );
 
-      await markReceiptEmailResult(client, job, "SENT", null);
-      await client.query("COMMIT");
-
-      try {
-        await logActivity(pool, null, {
-          idUser: job.id_user,
-          activityType: "SEND_RECEIPT_EMAIL",
-          tableName: "tbl_sales",
-          recordId: job.id_sale,
-          description: `Sent sale receipt ${job.sale_number} to ${job.email_to}.`,
-        });
-      } catch (logError) {
-        console.warn(`Failed to write receipt email activity for ${job.sale_number}:`, logError.message);
-      }
-
-      return true;
-    } catch (error) {
-      const nextStatus = Number(job.attempt_count || 0) + 1 >= MAX_ATTEMPTS ? "FAILED" : "PENDING";
-      await markReceiptEmailResult(client, job, nextStatus, error.message);
-      await client.query("COMMIT");
-      console.warn(`Receipt email job failed for ${job.sale_number}:`, error.message);
-      return true;
-    }
+    // Commit and release immediately so the connection isn't held during PDF generation
+    await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
-    console.warn("Receipt email worker error:", error.message);
+    console.error("Receipt email worker lease error:", error);
     return false;
   } finally {
     client.release();
+  }
+
+  // Phase 2: Do the heavy lifting outside any DB transaction
+  try {
+    await sendReceiptEmail({
+      to: job.email_to,
+      saleNumber: job.sale_number,
+      saleDate: job.sale_date,
+      cashierName: job.cashier_name || "-",
+      member: {
+        code: job.member_code || null,
+        name: job.member_name || job.member_email || "-",
+      },
+      paymentMethod: job.payment_method,
+      amountPaid: Number(job.amount_paid || 0),
+      changeAmount: Number(job.change_amount || 0),
+      discountAmount: Number(job.discount_amount || 0),
+      notes: job.notes || null,
+      items: items.map((item) => ({
+        productCode: item.product_code || null,
+        productName: item.product_name || item.product_code || "-",
+        quantity: Number(item.quantity || 0),
+        unitPrice: Number(item.unit_price || 0),
+        lineTotal: Number(item.subtotal || 0),
+      })),
+    });
+
+    // Phase 3a: Success - update status
+    await pool.query(
+      `
+      UPDATE tbl_email_logs
+      SET
+        email_status = 'SENT',
+        sent_date = NOW(),
+        failed_reason = NULL,
+        next_retry_at = NULL,
+        last_modify_date = NOW(),
+        last_modify_by = $2
+      WHERE id_email_log = $1;
+      `,
+      [job.id_email_log, job.id_user]
+    );
+
+    try {
+      await logActivity(pool, null, {
+        idUser: job.id_user,
+        activityType: "SEND_RECEIPT_EMAIL",
+        tableName: "tbl_sales",
+        recordId: job.id_sale,
+        description: `Sent sale receipt ${job.sale_number} to ${job.email_to}.`,
+      });
+    } catch (logError) {
+      console.warn(`Failed to write receipt email activity for ${job.sale_number}:`, logError.message);
+    }
+
+    return true;
+  } catch (error) {
+    // Phase 3b: Failure - update status
+    const isFinalAttempt = (Number(job.attempt_count || 0) + 1) >= MAX_ATTEMPTS;
+    const nextStatus = isFinalAttempt ? "FAILED" : "PENDING";
+    
+    await pool.query(
+      `
+      UPDATE tbl_email_logs
+      SET
+        email_status = $2,
+        failed_reason = $3,
+        last_modify_date = NOW(),
+        last_modify_by = $4
+      WHERE id_email_log = $1;
+      `,
+      [job.id_email_log, nextStatus, error.message, job.id_user]
+    ).catch(e => console.error("Failed to mark job as failed:", e));
+
+    console.warn(`Receipt email job failed for ${job.sale_number}:`, error.message);
+    return true; // Return true to continue processing the queue
   }
 };
 

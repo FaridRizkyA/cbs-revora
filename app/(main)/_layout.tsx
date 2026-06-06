@@ -1,7 +1,7 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, Text, useWindowDimensions, View } from "react-native";
+import { useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppNavigationSidebar, { NavigationItem } from "../../components/navigation/AppNavigationSidebar";
 import { fetchWithAuth } from "../../utils/fetchWithAuth";
@@ -9,10 +9,12 @@ import {
   canAccessMainApp,
   canAccessMainPath,
   canAccessCashierModeWithGrade,
-  clearAuthSession,
   getAuthSession,
   getRouteByRole,
+  isAuthSessionExpired,
+  logoutAuthSession,
   normalizeRole,
+  subscribeAuthSession,
 } from "../../utils/authSession";
 
 const SIDEBAR_LOGO = require("../../assets/images/ui/logo_horizontal.png");
@@ -30,7 +32,13 @@ const MAIN_MENU_ADMIN_STAFF: NavigationItem[] = [
     key: "stock-movements",
     label: "Stock Movements",
     icon: "activity",
-    children: ["Stock In", "Stock Out", "Sales Items", "Stock Adjustment"],
+    children: ["Stock In", "Stock Out", "Stock Adjustment"],
+  },
+  {
+    key: "sales",
+    label: "Sales",
+    icon: "shopping-cart",
+    children: ["Sales Items", "Sales Cost"],
   },
   {
     key: "people",
@@ -45,6 +53,7 @@ const MAIN_MENU_ADMIN_STAFF: NavigationItem[] = [
 ];
 
 const MAIN_MENU_CASHIER: NavigationItem[] = [
+  { key: "dashboard", label: "Dashboard", icon: "grid" },
   {
     key: "inventory",
     label: "Inventory",
@@ -55,7 +64,13 @@ const MAIN_MENU_CASHIER: NavigationItem[] = [
     key: "stock-movements",
     label: "Stock Movements",
     icon: "activity",
-    children: ["Stock In", "Stock Out", "Sales Items", "Stock Adjustment"],
+    children: ["Stock In", "Stock Out", "Stock Adjustment"],
+  },
+  {
+    key: "sales",
+    label: "Sales",
+    icon: "shopping-cart",
+    children: ["Sales Items", "Sales Cost"],
   },
   { key: "reports", label: "Reports", icon: "file-text" },
 ];
@@ -66,7 +81,8 @@ const routeBySubmenu = (child: string) => {
   if (child === "Product Batches") return "/(main)/inventory/batches";
   if (child === "Stock In") return "/(main)/stock-movements/stock-in";
   if (child === "Stock Out") return "/(main)/stock-movements/stock-out";
-  if (child === "Sales Items") return "/(main)/stock-movements/sales";
+  if (child === "Sales Items") return "/(main)/sales/items";
+  if (child === "Sales Cost") return "/(main)/sales/costs";
   if (child === "Stock Adjustment") return "/(main)/stock-movements/stock-adjustment";
   if (child === "Users") return "/(main)/users";
   if (child === "Members") return "/(main)/members";
@@ -97,11 +113,33 @@ export default function MainLayout() {
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({
     inventory: true,
     "stock-movements": true,
+    sales: true,
     people: true,
   });
 
   useEffect(() => {
     let active = true;
+    let expiryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleExpiryLogout = (expiresAt?: string | null) => {
+      if (expiryTimer) clearTimeout(expiryTimer);
+      if (!expiresAt) return;
+      const delay = new Date(expiresAt).getTime() - Date.now();
+      if (!Number.isFinite(delay)) return;
+      expiryTimer = setTimeout(async () => {
+        if (!active) return;
+        await logoutAuthSession();
+        router.replace("/login?expired=1");
+      }, Math.max(delay, 0));
+    };
+
+    const applySessionUser = (session: Awaited<ReturnType<typeof getAuthSession>>) => {
+      const nextRole = normalizeRole(session?.user?.role_name);
+      setRoleName(nextRole || "ADMIN");
+      setProfileName(session?.user?.full_name || "User");
+      setProfileImage(session?.user?.profile_image || null);
+      setStaffGradeName(session?.user?.staff_grade_name || null);
+    };
 
     const checkAuth = async () => {
       const session = await getAuthSession();
@@ -109,6 +147,11 @@ export default function MainLayout() {
 
       if (!session?.token || !nextRole) {
         router.replace("/login");
+        return;
+      }
+      if (isAuthSessionExpired(session)) {
+        await logoutAuthSession();
+        router.replace("/login?expired=1");
         return;
       }
 
@@ -126,10 +169,8 @@ export default function MainLayout() {
         return;
       }
 
-      setRoleName(nextRole);
-      setProfileName(session?.user?.full_name || "User");
-      setProfileImage(session?.user?.profile_image || null);
-      setStaffGradeName(session?.user?.staff_grade_name || null);
+      applySessionUser(session);
+      scheduleExpiryLogout(session.expires_at);
       setHasMemberAccess(false);
       setReady(true);
 
@@ -146,8 +187,15 @@ export default function MainLayout() {
       router.replace("/login");
     });
 
+    const unsubscribe = subscribeAuthSession((session) => {
+      if (!active || !session?.user) return;
+      applySessionUser(session);
+    });
+
     return () => {
       active = false;
+      if (expiryTimer) clearTimeout(expiryTimer);
+      unsubscribe();
     };
   }, [pathname, router]);
 
@@ -169,8 +217,9 @@ export default function MainLayout() {
     if (pathname === "/(main)/inventory/batches") return "inventory:Product Batches";
     if (pathname === "/(main)/stock-movements/stock-in") return "stock-movements:Stock In";
     if (pathname === "/(main)/stock-movements/stock-out") return "stock-movements:Stock Out";
-    if (pathname === "/(main)/stock-movements/sales") return "stock-movements:Sales Items";
     if (pathname === "/(main)/stock-movements/stock-adjustment") return "stock-movements:Stock Adjustment";
+    if (pathname === "/(main)/sales/items" || pathname === "/(main)/stock-movements/sales") return "sales:Sales Items";
+    if (pathname === "/(main)/sales/costs") return "sales:Sales Cost";
     if (pathname.startsWith("/(main)/users")) return "people:Users";
     if (pathname.startsWith("/(main)/members")) return "people:Members";
     if (pathname.startsWith("/(main)/staffs")) return "people:Staffs";
@@ -183,7 +232,7 @@ export default function MainLayout() {
 
   const handleLogout = async () => {
     setProfileMenuOpen(false);
-    await clearAuthSession();
+    await logoutAuthSession();
     router.replace("/login");
   };
 
@@ -194,8 +243,11 @@ export default function MainLayout() {
   const isStockMovementPath =
     pathname === "/(main)/stock-movements/stock-in" ||
     pathname === "/(main)/stock-movements/stock-out" ||
-    pathname === "/(main)/stock-movements/sales" ||
     pathname === "/(main)/stock-movements/stock-adjustment";
+  const isSalesPath =
+    pathname === "/(main)/sales/items" ||
+    pathname === "/(main)/sales/costs" ||
+    pathname === "/(main)/stock-movements/sales";
   const isPeoplePath =
     pathname.startsWith("/(main)/users") ||
     pathname.startsWith("/(main)/members") ||
@@ -223,6 +275,7 @@ export default function MainLayout() {
                 (item.key === "dashboard" && pathname === "/(main)/dashboard") ||
                 (item.key === "inventory" && isInventoryPath) ||
                 (item.key === "stock-movements" && isStockMovementPath) ||
+                (item.key === "sales" && isSalesPath) ||
                 (item.key === "people" && isPeoplePath) ||
                 (item.key === "reports" && pathname.startsWith("/(main)/reports")) ||
                 (item.key === "shu" && pathname.startsWith("/(main)/shu")) ||
@@ -231,7 +284,7 @@ export default function MainLayout() {
             }))}
             expandedMenus={expandedMenus}
             onMenuPress={(item) => {
-              if (item.key === "inventory" || item.key === "stock-movements" || item.key === "people") {
+              if (item.key === "inventory" || item.key === "stock-movements" || item.key === "sales" || item.key === "people") {
                 setExpandedMenus((current) => ({
                   ...current,
                   [item.key]: !current[item.key],

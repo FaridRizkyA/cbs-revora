@@ -2,6 +2,7 @@ import {
   buildReportDetailPrintHtml,
   buildReportPdfFileName,
   buildReportTablePrintHtml,
+  downloadReportTableExcel,
   ReportMetaItem,
   ReportTableColumn,
 } from "../shared/ReportPrintTemplate";
@@ -142,6 +143,24 @@ export const buildProductTableReportPrintHtml = ({
   meta = [],
 }: ProductReportOptions) =>
   buildReportTablePrintHtml({
+    title: "Product Report",
+    subtitle: "Inventory product master data",
+    reportKey: REPORT_KEY,
+    generatedAt,
+    generatedBy,
+    meta: [{ label: "Total Rows", value: rows.length }, ...meta],
+    rows,
+    columns: productTableColumns,
+    emptyText: "No product data found.",
+  });
+
+export const downloadProductTableReportExcel = ({
+  rows,
+  generatedAt = new Date(),
+  generatedBy,
+  meta = [],
+}: ProductReportOptions) =>
+  downloadReportTableExcel({
     title: "Product Report",
     subtitle: "Inventory product master data",
     reportKey: REPORT_KEY,

@@ -1,14 +1,16 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import DatePickerField from "../../../components/inventory/DatePickerField";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
 import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu";
+import { InventoryResultModal } from "../../../components/inventory/ActionModals";
 import SendEmailModal from "../../../components/modals/SendEmailModal";
 import {
   buildGenericReportPrintHtml,
+  downloadGenericReportExcel,
   GenericReportColumn,
   GenericReportRow,
 } from "../../../components/reports/generic/GenericReportPrintTemplate";
@@ -114,6 +116,17 @@ export default function ReportsScreen() {
   const [generatedBy, setGeneratedBy] = useState<string | null>(null);
 
   const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [resultStatus, setResultStatus] = useState<"success" | "error">("success");
+  const [resultTitle, setResultTitle] = useState("");
+  const [resultMessage, setResultMessage] = useState("");
+
+  const showResult = (status: "success" | "error", title: string, message: string) => {
+    setResultStatus(status);
+    setResultTitle(title);
+    setResultMessage(message);
+    setResultModalOpen(true);
+  };
 
   useEffect(() => {
     getAuthSession()
@@ -180,11 +193,11 @@ export default function ReportsScreen() {
 
   const handleGenerate = async () => {
     if (!sourceKey) {
-      Alert.alert("Select data source", "Please select a report data source first.");
+      showResult("error", "Select Data Source", "Please select a report data source first.");
       return;
     }
     if (startDate && endDate && startDate > endDate) {
-      Alert.alert("Invalid date range", "Start date cannot be later than end date.");
+      showResult("error", "Invalid Date Range", "Start date cannot be later than end date.");
       return;
     }
 
@@ -229,7 +242,33 @@ export default function ReportsScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to export report.");
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to export report.");
+    }
+  };
+
+  const handleExportExcel = async () => {
+    if (!result) return;
+
+    try {
+      await downloadGenericReportExcel({
+        reportKey: `reports-${result.source.key}`,
+        title: `${result.source.label} Report`,
+        subtitle: "Generated from selected data source and date range",
+        columns: result.columns,
+        rows: result.rows,
+        generatedAt: new Date(),
+        generatedBy,
+        meta: [
+          { label: "Data Source", value: result.source.label },
+          { label: "Date Range", value: formatDateRangeLabel(result.filters.created_date_from, result.filters.created_date_to) },
+        ],
+      });
+      await logClientActivity({
+        activityType: "EXPORT_EXCEL",
+        description: `Exported generated ${result.source.label} report as Excel.`,
+      });
+    } catch (error) {
+      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export report as Excel.");
     }
   };
 
@@ -281,9 +320,9 @@ export default function ReportsScreen() {
         description: `Sent ${result.source.label} report via email.`,
       });
 
-      Alert.alert("Success", "Email sent successfully.");
+      showResult("success", "Email Sent", "Email sent successfully.");
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to send email.");
+      showResult("error", "Email Failed", error instanceof Error ? error.message : "Failed to send email.");
     }
   };
 
@@ -350,7 +389,7 @@ export default function ReportsScreen() {
           </View>
           <ExportDropdownMenu
             onExportPdf={handleExport}
-            onExportExcel={() => Alert.alert("Export Excel", "This feature will be implemented soon.")}
+            onExportExcel={handleExportExcel}
             onSendEmail={() => setEmailModalOpen(true)}
           />
         </View>
@@ -377,6 +416,13 @@ export default function ReportsScreen() {
         onClose={() => setEmailModalOpen(false)}
         reportTitle={result ? `${result.source.label} Report` : "Report"}
         onSend={handleSendEmailReport}
+      />
+      <InventoryResultModal
+        visible={resultModalOpen}
+        status={resultStatus}
+        title={resultTitle}
+        message={resultMessage}
+        onClose={() => setResultModalOpen(false)}
       />
     </ScrollView>
   );

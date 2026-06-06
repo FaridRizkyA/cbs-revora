@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import IconFilterButton from "../../../components/inventory/IconFilterButton";
@@ -16,6 +16,7 @@ import SendEmailModal from "../../../components/modals/SendEmailModal";
 import {
   buildSupplierDetailReportPrintHtml,
   buildSupplierTableReportPrintHtml,
+  downloadSupplierTableReportExcel,
 } from "../../../components/reports/suppliers/SupplierReportPrintTemplate";
 import { canManageInventoryMaster, getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { API_BASE_URL } from "../../../utils/api";
@@ -97,6 +98,13 @@ export default function SuppliersScreen() {
   const [resultStatus, setResultStatus] = useState<"success" | "error">("success");
   const [resultTitle, setResultTitle] = useState("");
   const [resultMessage, setResultMessage] = useState("");
+
+  const showResult = (status: "success" | "error", title: string, message: string) => {
+    setResultStatus(status);
+    setResultTitle(title);
+    setResultMessage(message);
+    setResultModalOpen(true);
+  };
 
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [emailTarget, setEmailTarget] = useState<"table" | "detail">("table");
@@ -436,7 +444,25 @@ export default function SuppliersScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print supplier report."); 
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print supplier report."); 
+    }
+  };
+
+  const handleExportSupplierExcel = async () => {
+    try {
+      await downloadSupplierTableReportExcel({
+        rows: activeRows,
+        generatedAt: new Date(),
+        generatedBy: roleName,
+        meta: buildCurrentSupplierReportMeta(),
+      });
+      await logClientActivity({
+        activityType: "EXPORT_EXCEL",
+        tableName: "tbl_suppliers",
+        description: "Exported supplier report as Excel.",
+      });
+    } catch (error) {
+      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export supplier report.");
     }
   };
 
@@ -453,7 +479,7 @@ export default function SuppliersScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print supplier detail."); 
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print supplier detail."); 
     }
   };
 
@@ -637,7 +663,7 @@ export default function SuppliersScreen() {
           <View style={styles.headerActionRow}>
             <ExportDropdownMenu
               onExportPdf={handlePrintSupplierTable}
-              onExportExcel={() => Alert.alert("Export Excel", "This feature will be implemented soon.")}       
+              onExportExcel={handleExportSupplierExcel}
               onSendEmail={() => {
                 setEmailTarget("table");
                 setEmailModalOpen(true);

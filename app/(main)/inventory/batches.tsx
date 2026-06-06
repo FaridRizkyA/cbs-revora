@@ -1,6 +1,6 @@
 import * as Print from "expo-print";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import IconFilterButton from "../../../components/inventory/IconFilterButton";
@@ -9,11 +9,13 @@ import ActiveFilterBadges from "../../../components/inventory/ActiveFilterBadges
 import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
 import InventoryRowActionsMenu from "../../../components/inventory/InventoryRowActionsMenu";
 import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu";
+import { InventoryResultModal } from "../../../components/inventory/ActionModals";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import SendEmailModal from "../../../components/modals/SendEmailModal";
 import {
   buildBatchDetailReportPrintHtml,
   buildBatchTableReportPrintHtml,
+  downloadBatchTableReportExcel,
 } from "../../../components/reports/batches/BatchReportPrintTemplate";
 import { API_BASE_URL } from "../../../utils/api";
 import { logClientActivity } from "../../../utils/activityLog";
@@ -75,6 +77,17 @@ export default function BatchesScreen() {
 
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [emailTarget, setEmailTarget] = useState<"table" | "detail">("table");
+  const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [resultStatus, setResultStatus] = useState<"success" | "error">("success");
+  const [resultTitle, setResultTitle] = useState("");
+  const [resultMessage, setResultMessage] = useState("");
+
+  const showResult = (status: "success" | "error", title: string, message: string) => {
+    setResultStatus(status);
+    setResultTitle(title);
+    setResultMessage(message);
+    setResultModalOpen(true);
+  };
 
   const [SupplierFilter, setSupplierFilter] = useState("ALL");
   const [draftSupplierFilter, setDraftSupplierFilter] = useState("ALL");
@@ -271,9 +284,15 @@ export default function BatchesScreen() {
         description: "Sent product batch report via email.",
       });
 
-      Alert.alert("Success", "Email has been sent successfully.");
+      setResultStatus("success");
+      setResultTitle("Email Sent");
+      setResultMessage("Report has been sent successfully.");
+      setResultModalOpen(true);
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "An error occurred.");
+      setResultStatus("error");
+      setResultTitle("Send Failed");
+      setResultMessage(error instanceof Error ? error.message : "An error occurred.");
+      setResultModalOpen(true);
     }
   };
 
@@ -287,7 +306,25 @@ export default function BatchesScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print batch report.");    
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print batch report.");    
+    }
+  };
+
+  const handleExportBatchExcel = async () => {
+    try {
+      await downloadBatchTableReportExcel({
+        rows: Array.isArray(sortedBatches) ? sortedBatches : [],
+        generatedAt: new Date(),
+        generatedBy: roleName,
+        meta: buildCurrentBatchReportMeta(),
+      });
+      await logClientActivity({
+        activityType: "EXPORT_EXCEL",
+        tableName: "tbl_product_batches",
+        description: "Exported product batch report as Excel.",
+      });
+    } catch (error) {
+      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export batch report.");
     }
   };
 
@@ -302,7 +339,7 @@ export default function BatchesScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print batch detail.");    
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print batch detail.");    
     }
   };
 
@@ -433,7 +470,7 @@ export default function BatchesScreen() {
         </View>
         <ExportDropdownMenu
           onExportPdf={handlePrintBatchTable}
-          onExportExcel={() => Alert.alert("Export Excel", "This feature will be implemented soon.")}
+          onExportExcel={handleExportBatchExcel}
           onSendEmail={() => {
             setEmailTarget("table");
             setEmailModalOpen(true);
@@ -492,11 +529,11 @@ export default function BatchesScreen() {
         visible={filterOpen}
         onApply={() => {
           if (draftDateInStart && draftDateInEnd && toDayNumber(draftDateInEnd) < toDayNumber(draftDateInStart)) {
-            Alert.alert("Validation", "End Date In harus sama atau setelah Start Date In.");
+            showResult("error", "Validation", "End Date In must be the same as or after Start Date In.");
             return;
           }
           if (draftExpStart && draftExpEnd && toDayNumber(draftExpEnd) < toDayNumber(draftExpStart)) {
-            Alert.alert("Validation", "End Exp Date harus sama atau setelah Start Exp Date.");
+            showResult("error", "Validation", "End Exp Date must be the same as or after Start Exp Date.");
             return;
           }
           setSupplierFilter(draftSupplierFilter);
@@ -642,6 +679,13 @@ export default function BatchesScreen() {
         onClose={() => setEmailModalOpen(false)}
         reportTitle={emailTarget === "table" ? "Product Batch List" : "Batch Detail"}
         onSend={handleSendEmailReport}
+      />
+      <InventoryResultModal
+        visible={resultModalOpen}
+        status={resultStatus}
+        title={resultTitle}
+        message={resultMessage}
+        onClose={() => setResultModalOpen(false)}
       />
     </ScrollView>
   );

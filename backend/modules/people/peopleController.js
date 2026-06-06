@@ -5,7 +5,8 @@ const multer = require("multer");
 const pool = require("../../config/db");
 const { logActivity, logActivitySafe } = require("../../utils/activityLogger");
 
-const PASSWORD_MIN_LENGTH = 6;
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_POLICY_MESSAGE = `password must be at least ${PASSWORD_MIN_LENGTH} characters and include uppercase letters, lowercase letters, and numbers.`;
 const MEMBER_CODE_LOCK_KEY = 830001;
 const STAFF_CODE_LOCK_KEY = 830002;
 const STAFF_GRADE_CODE_LOCK_KEY = 830003;
@@ -75,6 +76,18 @@ const validatePhoneNumber = (value) => {
     throw new Error("phone_number must contain 3 to 20 digits.");
   }
   return text;
+};
+
+const validatePasswordPolicy = (password, fieldName = "password") => {
+  const value = String(password || "");
+  if (
+    value.length < PASSWORD_MIN_LENGTH ||
+    !/[A-Z]/.test(value) ||
+    !/[a-z]/.test(value) ||
+    !/[0-9]/.test(value)
+  ) {
+    throw new Error(PASSWORD_POLICY_MESSAGE.replace("password", fieldName));
+  }
 };
 
 const assertUniqueEmail = async (client, email, ignoreUserId = null) => {
@@ -381,8 +394,10 @@ const changeUserPassword = async (req, res) => {
   if (!currentPassword || !newPassword || !confirmPassword) {
     return res.status(400).json({ message: "Current password, new password, and confirmation are required." });
   }
-  if (newPassword.length < PASSWORD_MIN_LENGTH) {
-    return res.status(400).json({ message: `New password must be at least ${PASSWORD_MIN_LENGTH} characters.` });
+  try {
+    validatePasswordPolicy(newPassword, "New password");
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
   }
   if (newPassword !== confirmPassword) {
     return res.status(400).json({ message: "New password confirmation does not match." });
@@ -586,7 +601,7 @@ const createUser = async (req, res) => {
     const actorId = req.body.actor_id || req.body.id_user || null;
 
     if (!email) throw new Error("email is required.");
-    if (password.length < PASSWORD_MIN_LENGTH) throw new Error(`password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
+    validatePasswordPolicy(password);
 
     await client.query("BEGIN");
     await assertUniqueEmail(client, email);
@@ -626,7 +641,7 @@ const updateUser = async (req, res) => {
     const actorId = req.body.actor_id || req.body.id_user || null;
 
     if (!email) throw new Error("email is required.");
-    if (password && password.length < PASSWORD_MIN_LENGTH) throw new Error(`password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
+    if (password) validatePasswordPolicy(password);
 
     await client.query("BEGIN");
     await assertUniqueEmail(client, email, idUser);

@@ -224,44 +224,102 @@ const buildEmailPdfHtml = ({
 const buildExcelBuffer = async (title, columns, rows, meta) => {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("Report");
+  workbook.creator = "CBS Revora";
+  workbook.created = new Date();
   let currentRow = 1;
 
-  // Add Title
-  worksheet.getCell(`A${currentRow}`).value = title;
-  worksheet.getCell(`A${currentRow}`).font = { size: 16, bold: true };
-  currentRow += 2;
+  const safeColumns = Array.isArray(columns) ? columns : [];
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const columnCount = Math.max(safeColumns.length, 1);
+
+  if (fs.existsSync(CBS_LOGO_PATH)) {
+    const cbsLogoId = workbook.addImage({ filename: CBS_LOGO_PATH, extension: "png" });
+    worksheet.addImage(cbsLogoId, { tl: { col: 0, row: 0 }, ext: { width: 52, height: 52 } });
+  }
+  if (fs.existsSync(REVORA_LOGO_PATH)) {
+    const revoraLogoId = workbook.addImage({ filename: REVORA_LOGO_PATH, extension: "png" });
+    worksheet.addImage(revoraLogoId, { tl: { col: 1, row: 0.15 }, ext: { width: 190, height: 44 } });
+  }
+
+  worksheet.mergeCells(1, Math.max(columnCount - 2, 1), 1, columnCount);
+  worksheet.mergeCells(2, Math.max(columnCount - 2, 1), 2, columnCount);
+  worksheet.getCell(1, Math.max(columnCount - 2, 1)).value = title || "Report";
+  worksheet.getCell(1, Math.max(columnCount - 2, 1)).font = { size: 20, bold: true, color: { argb: "FF0F2852" } };
+  worksheet.getCell(1, Math.max(columnCount - 2, 1)).alignment = { horizontal: "right", vertical: "middle" };
+  worksheet.getRow(1).height = 28;
+  worksheet.getRow(2).height = 22;
+  currentRow = 4;
 
   // Add Meta
-  if (meta && meta.length > 0) {
-    meta.forEach((m) => {
+  const metaItems = Array.isArray(meta) ? meta : [];
+  if (metaItems.length > 0) {
+    metaItems.forEach((m) => {
       worksheet.getCell(`A${currentRow}`).value = m.label;
-      worksheet.getCell(`A${currentRow}`).font = { bold: true };
-      worksheet.getCell(`B${currentRow}`).value = m.value;
+      worksheet.getCell(`A${currentRow}`).font = { bold: true, color: { argb: "FF334155" } };
+      worksheet.getCell(`A${currentRow}`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEAF0F7" } };
+      worksheet.getCell(`B${currentRow}`).value = m.value ?? "-";
+      if (columnCount > 2) worksheet.mergeCells(currentRow, 2, currentRow, columnCount);
       currentRow++;
     });
     currentRow++;
   }
 
   // Add Headers
-  worksheet.getRow(currentRow).values = columns.map(c => c.title);
-  worksheet.getRow(currentRow).font = { bold: true };
-  worksheet.getRow(currentRow).alignment = { horizontal: 'center' };
-  columns.forEach((c, i) => {
-    worksheet.getColumn(i + 1).width = Math.max(c.title.length + 5, 15);
+  const headerRow = worksheet.getRow(currentRow);
+  safeColumns.forEach((c, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = c.title;
+    cell.font = { bold: true, color: { argb: "FF0F172A" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E2F3" } };
+    cell.alignment = { horizontal: c.align || "left", vertical: "middle" };
+    cell.border = {
+      top: { style: "thin", color: { argb: "FFB7C4D4" } },
+      left: { style: "thin", color: { argb: "FFB7C4D4" } },
+      bottom: { style: "thin", color: { argb: "FFB7C4D4" } },
+      right: { style: "thin", color: { argb: "FFB7C4D4" } },
+    };
+    worksheet.getColumn(i + 1).width = Number(c.width) || Math.max(String(c.title || "").length + 5, 15);
   });
   currentRow++;
 
   // Add Rows
-  rows.forEach((row) => {
-    const rowValues = columns.map(c => {
+  safeRows.forEach((row) => {
+    const excelRow = worksheet.getRow(currentRow);
+    safeColumns.forEach((c, i) => {
       const val = row[c.key];
-      return val !== null && val !== undefined ? val : "-";
+      const cell = excelRow.getCell(i + 1);
+      cell.value = val !== null && val !== undefined && val !== "" ? val : "-";
+      cell.alignment = { horizontal: c.align || "left", vertical: "top", wrapText: true };
+      if (typeof val === "number") cell.numFmt = "#,##0";
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFB7C4D4" } },
+        left: { style: "thin", color: { argb: "FFB7C4D4" } },
+        bottom: { style: "thin", color: { argb: "FFB7C4D4" } },
+        right: { style: "thin", color: { argb: "FFB7C4D4" } },
+      };
     });
-    worksheet.getRow(currentRow).values = rowValues;
     currentRow++;
   });
 
   return await workbook.xlsx.writeBuffer();
+};
+
+const exportExcelReport = async (req, res) => {
+  const { title, columns, rows, meta, file_name } = req.body;
+  if (!Array.isArray(columns) || !Array.isArray(rows)) {
+    return res.status(400).json({ message: "columns and rows are required." });
+  }
+
+  try {
+    const buffer = await buildExcelBuffer(title || "Report", columns, rows, meta);
+    const filename = sanitizeAttachmentFileName(file_name, `${(title || "report").toLowerCase().replace(/\s+/g, "_")}_${Date.now()}.xlsx`);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    console.error("Excel export error:", error);
+    res.status(500).json({ message: "Failed to export Excel.", error: error.message });
+  }
 };
 
 const buildPdfBuffer = async (title, columns, rows, meta) => {
@@ -362,12 +420,14 @@ const sendEmailReport = async (req, res) => {
     });
 
     const logoPath = path.join(__dirname, "..", "..", "..", "assets", "images", "ui", "logo_horizontal.png");
+    const cbsLogoPath = path.join(__dirname, "..", "..", "..", "assets", "images", "ui", "logo_koperasi_cbs.png");
     await sendEmail({
       to: recipient_email,
       subject: subject || title || "Data Report",
       html,
       attachments: [
         { filename, content: attachmentBuffer, contentType },
+        { filename: "logo_cbs.png", path: cbsLogoPath, cid: "cbs-logo" },
         { filename: "logo.png", path: logoPath, cid: "revora-logo" },
       ],
     });
@@ -379,4 +439,4 @@ const sendEmailReport = async (req, res) => {
   }
 };
 
-module.exports = { sendEmailReport };
+module.exports = { sendEmailReport, exportExcelReport };

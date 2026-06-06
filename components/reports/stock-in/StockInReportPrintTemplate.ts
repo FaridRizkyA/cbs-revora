@@ -2,6 +2,7 @@ import {
   buildReportDetailPrintHtml,
   buildReportPdfFileName,
   buildReportTablePrintHtml,
+  downloadReportTableExcel,
   ReportMetaItem,
   ReportTableColumn,
 } from "../shared/ReportPrintTemplate";
@@ -157,6 +158,24 @@ export const buildStockInTableReportPrintHtml = ({
   meta = [],
 }: StockInReportOptions) =>
   buildReportTablePrintHtml({
+    title: "Stock In Report",
+    subtitle: "Inventory stock in documents",
+    reportKey: REPORT_KEY,
+    generatedAt,
+    generatedBy,
+    meta: [{ label: "Total Rows", value: rows.length }, ...meta],
+    rows,
+    columns: stockInTableColumns,
+    emptyText: "No stock in data found.",
+  });
+
+export const downloadStockInTableReportExcel = ({
+  rows,
+  generatedAt = new Date(),
+  generatedBy,
+  meta = [],
+}: StockInReportOptions) =>
+  downloadReportTableExcel({
     title: "Stock In Report",
     subtitle: "Inventory stock in documents",
     reportKey: REPORT_KEY,

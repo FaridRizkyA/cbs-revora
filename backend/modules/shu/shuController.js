@@ -130,8 +130,8 @@ const calculateShuData = async (client, period) => {
     client.query(
       `
       SELECT
-        COALESCE(SUM(CASE WHEN entry_type = 'INCOME' THEN amount ELSE 0 END), 0)::float AS income_usaha_amount,
-        COALESCE(SUM(CASE WHEN entry_type = 'OUTCOME' THEN amount ELSE 0 END), 0)::float AS expense_usaha_amount
+        COALESCE(SUM(CASE WHEN entry_type = 'INCOME' THEN amount ELSE 0 END), 0)::float AS business_income_amount,
+        COALESCE(SUM(CASE WHEN entry_type = 'OUTCOME' THEN amount ELSE 0 END), 0)::float AS business_expense_amount
       FROM tbl_external_financial_entries
       WHERE is_active = 'Y'
         AND entry_date BETWEEN $1::date AND $2::date;
@@ -141,12 +141,15 @@ const calculateShuData = async (client, period) => {
     client.query(
       `
       SELECT
-        COALESCE(SUM(CASE WHEN entry_type = 'INCOME'  AND entry_source ILIKE 'BELANJA:%' THEN amount ELSE 0 END), 0)::float AS income_belanja_amount,
-        COALESCE(SUM(CASE WHEN entry_type = 'OUTCOME' AND entry_source ILIKE 'BELANJA:%' THEN amount ELSE 0 END), 0)::float AS expense_belanja_amount,
-        COALESCE(SUM(CASE WHEN entry_type = 'INCOME'  AND entry_source ILIKE 'USAHA:%' THEN amount ELSE 0 END), 0)::float AS income_usaha_amount,
-        COALESCE(SUM(CASE WHEN entry_type = 'OUTCOME' AND entry_source ILIKE 'USAHA:%' THEN amount ELSE 0 END), 0)::float AS expense_usaha_amount,
+        COALESCE(SUM(CASE WHEN entry_type = 'INCOME'  AND (entry_source ILIKE 'SALES:%' OR entry_source ILIKE 'BELANJA:%') THEN amount ELSE 0 END), 0)::float AS sales_income_amount,
+        COALESCE(SUM(CASE WHEN entry_type = 'OUTCOME' AND (entry_source ILIKE 'SALES:%' OR entry_source ILIKE 'BELANJA:%') THEN amount ELSE 0 END), 0)::float AS sales_cost_amount,
+        COALESCE(SUM(CASE WHEN entry_type = 'INCOME'  AND (entry_source ILIKE 'BUSINESS:%' OR entry_source ILIKE 'USAHA:%') THEN amount ELSE 0 END), 0)::float AS business_income_amount,
+        COALESCE(SUM(CASE WHEN entry_type = 'OUTCOME' AND (entry_source ILIKE 'BUSINESS:%' OR entry_source ILIKE 'USAHA:%') THEN amount ELSE 0 END), 0)::float AS business_expense_amount,
         COUNT(*) FILTER (
-          WHERE entry_source ILIKE 'BELANJA:%' OR entry_source ILIKE 'USAHA:%'
+          WHERE entry_source ILIKE 'SALES:%'
+             OR entry_source ILIKE 'BELANJA:%'
+             OR entry_source ILIKE 'BUSINESS:%'
+             OR entry_source ILIKE 'USAHA:%'
         )::int AS tagged_rows
       FROM tbl_external_financial_entries
       WHERE is_active = 'Y'
@@ -196,7 +199,7 @@ const calculateShuData = async (client, period) => {
         WHERE sm.is_active = 'Y'
           AND sm.movement_date::date BETWEEN $1::date AND $2::date
       )
-      SELECT COALESCE(SUM(expense_amount), 0)::float AS expense_belanja_amount
+      SELECT COALESCE(SUM(expense_amount), 0)::float AS sales_cost_amount
       FROM movement_loss;
       `,
       [start_date, end_date]
@@ -231,31 +234,31 @@ const calculateShuData = async (client, period) => {
   const tagged = taggedPathResult.rows[0] || {};
   const useTaggedSheet2Path = Number(tagged.tagged_rows || 0) > 0;
 
-  const incomeBelanja = useTaggedSheet2Path
-    ? parsePositiveAmount(tagged.income_belanja_amount)
+  const salesIncome = useTaggedSheet2Path
+    ? parsePositiveAmount(tagged.sales_income_amount)
     : parsePositiveAmount(salesProfitResult.rows[0]?.amount);
-  const expenseBelanja = useTaggedSheet2Path
-    ? parsePositiveAmount(tagged.expense_belanja_amount)
-    : parsePositiveAmount(expenseResult.rows[0]?.expense_belanja_amount);
+  const salesCost = useTaggedSheet2Path
+    ? parsePositiveAmount(tagged.sales_cost_amount)
+    : parsePositiveAmount(expenseResult.rows[0]?.sales_cost_amount);
 
-  const incomeUsaha = useTaggedSheet2Path
-    ? parsePositiveAmount(tagged.income_usaha_amount)
-    : parsePositiveAmount(extResult.rows[0]?.income_usaha_amount);
-  const expenseUsaha = useTaggedSheet2Path
-    ? parsePositiveAmount(tagged.expense_usaha_amount)
-    : parsePositiveAmount(extResult.rows[0]?.expense_usaha_amount);
+  const businessIncome = useTaggedSheet2Path
+    ? parsePositiveAmount(tagged.business_income_amount)
+    : parsePositiveAmount(extResult.rows[0]?.business_income_amount);
+  const businessExpense = useTaggedSheet2Path
+    ? parsePositiveAmount(tagged.business_expense_amount)
+    : parsePositiveAmount(extResult.rows[0]?.business_expense_amount);
 
-  const netBelanja = Math.max(0, incomeBelanja - expenseBelanja);
-  const netUsaha = Math.max(0, incomeUsaha - expenseUsaha);
+  const salesNet = Math.max(0, salesIncome - salesCost);
+  const businessNet = Math.max(0, businessIncome - businessExpense);
 
-  const managerCutBelanja = netBelanja * 0.1;
-  const managerCutUsaha = netUsaha * 0.1;
+  const salesManagerCut = salesNet * 0.1;
+  const businessManagerCut = businessNet * 0.1;
 
-  const shuBelanjaPool = Math.max(0, netBelanja - managerCutBelanja);
-  const shuUsahaPool = Math.max(0, netUsaha - managerCutUsaha);
+  const salesShuPool = Math.max(0, salesNet - salesManagerCut);
+  const businessShuPool = Math.max(0, businessNet - businessManagerCut);
 
-  const grossProfitDisplay = Math.max(0, incomeBelanja + incomeUsaha - expenseBelanja - expenseUsaha);
-  const totalManagerFund = managerCutBelanja + managerCutUsaha;
+  const grossProfitDisplay = Math.max(0, salesIncome + businessIncome - salesCost - businessExpense);
+  const totalManagerFund = salesManagerCut + businessManagerCut;
 
   const memberRows = memberSpendResult.rows.map((row) => ({
     id_member: row.id_member,
@@ -265,22 +268,22 @@ const calculateShuData = async (client, period) => {
   }));
 
   const totalMemberSpending = memberRows.reduce((sum, row) => sum + row.member_total_spending, 0);
-  const eligibleUsahaRows = memberRows.filter((row) => row.is_active === "Y");
-  const eligibleUsahaCount = eligibleUsahaRows.length;
-  const shuUsahaPerEligible = eligibleUsahaCount > 0 ? shuUsahaPool / eligibleUsahaCount : 0;
+  const eligibleBusinessRows = memberRows.filter((row) => row.is_active === "Y");
+  const eligibleBusinessCount = eligibleBusinessRows.length;
+  const businessShuPerEligible = eligibleBusinessCount > 0 ? businessShuPool / eligibleBusinessCount : 0;
 
   const memberDistributions = memberRows.map((row) => {
     const percentage = totalMemberSpending > 0 ? row.member_total_spending / totalMemberSpending : 0;
-    const shuBelanjaAmount = percentage * shuBelanjaPool;
+    const salesShuAmount = percentage * salesShuPool;
     const eligible = row.is_active === "Y";
-    const shuUsahaAmount = eligible ? shuUsahaPerEligible : 0;
-    const shuAmount = shuBelanjaAmount + shuUsahaAmount;
+    const businessShuAmount = eligible ? businessShuPerEligible : 0;
+    const shuAmount = salesShuAmount + businessShuAmount;
     return {
       ...row,
-      eligible_shu_usaha: eligible,
+      eligible_business_shu: eligible,
       spending_percentage: percentage,
-      shu_belanja_amount: shuBelanjaAmount,
-      shu_usaha_amount: shuUsahaAmount,
+      sales_shu_amount: salesShuAmount,
+      business_shu_amount: businessShuAmount,
       shu_amount: shuAmount,
     };
   });
@@ -299,19 +302,19 @@ const calculateShuData = async (client, period) => {
 
   return {
     snapshot: {
-      total_cooperative_income: incomeBelanja + incomeUsaha,
+      total_cooperative_income: salesIncome + businessIncome,
       total_member_spending: totalMemberSpending,
       gross_profit_display: grossProfitDisplay,
-      income_belanja_amount: incomeBelanja,
-      expense_belanja_amount: expenseBelanja,
-      net_belanja_amount: netBelanja,
-      manager_cut_belanja_amount: managerCutBelanja,
-      shu_belanja_pool_amount: shuBelanjaPool,
-      income_usaha_amount: incomeUsaha,
-      expense_usaha_amount: expenseUsaha,
-      net_usaha_amount: netUsaha,
-      manager_cut_usaha_amount: managerCutUsaha,
-      shu_usaha_pool_amount: shuUsahaPool,
+      sales_income_amount: salesIncome,
+      sales_cost_amount: salesCost,
+      sales_net_amount: salesNet,
+      sales_manager_cut_amount: salesManagerCut,
+      sales_shu_pool_amount: salesShuPool,
+      business_income_amount: businessIncome,
+      business_expense_amount: businessExpense,
+      business_net_amount: businessNet,
+      business_manager_cut_amount: businessManagerCut,
+      business_shu_pool_amount: businessShuPool,
       total_shu_distributed_amount: totalShuDistributed,
       total_manager_fund_amount: totalManagerFund,
       reconciliation_gap_amount: reconciliationGap,
@@ -319,7 +322,7 @@ const calculateShuData = async (client, period) => {
     member_distributions: memberDistributions,
     officer_distributions: officerDistributions,
     meta: {
-      eligible_usaha_count: eligibleUsahaCount,
+      eligible_business_count: eligibleBusinessCount,
       officer_count: officerCount,
     },
   };
@@ -334,16 +337,16 @@ const persistShuResult = async (client, periodId, data, status, idUser) => {
       total_cooperative_income = $2,
       total_member_spending = $3,
       gross_profit_display = $4,
-      income_belanja_amount = $5,
-      expense_belanja_amount = $6,
-      net_belanja_amount = $7,
-      manager_cut_belanja_amount = $8,
-      shu_belanja_pool_amount = $9,
-      income_usaha_amount = $10,
-      expense_usaha_amount = $11,
-      net_usaha_amount = $12,
-      manager_cut_usaha_amount = $13,
-      shu_usaha_pool_amount = $14,
+      sales_income_amount = $5,
+      sales_cost_amount = $6,
+      sales_net_amount = $7,
+      sales_manager_cut_amount = $8,
+      sales_shu_pool_amount = $9,
+      business_income_amount = $10,
+      business_expense_amount = $11,
+      business_net_amount = $12,
+      business_manager_cut_amount = $13,
+      business_shu_pool_amount = $14,
       total_shu_distributed_amount = $15,
       total_manager_fund_amount = $16,
       reconciliation_gap_amount = $17,
@@ -357,16 +360,16 @@ const persistShuResult = async (client, periodId, data, status, idUser) => {
       s.total_cooperative_income,
       s.total_member_spending,
       s.gross_profit_display,
-      s.income_belanja_amount,
-      s.expense_belanja_amount,
-      s.net_belanja_amount,
-      s.manager_cut_belanja_amount,
-      s.shu_belanja_pool_amount,
-      s.income_usaha_amount,
-      s.expense_usaha_amount,
-      s.net_usaha_amount,
-      s.manager_cut_usaha_amount,
-      s.shu_usaha_pool_amount,
+      s.sales_income_amount,
+      s.sales_cost_amount,
+      s.sales_net_amount,
+      s.sales_manager_cut_amount,
+      s.sales_shu_pool_amount,
+      s.business_income_amount,
+      s.business_expense_amount,
+      s.business_net_amount,
+      s.business_manager_cut_amount,
+      s.business_shu_pool_amount,
       s.total_shu_distributed_amount,
       s.total_manager_fund_amount,
       s.reconciliation_gap_amount,
@@ -380,7 +383,7 @@ const persistShuResult = async (client, periodId, data, status, idUser) => {
       `
       INSERT INTO tbl_shu_distributions (
         id_shu_period, id_member, member_total_spending, spending_percentage,
-        eligible_shu_usaha, shu_belanja_amount, shu_usaha_amount, shu_amount,
+        eligible_business_shu, sales_shu_amount, business_shu_amount, shu_amount,
         distribution_status, created_by
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
@@ -388,9 +391,9 @@ const persistShuResult = async (client, periodId, data, status, idUser) => {
       ON CONFLICT (id_shu_period, id_member) DO UPDATE SET
         member_total_spending = EXCLUDED.member_total_spending,
         spending_percentage = EXCLUDED.spending_percentage,
-        eligible_shu_usaha = EXCLUDED.eligible_shu_usaha,
-        shu_belanja_amount = EXCLUDED.shu_belanja_amount,
-        shu_usaha_amount = EXCLUDED.shu_usaha_amount,
+        eligible_business_shu = EXCLUDED.eligible_business_shu,
+        sales_shu_amount = EXCLUDED.sales_shu_amount,
+        business_shu_amount = EXCLUDED.business_shu_amount,
         shu_amount = EXCLUDED.shu_amount,
         distribution_status = EXCLUDED.distribution_status,
         last_modify_date = NOW(),
@@ -401,9 +404,9 @@ const persistShuResult = async (client, periodId, data, status, idUser) => {
         row.id_member,
         row.member_total_spending,
         row.spending_percentage,
-        row.eligible_shu_usaha,
-        row.shu_belanja_amount,
-        row.shu_usaha_amount,
+        row.eligible_business_shu,
+        row.sales_shu_amount,
+        row.business_shu_amount,
         row.shu_amount,
         status === "FINALIZED" ? "DISTRIBUTED" : "CALCULATED",
         idUser || null,
@@ -700,9 +703,9 @@ const getCurrentShuResult = async (req, res) => {
           TRIM(CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, ''))) AS full_name,
           d.member_total_spending::float AS member_total_spending,
           d.spending_percentage::float AS spending_percentage,
-          d.eligible_shu_usaha,
-          d.shu_belanja_amount::float AS shu_belanja_amount,
-          d.shu_usaha_amount::float AS shu_usaha_amount,
+          d.eligible_business_shu,
+          d.sales_shu_amount::float AS sales_shu_amount,
+          d.business_shu_amount::float AS business_shu_amount,
           d.shu_amount::float AS shu_amount,
           d.distribution_status
         FROM tbl_shu_distributions d
@@ -859,9 +862,9 @@ const getCurrentShuDetail = async (req, res) => {
           TRIM(CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, ''))) AS full_name,
           d.member_total_spending::float AS member_total_spending,
           d.spending_percentage::float AS spending_percentage,
-          d.eligible_shu_usaha,
-          d.shu_belanja_amount::float AS shu_belanja_amount,
-          d.shu_usaha_amount::float AS shu_usaha_amount,
+          d.eligible_business_shu,
+          d.sales_shu_amount::float AS sales_shu_amount,
+          d.business_shu_amount::float AS business_shu_amount,
           d.shu_amount::float AS shu_amount,
           d.distribution_status
         FROM tbl_shu_distributions d

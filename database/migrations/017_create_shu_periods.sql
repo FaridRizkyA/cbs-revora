@@ -11,17 +11,17 @@ CREATE TABLE tbl_shu_periods (
     gross_profit_display NUMERIC(15, 2) NOT NULL DEFAULT 0,
 
     -- Sheet2-based SHU path snapshots (source of truth for calculation)
-    income_belanja_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
-    expense_belanja_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
-    net_belanja_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
-    manager_cut_belanja_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
-    shu_belanja_pool_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    sales_income_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    sales_cost_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    sales_net_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    sales_manager_cut_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    sales_shu_pool_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
 
-    income_usaha_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
-    expense_usaha_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
-    net_usaha_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
-    manager_cut_usaha_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
-    shu_usaha_pool_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    business_income_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    business_expense_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    business_net_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    business_manager_cut_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    business_shu_pool_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
 
     total_shu_distributed_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
     total_manager_fund_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
@@ -54,35 +54,35 @@ CREATE TABLE tbl_shu_periods (
     CONSTRAINT chk_shu_periods_gross_profit_display
         CHECK (gross_profit_display >= 0),
 
-    CONSTRAINT chk_shu_periods_income_belanja
-        CHECK (income_belanja_amount >= 0),
+    CONSTRAINT chk_shu_periods_sales_income
+        CHECK (sales_income_amount >= 0),
 
-    CONSTRAINT chk_shu_periods_expense_belanja
-        CHECK (expense_belanja_amount >= 0),
+    CONSTRAINT chk_shu_periods_sales_cost
+        CHECK (sales_cost_amount >= 0),
 
-    CONSTRAINT chk_shu_periods_net_belanja
-        CHECK (net_belanja_amount >= 0),
+    CONSTRAINT chk_shu_periods_sales_net
+        CHECK (sales_net_amount >= 0),
 
-    CONSTRAINT chk_shu_periods_manager_cut_belanja
-        CHECK (manager_cut_belanja_amount >= 0),
+    CONSTRAINT chk_shu_periods_sales_manager_cut
+        CHECK (sales_manager_cut_amount >= 0),
 
-    CONSTRAINT chk_shu_periods_shu_belanja_pool
-        CHECK (shu_belanja_pool_amount >= 0),
+    CONSTRAINT chk_shu_periods_sales_shu_pool
+        CHECK (sales_shu_pool_amount >= 0),
 
-    CONSTRAINT chk_shu_periods_income_usaha
-        CHECK (income_usaha_amount >= 0),
+    CONSTRAINT chk_shu_periods_business_income
+        CHECK (business_income_amount >= 0),
 
-    CONSTRAINT chk_shu_periods_expense_usaha
-        CHECK (expense_usaha_amount >= 0),
+    CONSTRAINT chk_shu_periods_business_expense
+        CHECK (business_expense_amount >= 0),
 
-    CONSTRAINT chk_shu_periods_net_usaha
-        CHECK (net_usaha_amount >= 0),
+    CONSTRAINT chk_shu_periods_business_net
+        CHECK (business_net_amount >= 0),
 
-    CONSTRAINT chk_shu_periods_manager_cut_usaha
-        CHECK (manager_cut_usaha_amount >= 0),
+    CONSTRAINT chk_shu_periods_business_manager_cut
+        CHECK (business_manager_cut_amount >= 0),
 
-    CONSTRAINT chk_shu_periods_shu_usaha_pool
-        CHECK (shu_usaha_pool_amount >= 0),
+    CONSTRAINT chk_shu_periods_business_shu_pool
+        CHECK (business_shu_pool_amount >= 0),
 
     CONSTRAINT chk_shu_periods_total_shu_distributed
         CHECK (total_shu_distributed_amount >= 0),

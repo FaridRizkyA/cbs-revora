@@ -28,10 +28,10 @@ export default function ResponsiveModal({
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const shortSide = Math.min(width, height);
-  const isPhone = shortSide < 768;
+  const isCompact = shortSide < 900;
   const usableHeight = Math.max(height - Math.max(insets.top, 8) - Math.max(insets.bottom, 8), 320);
-  const maxWidth = isPhone ? Math.min(width * maxWidthPhoneRatio, maxWidthDesktop) : maxWidthDesktop;
-  const maxHeight = (isPhone ? maxHeightPhoneRatio : maxHeightDesktopRatio) * usableHeight;
+  const maxWidth = isCompact ? Math.min(width * maxWidthPhoneRatio, maxWidthDesktop) : maxWidthDesktop;
+  const maxHeight = (isCompact ? maxHeightPhoneRatio : maxHeightDesktopRatio) * usableHeight;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>

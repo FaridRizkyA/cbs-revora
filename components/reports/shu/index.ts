@@ -2,10 +2,12 @@ import {
   buildReportDetailPrintHtml,
   buildReportPdfFileName,
   buildReportTablePrintHtml,
+  downloadReportTableExcel,
   ReportMetaItem,
   ReportNestedTable,
   ReportTableColumn,
 } from "../shared/ReportPrintTemplate";
+import { downloadExcelSectionWorkbook, ExcelSection, ExcelValue } from "../../../utils/excelExport";
 
 export type ShuYearReportRow = {
   id_shu_period: string;
@@ -49,9 +51,9 @@ export type ShuDetailReportData = {
     is_active?: string | null;
     member_total_spending: number;
     spending_percentage: number;
-    eligible_shu_usaha: boolean;
-    shu_belanja_amount: number;
-    shu_usaha_amount: number;
+    eligible_business_shu: boolean;
+    sales_shu_amount: number;
+    business_shu_amount: number;
     shu_amount: number;
   }[];
   officer_distributions: {
@@ -190,6 +192,89 @@ export const buildShuYearlyReportPrintHtml = ({
     emptyText: "No SHU yearly summary data found.",
   });
 
+export const downloadShuYearlyReportExcel = ({
+  rows,
+  generatedAt = new Date(),
+  generatedBy,
+  meta = [],
+}: ShuYearReportOptions) =>
+  downloadReportTableExcel({
+    title: "SHU Yearly Summary Report",
+    subtitle: "Patronage refund yearly summary",
+    reportKey: REPORT_KEY,
+    generatedAt,
+    generatedBy,
+    meta: [{ label: "Total Rows", value: rows.length }, ...meta],
+    rows,
+    columns: yearlyColumns,
+    emptyText: "No SHU yearly summary data found.",
+  });
+
+const detailTableFooterRowsToExcelRows = (table: ReportNestedTable) => {
+  if (!table.footerRows?.length) return [];
+
+  return table.footerRows.map((footerRow) => {
+    const row: Record<string, ExcelValue> = {};
+    let columnIndex = 0;
+
+    footerRow.cells.forEach((cell) => {
+      const targetColumn = table.columns[columnIndex];
+      if (targetColumn) {
+        row[targetColumn.key] = cell.value;
+      }
+      columnIndex += cell.colspan || 1;
+    });
+
+    return row;
+  });
+};
+
+const detailTablesToExcelSections = (tables: ReportNestedTable[]): ExcelSection[] =>
+  tables.map((table) => ({
+    title: table.title,
+    columns: table.columns.map((column) => ({
+      key: column.key,
+      title: column.title,
+      align: column.align,
+      width: typeof column.width === "number" ? column.width : undefined,
+    })),
+    rows: [...table.rows, ...detailTableFooterRowsToExcelRows(table)],
+  }));
+
+export const downloadShuDetailReportExcel = async ({
+  detail,
+  signatures = defaultSignatures,
+  generatedAt = new Date(),
+  generatedBy,
+  meta = [],
+}: ShuDetailReportOptions) => {
+  const tables = buildDetailTables(detail, signatures);
+  await downloadExcelSectionWorkbook({
+    title: "SHU Detail Report",
+    subtitle: "Patronage refund calculation detail",
+    reportKey: `${REPORT_KEY}-detail`,
+    generatedAt,
+    generatedBy,
+    meta,
+    sections: [
+      {
+        title: "Period Information",
+        columns: [
+          { key: "label", title: "Field", width: 22 },
+          { key: "value", title: "Value", width: 32 },
+        ],
+        rows: [
+          { label: "Period", value: detail.period.period_name },
+          { label: "Start Date", value: formatDateOnly(detail.period.start_date) },
+          { label: "End Date", value: formatDateOnly(detail.period.end_date) },
+          { label: "Status", value: detail.period.calculation_status },
+        ],
+      },
+      ...detailTablesToExcelSections(tables),
+    ],
+  });
+};
+
 const defaultSignatures: ShuSignatureSlot[] = [
   { label: "Prepared By", name: null, position: "Cooperative Treasurer" },
   { label: "Acknowledged By", name: null, position: "Cooperative Chairperson" },
@@ -205,9 +290,9 @@ const buildDetailTables = (detail: ShuDetailReportData, signatures: ShuSignature
   const totalIncome = sumBy(detail.monthly_income, (row) => row.total_income_amount);
   const totalExpenses = sumBy(detail.yearly_expenses, (row) => row.amount);
   const totalMemberSpending = sumBy(activeMemberDistributions, (row) => row.member_total_spending);
-  const totalShuBelanja = sumBy(activeMemberDistributions, (row) => row.shu_belanja_amount);
+  const totalSalesShu = sumBy(activeMemberDistributions, (row) => row.sales_shu_amount);
   const totalSpendingPercentage = sumBy(activeMemberDistributions, (row) => row.spending_percentage);
-  const totalShuUsaha = sumBy(activeMemberDistributions, (row) => row.shu_usaha_amount);
+  const totalBusinessShu = sumBy(activeMemberDistributions, (row) => row.business_shu_amount);
   const totalMemberShu = sumBy(activeMemberDistributions, (row) => row.shu_amount);
   const totalOfficerShu = sumBy(detail.officer_distributions, (row) => row.shu_amount);
 
@@ -273,18 +358,18 @@ const buildDetailTables = (detail: ShuDetailReportData, signatures: ShuSignature
         { key: "row_number", title: "No.", align: "center", width: "42px" },
         { key: "full_name", title: "Member", width: "22%" },
         { key: "member_total_spending", title: "Spending", align: "right", width: "15%" },
-        { key: "shu_belanja_amount", title: "Shopping SHU", align: "right", width: "15%" },
+        { key: "sales_shu_amount", title: "Sales SHU", align: "right", width: "15%" },
         { key: "spending_percentage", title: "SHU %", align: "right", width: "10%" },
-        { key: "shu_usaha_amount", title: "Business SHU", align: "right", width: "15%" },
+        { key: "business_shu_amount", title: "Business SHU", align: "right", width: "15%" },
         { key: "shu_amount", title: "SHU Total", align: "right", width: "15%" },
       ],
       rows: activeMemberDistributions.map((row, index) => ({
         row_number: index + 1,
         full_name: row.full_name,
         member_total_spending: formatRupiah(row.member_total_spending),
-        shu_belanja_amount: formatRupiah(row.shu_belanja_amount),
+        sales_shu_amount: formatRupiah(row.sales_shu_amount),
         spending_percentage: percentText(row.spending_percentage),
-        shu_usaha_amount: formatRupiah(row.shu_usaha_amount),
+        business_shu_amount: formatRupiah(row.business_shu_amount),
         shu_amount: formatRupiah(row.shu_amount),
       })),
       footerRows: [
@@ -292,9 +377,9 @@ const buildDetailTables = (detail: ShuDetailReportData, signatures: ShuSignature
           cells: [
             { value: "Total", colspan: 2, align: "right" },
             { value: formatRupiah(totalMemberSpending), align: "right" },
-            { value: formatRupiah(totalShuBelanja), align: "right" },
+            { value: formatRupiah(totalSalesShu), align: "right" },
             { value: percentText(totalSpendingPercentage), align: "right" },
-            { value: formatRupiah(totalShuUsaha), align: "right" },
+            { value: formatRupiah(totalBusinessShu), align: "right" },
             { value: formatRupiah(totalMemberShu), align: "right" },
           ],
         },

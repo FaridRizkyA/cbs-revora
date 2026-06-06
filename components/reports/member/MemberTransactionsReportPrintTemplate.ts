@@ -55,9 +55,9 @@ export const buildMemberTransactionsReportPrintHtml = ({
   const totalItems = rows.reduce((sum, row) => sum + Number(row.item_count || row.items?.reduce((itemSum, item) => itemSum + Number(item.quantity || 0), 0) || 0), 0);
 
   const bodyRows = rows
-    .map(
-      (row, index) => `
-        <tr>
+    .map((row, index) => {
+      const mainRow = `
+        <tr class="main-row">
           <td>${index + 1}</td>
           <td>${escapeHtml(row.sale_number)}</td>
           <td>${escapeHtml(formatDateTime(row.sale_date))}</td>
@@ -66,8 +66,25 @@ export const buildMemberTransactionsReportPrintHtml = ({
           <td class="right">${escapeHtml(String(row.item_count ?? row.items?.length ?? 0))}</td>
           <td class="right">${escapeHtml(formatRupiah(Number(row.total_amount || 0)))}</td>
         </tr>
+      `;
+
+      if (!row.items || row.items.length === 0) return mainRow;
+
+      const itemRows = row.items
+        .map(
+          (item) => `
+        <tr class="item-row">
+          <td colspan="2"></td>
+          <td colspan="3" class="item-name">${escapeHtml(item.product_name)} <span class="item-meta">(${escapeHtml(item.product_code)})</span></td>
+          <td class="right">${escapeHtml(String(item.quantity))}</td>
+          <td class="right">${escapeHtml(formatRupiah(Number(item.subtotal || 0)))}</td>
+        </tr>
       `
-    )
+        )
+        .join("");
+
+      return mainRow + itemRows;
+    })
     .join("");
 
   return `<!doctype html>
@@ -151,6 +168,23 @@ export const buildMemberTransactionsReportPrintHtml = ({
         padding: 8px 10px;
         vertical-align: top;
       }
+      .main-row td {
+        font-weight: 700;
+        background: #fcfdfe;
+      }
+      .item-row td {
+        padding: 6px 10px;
+        color: #475569;
+        font-size: 11px;
+        border-top: none;
+      }
+      .item-name {
+        font-style: italic;
+      }
+      .item-meta {
+        font-size: 10px;
+        color: #94a3b8;
+      }
       th {
         background: #eaf0f7;
         text-align: left;
@@ -205,7 +239,7 @@ export const buildMemberTransactionsReportPrintHtml = ({
           <div class="summary-value">${escapeHtml(String(totalItems))}</div>
         </div>
         <div class="summary-box">
-          <div class="summary-label">Total Belanja</div>
+          <div class="summary-label">Total Spending</div>
           <div class="summary-value">${escapeHtml(formatRupiah(totalAmount))}</div>
         </div>
       </div>

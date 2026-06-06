@@ -27,11 +27,18 @@ export default function SplashPage() {
 
   return (
     <View style={styles.container}>
-      <Image
-        source={require("../assets/images/ui/logo_horizontal.png")}
-        style={styles.logo}
-        resizeMode="contain"
-      />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+        <Image
+          source={require("../assets/images/ui/logo_koperasi_cbs.png")}
+          style={{ width: 120, height: 120 }}
+          resizeMode="contain"
+        />
+        <Image
+          source={require("../assets/images/ui/logo_horizontal.png")}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+      </View>
     </View>
   );
 }

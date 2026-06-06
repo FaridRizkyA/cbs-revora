@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import { API_BASE_URL } from "./api";
 
 export type AuthUser = {
   id_user: string;
@@ -17,9 +18,11 @@ export type AuthUser = {
 export type AuthSession = {
   token: string;
   user: AuthUser;
+  expires_at?: string | null;
 };
 
 const AUTH_SESSION_KEY = "cbs_revora_auth_session";
+const sessionListeners = new Set<(session: AuthSession | null) => void>();
 
 const canUseWebStorage = () => Platform.OS === "web" && typeof localStorage !== "undefined";
 
@@ -51,6 +54,7 @@ const clearSessionRaw = async () => {
 
 export const saveAuthSession = async (session: AuthSession) => {
   await setSessionRaw(JSON.stringify(session));
+  sessionListeners.forEach((listener) => listener(session));
 };
 
 export const getAuthSession = async (): Promise<AuthSession | null> => {
@@ -70,6 +74,36 @@ export const getAuthSession = async (): Promise<AuthSession | null> => {
 
 export const clearAuthSession = async () => {
   await clearSessionRaw();
+  sessionListeners.forEach((listener) => listener(null));
+};
+
+export const clearAuthSessionLocal = clearAuthSession;
+
+export const logoutAuthSession = async () => {
+  const session = await getAuthSession();
+  if (session?.token) {
+    await fetch(`${API_BASE_URL}/api/auth/logout`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${session.token}`,
+        "Content-Type": "application/json",
+      },
+    }).catch(() => null);
+  }
+  await clearAuthSession();
+};
+
+export const isAuthSessionExpired = (session: AuthSession | null) => {
+  if (!session?.expires_at) return false;
+  const expiryTime = new Date(session.expires_at).getTime();
+  return Number.isFinite(expiryTime) && expiryTime <= Date.now();
+};
+
+export const subscribeAuthSession = (listener: (session: AuthSession | null) => void) => {
+  sessionListeners.add(listener);
+  return () => {
+    sessionListeners.delete(listener);
+  };
 };
 
 export const getRouteByRole = (roleNameRaw: string | null | undefined) => {
@@ -173,6 +207,8 @@ export const canManageStockMovementRecord = (roleNameRaw: string | null | undefi
 };
 
 const CASHIER_MAIN_ALLOWED_PATHS = new Set([
+  "/(main)/dashboard",
+  "/dashboard",
   "/(main)/inventory/products",
   "/inventory/products",
   "/(main)/inventory/suppliers",
@@ -185,6 +221,10 @@ const CASHIER_MAIN_ALLOWED_PATHS = new Set([
   "/stock-movements/stock-out",
   "/(main)/stock-movements/sales",
   "/stock-movements/sales",
+  "/(main)/sales/items",
+  "/sales/items",
+  "/(main)/sales/costs",
+  "/sales/costs",
   "/(main)/stock-movements/stock-out-manual",
   "/stock-movements/stock-out-manual",
   "/(main)/stock-movements/stock-adjustment",
@@ -200,6 +240,26 @@ export const canCashierAccessMainPath = (pathname: string) => {
   }
 
   return CASHIER_MAIN_ALLOWED_PATHS.has(pathname);
+};
+
+const MEMBER_ALLOWED_PATHS = new Set([
+  "/(member)/dashboard",
+  "/dashboard",
+  "/(member)/transactions",
+  "/transactions",
+  "/(member)/shu",
+  "/shu",
+  "/(member)/profile",
+  "/profile",
+]);
+
+export const canAccessMemberPath = (pathname: string) => {
+  if (pathname === "/(member)" || pathname === "/member" || pathname === "/") {
+    return false;
+  }
+
+  // Handle nested or dynamic paths if any, otherwise exact match
+  return MEMBER_ALLOWED_PATHS.has(pathname);
 };
 
 export const canAccessMainPath = (roleNameRaw: string | null | undefined, pathname: string) => {

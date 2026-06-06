@@ -1,8 +1,8 @@
 import * as Print from "expo-print";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu";
 import DatePickerField from "../../../components/inventory/DatePickerField";
+import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
@@ -11,31 +11,28 @@ import InventoryPageHeader from "../../../components/inventory/InventoryPageHead
 import { InventoryResultModal } from "../../../components/inventory/ActionModals";
 import SendEmailModal from "../../../components/modals/SendEmailModal";
 import {
-  buildSalesItemsTableExcelFileName,
-  buildSalesItemsTableReportPrintHtml,
-} from "../../../components/reports/sales/SalesItemsReportPrintTemplate";
+  buildSalesCostTableReportPrintHtml,
+  downloadSalesCostTableReportExcel,
+} from "../../../components/reports/sales/SalesCostReportPrintTemplate";
 import { logClientActivity } from "../../../utils/activityLog";
 import { API_BASE_URL } from "../../../utils/api";
 import { getAuthSession, normalizeRole } from "../../../utils/authSession";
-import { downloadExcelWorkbook } from "../../../utils/excelExport";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
 
-type SalesItem = {
-  id_sale_item: string;
-  id_sale: string;
-  sale_code: string;
-  stock_out_code: string;
-  sale_date: string;
-  payment_method?: string | null;
-  customer_type?: string | null;
+type SalesCost = {
+  id_stock_in_item: string;
+  id_stock_in: string;
+  stock_in_code: string;
+  stock_in_date: string;
   id_product: string;
   product_code: string;
   product_name: string;
   batch_code?: string | null;
+  supplier_name?: string | null;
   quantity: number;
-  sell_per_pcs: number;
-  total_sell: number;
-  cashier_name?: string | null;
+  buy_per_pcs: number;
+  total_cost: number;
+  received_by_name?: string | null;
 };
 
 type PeriodFilter = "TODAY" | "THIS_MONTH" | "ALL_TIME" | "CUSTOM";
@@ -56,14 +53,14 @@ const formatDateTime = (value?: string | null) => {
   return date.toLocaleString("id-ID");
 };
 
-export default function SalesItemsScreen() {
-  const [rows, setRows] = useState<SalesItem[]>([]);
+export default function SalesCostScreen() {
+  const [rows, setRows] = useState<SalesCost[]>([]);
   const [search, setSearch] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [productFilter, setProductFilter] = useState("ALL");
   const [draftProductFilter, setDraftProductFilter] = useState("ALL");
-  const [cashierFilter, setCashierFilter] = useState("ALL");
-  const [draftCashierFilter, setDraftCashierFilter] = useState("ALL");
+  const [supplierFilter, setSupplierFilter] = useState("ALL");
+  const [draftSupplierFilter, setDraftSupplierFilter] = useState("ALL");
   const [dateStartFilter, setDateStartFilter] = useState("");
   const [dateEndFilter, setDateEndFilter] = useState("");
   const [draftDateStartFilter, setDraftDateStartFilter] = useState("");
@@ -72,10 +69,10 @@ export default function SalesItemsScreen() {
   const [maxQtyFilter, setMaxQtyFilter] = useState("");
   const [draftMinQtyFilter, setDraftMinQtyFilter] = useState("");
   const [draftMaxQtyFilter, setDraftMaxQtyFilter] = useState("");
-  const [minTotalSellFilter, setMinTotalSellFilter] = useState("");
-  const [maxTotalSellFilter, setMaxTotalSellFilter] = useState("");
-  const [draftMinTotalSellFilter, setDraftMinTotalSellFilter] = useState("");
-  const [draftMaxTotalSellFilter, setDraftMaxTotalSellFilter] = useState("");
+  const [minTotalCostFilter, setMinTotalCostFilter] = useState("");
+  const [maxTotalCostFilter, setMaxTotalCostFilter] = useState("");
+  const [draftMinTotalCostFilter, setDraftMinTotalCostFilter] = useState("");
+  const [draftMaxTotalCostFilter, setDraftMaxTotalCostFilter] = useState("");
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("TODAY");
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [roleName, setRoleName] = useState("CASHIER");
@@ -92,7 +89,7 @@ export default function SalesItemsScreen() {
   };
 
   const loadRows = () => {
-    fetch(`${API_BASE_URL}/api/sales-items`)
+    fetch(`${API_BASE_URL}/api/sales-costs`)
       .then((response) => response.json())
       .then((payload) => setRows(Array.isArray(payload?.data) ? payload.data : []))
       .catch(() => setRows([]));
@@ -115,8 +112,7 @@ export default function SalesItemsScreen() {
     }
     if (period === "THIS_MONTH") {
       const now = new Date();
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      setDateStartFilter(formatDateInput(firstDay));
+      setDateStartFilter(formatDateInput(new Date(now.getFullYear(), now.getMonth(), 1)));
       setDateEndFilter(formatDateInput(now));
       return;
     }
@@ -135,8 +131,8 @@ export default function SalesItemsScreen() {
     [rows]
   );
 
-  const cashierOptions = useMemo(
-    () => ["ALL", ...Array.from(new Set(rows.map((row) => row.cashier_name || "-"))).sort()],
+  const supplierOptions = useMemo(
+    () => ["ALL", ...Array.from(new Set(rows.map((row) => row.supplier_name || "-"))).sort()],
     [rows]
   );
 
@@ -146,46 +142,46 @@ export default function SalesItemsScreen() {
     const endDate = dateEndFilter ? new Date(`${dateEndFilter}T23:59:59`) : null;
     const minQty = Number(minQtyFilter || "0");
     const maxQty = Number(maxQtyFilter || "0");
-    const minTotalSell = Number(minTotalSellFilter || "0");
-    const maxTotalSell = Number(maxTotalSellFilter || "0");
+    const minTotalCost = Number(minTotalCostFilter || "0");
+    const maxTotalCost = Number(maxTotalCostFilter || "0");
 
     return rows.filter((row) => {
-      const rowDate = row.sale_date ? new Date(row.sale_date) : null;
+      const rowDate = row.stock_in_date ? new Date(row.stock_in_date) : null;
       const matchSearch =
         !query ||
-        `${row.sale_code} ${row.stock_out_code} ${row.product_code} ${row.product_name} ${row.batch_code || ""} ${row.cashier_name || ""}`
+        `${row.stock_in_code} ${row.product_code} ${row.product_name} ${row.batch_code || ""} ${row.supplier_name || ""} ${row.received_by_name || ""}`
           .toLowerCase()
           .includes(query);
       const matchProduct = productFilter === "ALL" ? true : row.product_name === productFilter;
-      const matchCashier = cashierFilter === "ALL" ? true : (row.cashier_name || "-") === cashierFilter;
+      const matchSupplier = supplierFilter === "ALL" ? true : (row.supplier_name || "-") === supplierFilter;
       const matchStartDate = startDate && rowDate ? rowDate >= startDate : true;
       const matchEndDate = endDate && rowDate ? rowDate <= endDate : true;
       const matchMinQty = minQtyFilter.trim() ? Number(row.quantity || 0) >= minQty : true;
       const matchMaxQty = maxQtyFilter.trim() ? Number(row.quantity || 0) <= maxQty : true;
-      const matchMinTotalSell = minTotalSellFilter.trim() ? Number(row.total_sell || 0) >= minTotalSell : true;
-      const matchMaxTotalSell = maxTotalSellFilter.trim() ? Number(row.total_sell || 0) <= maxTotalSell : true;
+      const matchMinTotalCost = minTotalCostFilter.trim() ? Number(row.total_cost || 0) >= minTotalCost : true;
+      const matchMaxTotalCost = maxTotalCostFilter.trim() ? Number(row.total_cost || 0) <= maxTotalCost : true;
 
       return (
         matchSearch &&
         matchProduct &&
-        matchCashier &&
+        matchSupplier &&
         matchStartDate &&
         matchEndDate &&
         matchMinQty &&
         matchMaxQty &&
-        matchMinTotalSell &&
-        matchMaxTotalSell
+        matchMinTotalCost &&
+        matchMaxTotalCost
       );
     });
-  }, [rows, search, productFilter, cashierFilter, dateStartFilter, dateEndFilter, minQtyFilter, maxQtyFilter, minTotalSellFilter, maxTotalSellFilter]);
+  }, [rows, search, productFilter, supplierFilter, dateStartFilter, dateEndFilter, minQtyFilter, maxQtyFilter, minTotalCostFilter, maxTotalCostFilter]);
 
   const summary = useMemo(() => {
-    const transactionIds = new Set(filteredRows.map((row) => row.id_sale));
-    const totalTransactions = transactionIds.size;
+    const stockInIds = new Set(filteredRows.map((row) => row.id_stock_in));
+    const totalStockIn = stockInIds.size;
     const totalQty = filteredRows.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
-    const totalIncome = filteredRows.reduce((sum, row) => sum + Number(row.total_sell || 0), 0);
-    const averagePerTransaction = totalTransactions > 0 ? totalIncome / totalTransactions : 0;
-    return { totalTransactions, totalQty, totalIncome, averagePerTransaction };
+    const totalCost = filteredRows.reduce((sum, row) => sum + Number(row.total_cost || 0), 0);
+    const averagePerStockIn = totalStockIn > 0 ? totalCost / totalStockIn : 0;
+    return { totalStockIn, totalQty, totalCost, averagePerStockIn };
   }, [filteredRows]);
 
   const periodLabel =
@@ -200,49 +196,49 @@ export default function SalesItemsScreen() {
   const activeFilters = useMemo(() => {
     const items: { key: string; label: string; value: string; onClear: () => void }[] = [];
     if (productFilter !== "ALL") items.push({ key: "product", label: "Product", value: productFilter, onClear: () => setProductFilter("ALL") });
-    if (cashierFilter !== "ALL") items.push({ key: "cashier", label: "Cashier", value: cashierFilter, onClear: () => setCashierFilter("ALL") });
+    if (supplierFilter !== "ALL") items.push({ key: "supplier", label: "Supplier", value: supplierFilter, onClear: () => setSupplierFilter("ALL") });
     if (periodFilter === "CUSTOM" && dateStartFilter) items.push({ key: "startDate", label: "Start Date", value: dateStartFilter, onClear: () => setDateStartFilter("") });
     if (periodFilter === "CUSTOM" && dateEndFilter) items.push({ key: "endDate", label: "End Date", value: dateEndFilter, onClear: () => setDateEndFilter("") });
     if (minQtyFilter) items.push({ key: "minQty", label: "Min Qty", value: minQtyFilter, onClear: () => setMinQtyFilter("") });
     if (maxQtyFilter) items.push({ key: "maxQty", label: "Max Qty", value: maxQtyFilter, onClear: () => setMaxQtyFilter("") });
-    if (minTotalSellFilter) items.push({ key: "minTotalSell", label: "Min Total Sell", value: formatCurrency(Number(minTotalSellFilter)), onClear: () => setMinTotalSellFilter("") });
-    if (maxTotalSellFilter) items.push({ key: "maxTotalSell", label: "Max Total Sell", value: formatCurrency(Number(maxTotalSellFilter)), onClear: () => setMaxTotalSellFilter("") });
+    if (minTotalCostFilter) items.push({ key: "minTotalCost", label: "Min Total Cost", value: formatCurrency(Number(minTotalCostFilter)), onClear: () => setMinTotalCostFilter("") });
+    if (maxTotalCostFilter) items.push({ key: "maxTotalCost", label: "Max Total Cost", value: formatCurrency(Number(maxTotalCostFilter)), onClear: () => setMaxTotalCostFilter("") });
     return items;
-  }, [productFilter, cashierFilter, dateStartFilter, dateEndFilter, minQtyFilter, maxQtyFilter, minTotalSellFilter, maxTotalSellFilter, periodFilter]);
+  }, [productFilter, supplierFilter, dateStartFilter, dateEndFilter, minQtyFilter, maxQtyFilter, minTotalCostFilter, maxTotalCostFilter, periodFilter]);
 
-  const tableColumns = useMemo<InventoryDataTableColumn<SalesItem>[]>(() => [
-    { key: "sale_code", title: "Sale Code", weight: 22, sortable: true, sortValue: (row) => row.sale_code || "", render: (row) => <Text style={styles.rowCell} numberOfLines={1}>{row.sale_code}</Text> },
+  const tableColumns = useMemo<InventoryDataTableColumn<SalesCost>[]>(() => [
+    { key: "stock_in_code", title: "Stock In Code", weight: 22, sortable: true, sortValue: (row) => row.stock_in_code || "", render: (row) => <Text style={styles.rowCell} numberOfLines={1}>{row.stock_in_code}</Text> },
     { key: "product_name", title: "Product", weight: 23, sortable: true, sortValue: (row) => row.product_name || "", render: (row) => <Text style={styles.rowCell} numberOfLines={1}>{row.product_name}</Text> },
     { key: "quantity", title: "Qty", weight: 7, align: "center", sortable: true, sortValue: (row) => Number(row.quantity || 0), render: (row) => <Text style={styles.rowCell}>{row.quantity}</Text> },
-    { key: "sell_per_pcs", title: "Price", weight: 13, sortable: true, sortValue: (row) => Number(row.sell_per_pcs || 0), render: (row) => <Text style={styles.rowCell}>{formatCurrency(Number(row.sell_per_pcs || 0))}</Text> },
-    { key: "total_sell", title: "Total Sell", weight: 14, sortable: true, sortValue: (row) => Number(row.total_sell || 0), render: (row) => <Text style={styles.rowCell}>{formatCurrency(Number(row.total_sell || 0))}</Text> },
-    { key: "cashier_name", title: "Cashier", weight: 12, sortable: true, sortValue: (row) => row.cashier_name || "", render: (row) => <Text style={styles.rowCell} numberOfLines={1}>{row.cashier_name || "-"}</Text> },
-    { key: "sale_date", title: "Date", weight: 15, sortable: true, sortValue: (row) => new Date(row.sale_date).getTime(), render: (row) => <Text style={styles.rowCell}>{formatDateTime(row.sale_date)}</Text> },
+    { key: "buy_per_pcs", title: "Buy/Pcs", weight: 13, sortable: true, sortValue: (row) => Number(row.buy_per_pcs || 0), render: (row) => <Text style={styles.rowCell}>{formatCurrency(Number(row.buy_per_pcs || 0))}</Text> },
+    { key: "total_cost", title: "Total Cost", weight: 14, sortable: true, sortValue: (row) => Number(row.total_cost || 0), render: (row) => <Text style={styles.rowCell}>{formatCurrency(Number(row.total_cost || 0))}</Text> },
+    { key: "supplier_name", title: "Supplier", weight: 14, sortable: true, sortValue: (row) => row.supplier_name || "", render: (row) => <Text style={styles.rowCell} numberOfLines={1}>{row.supplier_name || "-"}</Text> },
+    { key: "stock_in_date", title: "Date", weight: 15, sortable: true, sortValue: (row) => new Date(row.stock_in_date).getTime(), render: (row) => <Text style={styles.rowCell}>{formatDateTime(row.stock_in_date)}</Text> },
   ], []);
 
-  const buildCurrentSalesItemsReportMeta = () => {
+  const buildCurrentSalesCostReportMeta = () => {
     const items = [];
     const trimmedSearch = search.trim();
     if (trimmedSearch) items.push({ label: "Search", value: trimmedSearch });
     items.push({ label: "Period", value: periodLabel });
     if (productFilter !== "ALL") items.push({ label: "Product Filter", value: productFilter });
-    if (cashierFilter !== "ALL") items.push({ label: "Cashier Filter", value: cashierFilter });
+    if (supplierFilter !== "ALL") items.push({ label: "Supplier Filter", value: supplierFilter });
     if (dateStartFilter) items.push({ label: "Start Date", value: dateStartFilter });
     if (dateEndFilter) items.push({ label: "End Date", value: dateEndFilter });
     if (minQtyFilter.trim()) items.push({ label: "Min Qty", value: minQtyFilter });
     if (maxQtyFilter.trim()) items.push({ label: "Max Qty", value: maxQtyFilter });
-    if (minTotalSellFilter.trim()) items.push({ label: "Min Total Sell", value: formatCurrency(Number(minTotalSellFilter)) });
-    if (maxTotalSellFilter.trim()) items.push({ label: "Max Total Sell", value: formatCurrency(Number(maxTotalSellFilter)) });
-    items.push({ label: "Items Sold", value: summary.totalQty });
-    items.push({ label: "Sales Income", value: formatCurrency(summary.totalIncome) });
+    if (minTotalCostFilter.trim()) items.push({ label: "Min Total Cost", value: formatCurrency(Number(minTotalCostFilter)) });
+    if (maxTotalCostFilter.trim()) items.push({ label: "Max Total Cost", value: formatCurrency(Number(maxTotalCostFilter)) });
+    items.push({ label: "Items Purchased", value: summary.totalQty });
+    items.push({ label: "Sales Cost", value: formatCurrency(summary.totalCost) });
     return items;
   };
 
   const printReportHtml = async (html: string) => {
     await logClientActivity({
       activityType: "PRINT_REPORT",
-      tableName: "tbl_sale_items",
-      description: "Printed sales items report.",
+      tableName: "tbl_stock_in_items",
+      description: "Printed sales cost report.",
     });
     if (Platform.OS !== "web") {
       await Print.printAsync({ html });
@@ -265,80 +261,65 @@ export default function SalesItemsScreen() {
     }, 250);
   };
 
-  const handlePrintSalesItemsTable = async () => {
+  const handlePrintSalesCostTable = async () => {
     try {
-      const html = buildSalesItemsTableReportPrintHtml({
+      const html = buildSalesCostTableReportPrintHtml({
         rows: filteredRows,
         generatedAt: new Date(),
         generatedBy: roleName,
-        meta: buildCurrentSalesItemsReportMeta(),
+        meta: buildCurrentSalesCostReportMeta(),
       });
       await printReportHtml(html);
     } catch (error) {
-      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print sales items report.");
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print sales cost report.");
     }
   };
 
-  const handleExportSalesItemsExcel = async () => {
+  const handleExportSalesCostExcel = async () => {
     try {
-      const generatedAt = new Date();
-      await downloadExcelWorkbook({
-        title: "Sales Items Report",
-        subtitle: "Sold products from sales transactions",
-        reportKey: "inventory-sales-items",
+      await downloadSalesCostTableReportExcel({
         rows: filteredRows,
-        columns: [
-          { key: "row_number", title: "No.", width: 8, align: "center", getValue: (_row, index) => index + 1 },
-          { key: "sale_code", title: "Sale Code", width: 22, getValue: (row) => row.sale_code },
-          { key: "product_name", title: "Product", width: 30, getValue: (row) => row.product_name },
-          { key: "quantity", title: "Qty", width: 10, align: "center", getValue: (row) => Number(row.quantity || 0) },
-          { key: "sell_per_pcs", title: "Price", width: 16, align: "right", getValue: (row) => Number(row.sell_per_pcs || 0) },
-          { key: "total_sell", title: "Total Sell", width: 18, align: "right", getValue: (row) => Number(row.total_sell || 0) },
-          { key: "cashier_name", title: "Cashier", width: 20, getValue: (row) => row.cashier_name || "-" },
-          { key: "sale_date", title: "Date", width: 20, getValue: (row) => formatDateTime(row.sale_date) },
-        ],
-        generatedAt,
+        generatedAt: new Date(),
         generatedBy: roleName,
-        meta: buildCurrentSalesItemsReportMeta(),
-        fileName: buildSalesItemsTableExcelFileName(generatedAt),
+        meta: buildCurrentSalesCostReportMeta(),
       });
       await logClientActivity({
         activityType: "EXPORT_EXCEL",
-        tableName: "tbl_sale_items",
-        description: "Exported sales items report as Excel.",
+        tableName: "tbl_stock_in_items",
+        description: "Exported sales cost report as Excel.",
       });
     } catch (error) {
-      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export sales items as Excel.");
+      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export sales cost report.");
     }
   };
 
   const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string) => {
     try {
       const generatedAt = new Date();
-      const printHtml = buildSalesItemsTableReportPrintHtml({
+      const printHtml = buildSalesCostTableReportPrintHtml({
         rows: filteredRows,
         generatedAt,
         generatedBy: roleName,
-        meta: buildCurrentSalesItemsReportMeta(),
+        meta: buildCurrentSalesCostReportMeta(),
       });
       const payload = {
         recipient_email: recipientEmail,
         recipient_name: fullName,
-        subject: "Sales Items Report",
+        subject: "Sales Cost Report",
         message,
         format: "PDF",
-        title: "Sales Items",
+        title: "Sales Cost",
         generated_by: roleName,
         print_html: printHtml,
-        meta: buildCurrentSalesItemsReportMeta(),
+        meta: buildCurrentSalesCostReportMeta(),
         columns: [
-          { key: "sale_code", title: "Sale Code" },
+          { key: "stock_in_code", title: "Stock In Code" },
           { key: "product_name", title: "Product" },
           { key: "quantity", title: "Qty" },
-          { key: "sell_per_pcs", title: "Price" },
-          { key: "total_sell", title: "Total Sell" },
-          { key: "cashier_name", title: "Cashier" },
-          { key: "sale_date", title: "Date" },
+          { key: "buy_per_pcs", title: "Buy/Pcs" },
+          { key: "total_cost", title: "Total Cost" },
+          { key: "supplier_name", title: "Supplier" },
+          { key: "stock_in_date", title: "Date" },
         ],
         rows: filteredRows,
       };
@@ -353,8 +334,8 @@ export default function SalesItemsScreen() {
 
       await logClientActivity({
         activityType: "SEND_REPORT_EMAIL",
-        tableName: "tbl_sale_items",
-        description: "Sent sales items report via email.",
+        tableName: "tbl_stock_in_items",
+        description: "Sent sales cost report via email.",
       });
 
       setResultStatus("success");
@@ -373,12 +354,12 @@ export default function SalesItemsScreen() {
     <View style={styles.screen}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <InventoryPageHeader
-          title="Sales Items"
-          subtitle="View sold products from sales transactions per item."
+          title="Sales Cost"
+          subtitle="View stock purchase costs from stock-in items."
           action={
             <ExportDropdownMenu
-              onExportPdf={handlePrintSalesItemsTable}
-              onExportExcel={handleExportSalesItemsExcel}
+              onExportPdf={handlePrintSalesCostTable}
+              onExportExcel={handleExportSalesCostExcel}
               onSendEmail={() => setEmailModalOpen(true)}
             />
           }
@@ -409,20 +390,20 @@ export default function SalesItemsScreen() {
           </View>
           <View style={styles.summaryGrid}>
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>Transactions {periodLabel}</Text>
-              <Text style={styles.summaryValue}>{summary.totalTransactions.toLocaleString("id-ID")}</Text>
+              <Text style={styles.summaryLabel}>Stock In {periodLabel}</Text>
+              <Text style={styles.summaryValue}>{summary.totalStockIn.toLocaleString("id-ID")}</Text>
             </View>
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>Items Sold {periodLabel}</Text>
+              <Text style={styles.summaryLabel}>Items Purchased {periodLabel}</Text>
               <Text style={styles.summaryValue}>{summary.totalQty.toLocaleString("id-ID")}</Text>
             </View>
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>Sales Income {periodLabel}</Text>
-              <Text style={styles.summaryValue}>{formatCurrency(summary.totalIncome)}</Text>
+              <Text style={styles.summaryLabel}>Sales Cost {periodLabel}</Text>
+              <Text style={styles.summaryValue}>{formatCurrency(summary.totalCost)}</Text>
             </View>
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>Avg / Transaction</Text>
-              <Text style={styles.summaryValue}>{formatCurrency(summary.averagePerTransaction)}</Text>
+              <Text style={styles.summaryLabel}>Avg / Stock In</Text>
+              <Text style={styles.summaryValue}>{formatCurrency(summary.averagePerStockIn)}</Text>
             </View>
           </View>
         </View>
@@ -430,40 +411,40 @@ export default function SalesItemsScreen() {
         <InventoryFilterSection
           searchValue={search}
           onSearchChange={setSearch}
-          searchPlaceholder="Search sale code, product, batch, or cashier"
+          searchPlaceholder="Search stock in code, product, batch, or supplier"
           onOpenFilter={() => {
             setDraftProductFilter(productFilter);
-            setDraftCashierFilter(cashierFilter);
+            setDraftSupplierFilter(supplierFilter);
             setDraftDateStartFilter(dateStartFilter);
             setDraftDateEndFilter(dateEndFilter);
             setDraftMinQtyFilter(minQtyFilter);
             setDraftMaxQtyFilter(maxQtyFilter);
-            setDraftMinTotalSellFilter(minTotalSellFilter);
-            setDraftMaxTotalSellFilter(maxTotalSellFilter);
+            setDraftMinTotalCostFilter(minTotalCostFilter);
+            setDraftMaxTotalCostFilter(maxTotalCostFilter);
             setFilterOpen(true);
           }}
           activeFilters={activeFilters}
           onClearAllFilters={() => {
             setProductFilter("ALL");
-            setCashierFilter("ALL");
+            setSupplierFilter("ALL");
             applyPeriodFilter("TODAY");
             setMinQtyFilter("");
             setMaxQtyFilter("");
-            setMinTotalSellFilter("");
-            setMaxTotalSellFilter("");
+            setMinTotalCostFilter("");
+            setMaxTotalCostFilter("");
           }}
         />
 
         <InventoryDataTable
           columns={tableColumns}
           rows={filteredRows}
-          rowKey={(row) => row.id_sale_item}
-          emptyText="No sales items found."
+          rowKey={(row) => row.id_stock_in_item}
+          emptyText="No sales cost data found."
         />
       </ScrollView>
 
       <FilterSheetModal
-        title="Filter Sales Items"
+        title="Filter Sales Cost"
         visible={filterOpen}
         onApply={() => {
           const toDayNumber = (value: string) => Number(value.replaceAll("-", ""));
@@ -472,21 +453,21 @@ export default function SalesItemsScreen() {
             return;
           }
           setProductFilter(draftProductFilter);
-          setCashierFilter(draftCashierFilter);
+          setSupplierFilter(draftSupplierFilter);
           setDateStartFilter(draftDateStartFilter);
           setDateEndFilter(draftDateEndFilter);
           setPeriodFilter("CUSTOM");
           setMinQtyFilter(draftMinQtyFilter);
           setMaxQtyFilter(draftMaxQtyFilter);
-          setMinTotalSellFilter(draftMinTotalSellFilter);
-          setMaxTotalSellFilter(draftMaxTotalSellFilter);
+          setMinTotalCostFilter(draftMinTotalCostFilter);
+          setMaxTotalCostFilter(draftMaxTotalCostFilter);
           setFilterOpen(false);
         }}
         onReset={() => {
           setDraftProductFilter("ALL");
           setProductFilter("ALL");
-          setDraftCashierFilter("ALL");
-          setCashierFilter("ALL");
+          setDraftSupplierFilter("ALL");
+          setSupplierFilter("ALL");
           setDraftDateStartFilter("");
           setDraftDateEndFilter("");
           applyPeriodFilter("TODAY");
@@ -494,10 +475,10 @@ export default function SalesItemsScreen() {
           setMinQtyFilter("");
           setDraftMaxQtyFilter("");
           setMaxQtyFilter("");
-          setDraftMinTotalSellFilter("");
-          setMinTotalSellFilter("");
-          setDraftMaxTotalSellFilter("");
-          setMaxTotalSellFilter("");
+          setDraftMinTotalCostFilter("");
+          setMinTotalCostFilter("");
+          setDraftMaxTotalCostFilter("");
+          setMaxTotalCostFilter("");
         }}
         onClose={() => setFilterOpen(false)}
       >
@@ -508,12 +489,12 @@ export default function SalesItemsScreen() {
           onChange={setDraftProductFilter}
         />
         <FilterSelectField
-          label="Cashier"
-          value={draftCashierFilter}
-          options={cashierOptions.map((item) => ({ label: item, value: item }))}
-          onChange={setDraftCashierFilter}
+          label="Supplier"
+          value={draftSupplierFilter}
+          options={supplierOptions.map((item) => ({ label: item, value: item }))}
+          onChange={setDraftSupplierFilter}
         />
-        <Text style={styles.filterLabel}>Sales Date Range</Text>
+        <Text style={styles.filterLabel}>Stock In Date Range</Text>
         <View style={styles.rangeRow}>
           <View style={styles.dateFieldWrap}>
             <DatePickerField
@@ -539,17 +520,17 @@ export default function SalesItemsScreen() {
           <TextInput value={draftMinQtyFilter} onChangeText={(value) => setDraftMinQtyFilter(value.replace(/[^0-9]/g, ""))} placeholder="Min qty" keyboardType="numeric" placeholderTextColor="#94a3b8" style={styles.rangeInput} />
           <TextInput value={draftMaxQtyFilter} onChangeText={(value) => setDraftMaxQtyFilter(value.replace(/[^0-9]/g, ""))} placeholder="Max qty" keyboardType="numeric" placeholderTextColor="#94a3b8" style={styles.rangeInput} />
         </View>
-        <Text style={styles.filterLabel}>Total Sell Range</Text>
+        <Text style={styles.filterLabel}>Total Cost Range</Text>
         <View style={styles.rangeRow}>
-          <TextInput value={draftMinTotalSellFilter} onChangeText={(value) => setDraftMinTotalSellFilter(value.replace(/[^0-9]/g, ""))} placeholder="Min total" keyboardType="numeric" placeholderTextColor="#94a3b8" style={styles.rangeInput} />
-          <TextInput value={draftMaxTotalSellFilter} onChangeText={(value) => setDraftMaxTotalSellFilter(value.replace(/[^0-9]/g, ""))} placeholder="Max total" keyboardType="numeric" placeholderTextColor="#94a3b8" style={styles.rangeInput} />
+          <TextInput value={draftMinTotalCostFilter} onChangeText={(value) => setDraftMinTotalCostFilter(value.replace(/[^0-9]/g, ""))} placeholder="Min total" keyboardType="numeric" placeholderTextColor="#94a3b8" style={styles.rangeInput} />
+          <TextInput value={draftMaxTotalCostFilter} onChangeText={(value) => setDraftMaxTotalCostFilter(value.replace(/[^0-9]/g, ""))} placeholder="Max total" keyboardType="numeric" placeholderTextColor="#94a3b8" style={styles.rangeInput} />
         </View>
       </FilterSheetModal>
 
       <SendEmailModal
         visible={emailModalOpen}
         onClose={() => setEmailModalOpen(false)}
-        reportTitle="Sales Items"
+        reportTitle="Sales Cost"
         onSend={handleSendEmailReport}
       />
       <InventoryResultModal

@@ -282,7 +282,6 @@ export const buildReceiptPrintHtml = (data: ReceiptData, storeInfo: ReceiptStore
 
       <section class="summary">
         <div class="row"><span>Subtotal</span><span>${escapeHtml(formatRupiah(subtotal))}</span></div>
-        <div class="row"><span>Discount</span><span>${escapeHtml(formatRupiah(discount))}</span></div>
         <div class="row total"><span>Total</span><span>${escapeHtml(formatRupiah(total))}</span></div>
         <div class="row"><span>Payment</span><span>${escapeHtml(data.paymentMethod)}</span></div>
         <div class="row"><span>Paid</span><span>${escapeHtml(formatRupiah(data.amountPaid))}</span></div>

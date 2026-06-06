@@ -2,6 +2,7 @@ import {
   buildReportDetailPrintHtml,
   buildReportPdfFileName,
   buildReportTablePrintHtml,
+  downloadReportTableExcel,
   ReportMetaItem,
   ReportNestedTable,
   ReportTableColumn,
@@ -205,6 +206,24 @@ export const buildStockOutTableReportPrintHtml = ({
   meta = [],
 }: StockOutReportOptions) =>
   buildReportTablePrintHtml({
+    title: "Stock Out Report",
+    subtitle: "Inventory stock out documents",
+    reportKey: REPORT_KEY,
+    generatedAt,
+    generatedBy,
+    meta: [{ label: "Total Rows", value: rows.length }, ...meta],
+    rows,
+    columns: stockOutTableColumns,
+    emptyText: "No stock out data found.",
+  });
+
+export const downloadStockOutTableReportExcel = ({
+  rows,
+  generatedAt = new Date(),
+  generatedBy,
+  meta = [],
+}: StockOutReportOptions) =>
+  downloadReportTableExcel({
     title: "Stock Out Report",
     subtitle: "Inventory stock out documents",
     reportKey: REPORT_KEY,

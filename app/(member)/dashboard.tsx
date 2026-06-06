@@ -1,12 +1,36 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { LineChart, PieChart } from "react-native-chart-kit";
+import { InventoryResultModal } from "../../components/inventory/ActionModals";
 import MemberShell from "../../components/member/MemberShell";
 import { formatRupiah } from "../../components/shu/formatters";
 import { fetchWithAuth } from "../../utils/fetchWithAuth";
-import { getAuthSession, normalizeRole } from "../../utils/authSession";
+import { getAuthSession } from "../../utils/authSession";
+
+const isWeb = Platform.OS === "web";
+let WebLineChart: any = null;
+let WebPieChart: any = null;
+let webChartOptions: any = null;
+
+if (isWeb) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const reactChart = require("react-chartjs-2");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const chartJs = require("chart.js");
+  chartJs.Chart.register(...chartJs.registerables);
+
+  WebLineChart = reactChart.Line;
+  WebPieChart = reactChart.Pie;
+  webChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: "right" as const },
+    },
+  };
+}
 
 type RecentTransaction = {
   id_sale: string;
@@ -30,8 +54,14 @@ type MemberOverview = {
     current_shu_period?: string;
   };
   recent_transactions?: RecentTransaction[];
+  monthly_trend?: {
+    month_label: string;
+    total_spending: number;
+  }[];
   current_shu?: {
     distribution_status?: string | null;
+    sales_shu_amount?: number | null;
+    business_shu_amount?: number | null;
     shu_amount?: number | null;
     period?: {
       period_name?: string | null;
@@ -78,6 +108,13 @@ export default function MemberDashboardScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState<MemberOverview | null>(null);
+  const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [resultMessage, setResultMessage] = useState("");
+
+  const showError = (message: string) => {
+    setResultMessage(message);
+    setResultModalOpen(true);
+  };
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -94,36 +131,15 @@ export default function MemberDashboardScreen() {
   }, []);
 
   useEffect(() => {
-    let active = true;
-    getAuthSession()
-      .then(async (session) => {
-        if (!active) return;
-        if (!session?.token || !normalizeRole(session?.user?.role_name)) {
-          router.replace("/login");
-          return;
-        }
-
-        const accessResponse = await fetchWithAuth("/api/member/access");
-        const accessPayload = await accessResponse.json();
-        if (!accessResponse.ok || !accessPayload?.data?.is_member) {
-          router.replace("/login");
-          return;
-        }
-
-        loadOverview().catch((error) => {
-          Alert.alert("Error", error instanceof Error ? error.message : "Failed to load dashboard.");
-        });
-      })
-      .catch(() => router.replace("/login"));
-
-    return () => {
-      active = false;
-    };
-  }, [loadOverview, router]);
+    loadOverview().catch((error) => showError(error instanceof Error ? error.message : "Failed to load dashboard."));
+  }, [loadOverview]);
 
   const totalTransactions = Number(overview?.metrics?.total_transactions || 0);
   const totalSpending = Number(overview?.metrics?.total_spending || 0);
   const currentShu = Number(overview?.metrics?.current_shu_amount || 0);
+
+  const salesShu = Number(overview?.current_shu?.sales_shu_amount || 0);
+  const businessShu = Number(overview?.current_shu?.business_shu_amount || 0);
 
   const recentTransactions = useMemo(
     () =>
@@ -135,24 +151,25 @@ export default function MemberDashboardScreen() {
     [overview?.recent_transactions]
   );
 
-  const trendLabels = useMemo(() => recentTransactions.map((row) => formatChartDate(row.sale_date)), [recentTransactions]);
-  const trendData = useMemo(() => recentTransactions.map((row) => Number(row.total_amount || 0)), [recentTransactions]);
+  const trendLabels = useMemo(() => {
+    const labels = (overview?.monthly_trend || []).map((row) => row.month_label.split(" ")[0]);
+    return labels.length > 0 ? labels : ["No data"];
+  }, [overview?.monthly_trend]);
+
+  const trendData = useMemo(() => {
+    const data = (overview?.monthly_trend || []).map((row) => Number(row.total_spending || 0));
+    return data.length > 0 ? data : [0];
+  }, [overview?.monthly_trend]);
+
   const mixData = useMemo(
     () => [
-      { name: "Spending", amount: totalSpending, color: "#2563eb", legendFontColor: "#334155", legendFontSize: 12 },
-      { name: "Current SHU", amount: currentShu, color: "#f59e0b", legendFontColor: "#334155", legendFontSize: 12 },
-      {
-        name: "Transactions",
-        amount: totalTransactions,
-        color: "#14b8a6",
-        legendFontColor: "#334155",
-        legendFontSize: 12,
-      },
+      { name: "Sales SHU", amount: salesShu, color: "#14b8a6", legendFontColor: "#334155", legendFontSize: 12 },
+      { name: "Business SHU", amount: businessShu, color: "#f59e0b", legendFontColor: "#334155", legendFontSize: 12 },
     ].filter((item) => item.amount > 0),
-    [currentShu, totalSpending, totalTransactions]
+    [salesShu, businessShu]
   );
 
-  const hasTrendData = trendData.some((value) => value > 0);
+  const hasTrendData = trendData.length > 0 && trendData.some((value) => value > 0);
   const hasMixData = mixData.length > 0;
 
   return (
@@ -169,53 +186,91 @@ export default function MemberDashboardScreen() {
       </View>
 
       <View style={styles.chartGrid}>
-        <ChartPanel title="Recent Spending Trend" subtitle="Last transaction values plotted from oldest to newest.">
+        <ChartPanel title="Spending Trend" subtitle="Monthly spending over the last 6 months.">
           {(width) =>
             width > 0 && hasTrendData ? (
-              <LineChart
-                data={{
-                  labels: trendLabels.length > 0 ? trendLabels : [""],
-                  datasets: [{ data: trendData }],
-                }}
-                width={width}
-                height={240}
-                yAxisLabel=""
-                yAxisSuffix=""
-                withInnerLines
-                withOuterLines={false}
-                withShadow={false}
-                bezier
-                fromZero
-                chartConfig={chartConfig}
-                style={styles.chart}
-              />
+              isWeb ? (
+                <View style={styles.webChartWrap}>
+                  <WebLineChart
+                    options={webChartOptions}
+                    data={{
+                      labels: trendLabels,
+                      datasets: [
+                        {
+                          label: "Monthly Spending",
+                          data: trendData,
+                          borderColor: "#2563eb",
+                          backgroundColor: "rgba(37,99,235,0.2)",
+                          tension: 0.35,
+                        },
+                      ],
+                    }}
+                  />
+                </View>
+              ) : (
+                <LineChart
+                  data={{
+                    labels: trendLabels,
+                    datasets: [{ data: trendData }],
+                  }}
+                  width={width}
+                  height={240}
+                  yAxisLabel="Rp "
+                  yAxisSuffix=""
+                  withInnerLines
+                  withOuterLines={false}
+                  withShadow={false}
+                  bezier
+                  fromZero
+                  onDataPointClick={() => undefined}
+                  chartConfig={chartConfig}
+                  style={styles.chart}
+                />
+              )
             ) : (
               <Text style={styles.emptyState}>No spending data is available yet.</Text>
             )
           }
         </ChartPanel>
 
-        <ChartPanel title="Membership Mix" subtitle="Spending, SHU, and transaction volume.">
+        <ChartPanel title="SHU Breakdown" subtitle="Ratio of Sales SHU vs Business SHU.">
           {(width) =>
             width > 0 && hasMixData ? (
-              <PieChart
-                data={mixData.map((item) => ({
-                  name: item.name,
-                  population: item.amount,
-                  color: item.color,
-                  legendFontColor: item.legendFontColor,
-                  legendFontSize: item.legendFontSize,
-                }))}
-                width={width}
-                height={220}
-                chartConfig={chartConfig}
-                accessor="population"
-                backgroundColor="transparent"
-                paddingLeft="8"
-                absolute
-              />
+              isWeb ? (
+                <View style={styles.webChartWrap}>
+                  <WebPieChart
+                    options={webChartOptions}
+                    data={{
+                      labels: mixData.map((item) => item.name),
+                      datasets: [
+                        {
+                          data: mixData.map((item) => item.amount),
+                          backgroundColor: mixData.map((item) => item.color),
+                        },
+                      ],
+                    }}
+                  />
+                </View>
+              ) : (
+                <PieChart
+                  data={mixData.map((item) => ({
+                    name: item.name,
+                    population: item.amount,
+                    color: item.color,
+                    legendFontColor: item.legendFontColor,
+                    legendFontSize: item.legendFontSize,
+                  }))}
+                  width={width}
+                  height={220}
+                  chartConfig={chartConfig}
+                  accessor="population"
+                  backgroundColor="transparent"
+                  paddingLeft="8"
+                  absolute
+                />
+              )
             ) : (
-              <Text style={styles.emptyState}>No balance data is available yet.</Text>
+              <Text style={styles.emptyState}>No SHU distribution data for the current period.</Text>
             )
           }
         </ChartPanel>
@@ -254,6 +309,13 @@ export default function MemberDashboardScreen() {
         </View>
       </View>
 
+      <InventoryResultModal
+        visible={resultModalOpen}
+        status="error"
+        title="Error"
+        message={resultMessage}
+        onClose={() => setResultModalOpen(false)}
+      />
     </MemberShell>
   );
 }
@@ -282,7 +344,8 @@ function ChartPanel({
     <View
       style={styles.chartCard}
       onLayout={(event) => {
-        const nextWidth = Math.max(0, Math.floor(event.nativeEvent.layout.width) - 24);
+        const { width } = event.nativeEvent.layout;
+        const nextWidth = Math.max(0, Math.floor(width) - 32);
         if (nextWidth > 0 && nextWidth !== chartWidth) {
           setChartWidth(nextWidth);
         }
@@ -290,7 +353,7 @@ function ChartPanel({
     >
       <Text style={styles.chartTitle}>{title}</Text>
       {subtitle ? <Text style={styles.chartSubtitle}>{subtitle}</Text> : null}
-      <View style={styles.chartBody}>{children(chartWidth)}</View>
+      <View style={styles.chartBody}>{chartWidth > 0 ? children(chartWidth) : null}</View>
     </View>
   );
 }
@@ -325,6 +388,7 @@ const styles = StyleSheet.create({
   chartTitle: { color: "#0f172a", fontSize: 15, fontWeight: "800" },
   chartSubtitle: { color: "#64748b", fontSize: 12, fontWeight: "600" },
   chartBody: { paddingTop: 4 },
+  webChartWrap: { height: 220, width: "100%" },
   chart: {
     borderRadius: 14,
   },

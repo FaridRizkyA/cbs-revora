@@ -62,7 +62,10 @@ export default function AppNavigationSidebar({
   return (
     <AppSidebar>
       <View style={styles.brandRow}>
-        <Image source={logoSource} style={styles.sidebarLogo} contentFit="contain" />
+        <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
+          <Image source={require("../../assets/images/ui/logo_koperasi_cbs.png")} style={{ width: 44, height: 44 }} contentFit="contain" />
+          <Image source={logoSource} style={styles.sidebarLogo} contentFit="contain" />
+        </View>
       </View>
 
       <ScrollView style={styles.navList} contentContainerStyle={styles.navListContent}>
@@ -87,14 +90,16 @@ export default function AppNavigationSidebar({
                       style={styles.submenuItem}
                       onPress={() => onSubmenuPress?.(item, child)}
                     >
-                      <Text
-                        style={[
-                          styles.submenuText,
-                          activeSubmenuKey === `${item.key}:${child}` && styles.submenuTextActive,
-                        ]}
-                      >
-                        {child}
-                      </Text>
+                      <View pointerEvents="none">
+                        <Text
+                          style={[
+                            styles.submenuText,
+                            activeSubmenuKey === `${item.key}:${child}` && styles.submenuTextActive,
+                          ]}
+                        >
+                          {child}
+                        </Text>
+                      </View>
                     </Pressable>
                   ))}
                 </View>
@@ -164,8 +169,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   sidebarLogo: {
-    width: "100%",
-    height: 56,
+    flex: 1,
+    height: 44,
   },
   navList: {
     flex: 1,
@@ -181,6 +186,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
+    gap: 10,
+  },
+  navItemInner: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
   },
   navItemActive: {
@@ -292,6 +303,12 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 10,
   },
+  dropdownItemInner: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
   dropdownItemText: {
     color: "#dc2626",
     fontSize: 13,
@@ -309,3 +326,4 @@ const styles = StyleSheet.create({
     color: "#dc2626",
   },
 });
+

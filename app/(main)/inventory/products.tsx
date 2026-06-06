@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { Image } from "expo-image";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
@@ -17,6 +17,7 @@ import SendEmailModal from "../../../components/modals/SendEmailModal";
 import {
   buildProductDetailReportPrintHtml,
   buildProductTableReportPrintHtml,
+  downloadProductTableReportExcel,
 } from "../../../components/reports/products/ProductReportPrintTemplate";
 import { canManageInventoryMaster, getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { API_BASE_URL } from "../../../utils/api";
@@ -124,6 +125,8 @@ const formatRupiah = (value: number) =>
 
 export default function ProductsScreen() {
   const { width, height } = useWindowDimensions();
+  const isDetailCompact = width < 1100 || height < 700;
+  const productDetailScrollMaxHeight = Math.max(360, height * (isDetailCompact ? 0.7 : 0.78));
   const cropModalWidth = Math.min(440, Math.max(320, Math.floor(Math.min(width - 32, height - 300))));
   const [webCrop, setWebCrop] = useState<WebCropState | null>(null);
   const [cropViewportSize, setCropViewportSize] = useState(320);
@@ -172,6 +175,13 @@ export default function ProductsScreen() {
   const [resultStatus, setResultStatus] = useState<"success" | "error">("success");
   const [resultTitle, setResultTitle] = useState("");
   const [resultMessage, setResultMessage] = useState("");
+
+  const showResult = (status: "success" | "error", title: string, message: string) => {
+    setResultStatus(status);
+    setResultTitle(title);
+    setResultMessage(message);
+    setResultModalOpen(true);
+  };
   const [detailImageLoadError, setDetailImageLoadError] = useState(false);
 
   const [emailModalOpen, setEmailModalOpen] = useState(false);
@@ -337,7 +347,7 @@ export default function ProductsScreen() {
     };
     image.onerror = () => {
       if (cancelled) return;
-      Alert.alert("Error", "Failed to load image for cropping.");
+      showResult("error", "Error", "Failed to load image for cropping.");
       closeWebCropper();
     };
     image.src = webCrop.sourceUri;
@@ -843,7 +853,25 @@ export default function ProductsScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print product report.");
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print product report.");
+    }
+  };
+
+  const handleExportProductExcel = async () => {
+    try {
+      await downloadProductTableReportExcel({
+        rows: activeProducts,
+        generatedAt: new Date(),
+        generatedBy: roleName,
+        meta: buildCurrentProductReportMeta(),
+      });
+      await logClientActivity({
+        activityType: "EXPORT_EXCEL",
+        tableName: "tbl_products",
+        description: "Exported product report as Excel.",
+      });
+    } catch (error) {
+      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export product report.");
     }
   };
 
@@ -874,7 +902,7 @@ export default function ProductsScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print product detail.");
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print product detail.");
     }
   };
 
@@ -1116,7 +1144,7 @@ export default function ProductsScreen() {
           <View style={styles.headerActionRow}>
             <ExportDropdownMenu
               onExportPdf={handlePrintProductTable}
-              onExportExcel={() => Alert.alert("Export Excel", "This feature will be implemented soon.")}       
+              onExportExcel={handleExportProductExcel}
               onSendEmail={() => {
                 setEmailTarget("table");
                 setEmailModalOpen(true);
@@ -1196,9 +1224,13 @@ export default function ProductsScreen() {
                 }}
               />
             </View>
-            <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
-            <View style={styles.metaGrid}>
-              <View style={[styles.productImageWrap, styles.productImageWrapDesktop]}>
+            <ScrollView
+              style={[styles.productDetailScroll, { maxHeight: productDetailScrollMaxHeight }]}
+              contentContainerStyle={styles.detailScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+            <View style={[styles.metaGrid, isDetailCompact && styles.metaGridCompact]}>
+              <View style={[styles.productImageWrap, isDetailCompact ? styles.productImageWrapCompact : styles.productImageWrapDesktop, isDetailCompact ? { maxHeight: Math.min(180, height * 0.26) } : null]}>
                 {selectedProduct?.product_image && !detailImageLoadError ? (
                   <Image source={{ uri: selectedProduct.product_image }} style={styles.productImage} contentFit="cover" onError={() => setDetailImageLoadError(true)} />
                 ) : (
@@ -1206,33 +1238,33 @@ export default function ProductsScreen() {
                 )}
               </View>
 
-              <View style={styles.metaStack}>
-                <View style={styles.metaCard}>
+              <View style={[styles.metaStack, isDetailCompact && styles.metaStackCompact]}>
+                <View style={[styles.metaCard, isDetailCompact && styles.metaCardCompact]}>
                   <Text style={styles.metaLabel}>Product Code</Text>
                   <Text style={styles.metaValue}>{selectedProduct?.product_code || "-"}</Text>
                 </View>
-                <View style={styles.metaCard}>
+                <View style={[styles.metaCard, isDetailCompact && styles.metaCardCompact]}>
                   <Text style={styles.metaLabel}>Product Name</Text>
                   <Text style={styles.metaValue}>{selectedProduct?.product_name || "-"}</Text>
                 </View>
-                <View style={styles.metaCard}>
+                <View style={[styles.metaCard, isDetailCompact && styles.metaCardCompact]}>
                   <Text style={styles.metaLabel}>Supplier</Text>
                   <Text style={styles.metaValue}>{selectedProduct?.supplier_name || "-"}</Text>
                 </View>
-                <View style={styles.metaCard}>
+                <View style={[styles.metaCard, isDetailCompact && styles.metaCardCompact]}>
                   <Text style={styles.metaLabel}>Status</Text>
                   <Text style={styles.metaValue}>{selectedProduct?.is_active === "N" ? "Inactive" : "Active"}</Text>
                 </View>
-                <View style={styles.metaCard}>
+                <View style={[styles.metaCard, isDetailCompact && styles.metaCardCompact]}>
                   <Text style={styles.metaLabel}>Barcode</Text>
                   <Text style={styles.metaValue}>{selectedProduct?.barcode || "-"}</Text>
                 </View>
-                <View style={styles.metaRow}>
-                  <View style={styles.metaCardHalf}>
+                <View style={[styles.metaRow, isDetailCompact && styles.metaRowCompact]}>
+                  <View style={[styles.metaCardHalf, isDetailCompact && styles.metaCardCompact]}>
                     <Text style={styles.metaLabel}>Price</Text>
                     <Text style={styles.metaValue}>{formatRupiah(selectedProduct?.selling_price || 0)}</Text>   
                   </View>
-                  <View style={styles.metaCardHalf}>
+                  <View style={[styles.metaCardHalf, isDetailCompact && styles.metaCardCompact]}>
                     <Text style={styles.metaLabel}>Stock</Text>
                     <Text style={styles.metaValue}>{selectedProduct?.available_stock ?? 0}</Text>
                   </View>
@@ -1246,13 +1278,16 @@ export default function ProductsScreen() {
               </Text>
             </View>
 
-            <InventoryDataTable
-              columns={batchDetailColumns}
-              rows={selectedProductBatches}
-              rowKey={(batch) => batch.id_product_batch}
-              emptyText="No batch data for this product."
-              enablePagination={false}
-            />
+            <View style={styles.batchTableWrap}>
+              <InventoryDataTable
+                columns={batchDetailColumns}
+                rows={selectedProductBatches}
+                rowKey={(batch) => batch.id_product_batch}
+                emptyText="No batch data for this product."
+                enablePagination={false}
+                minWidth={520}
+              />
+            </View>
             </ScrollView>
             <Pressable style={styles.closeButton} onPress={() => setSelectedProduct(null)}>
               <Text style={styles.closeButtonText}>Close</Text>
@@ -1859,7 +1894,10 @@ const styles = StyleSheet.create({
   detailPrintButton: { minHeight: 36, borderRadius: 10, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
   detailPrintButtonText: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
   detailScroll: {
-    maxHeight: "84%",
+    width: "100%",
+  },
+  productDetailScroll: {
+    width: "100%",
   },
   detailScrollContent: {
     gap: 10,
@@ -1867,7 +1905,9 @@ const styles = StyleSheet.create({
   },
   notesCard: { borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#f8fafc", padding: 10, gap: 4 },
   metaGrid: { flexDirection: "row", gap: 12, alignItems: "stretch", justifyContent: "space-between", width: "100%" },
+  metaGridCompact: { flexDirection: "column", alignItems: "stretch" },
   metaStack: { flex: 1, gap: DETAIL_ROW_GAP, width: "100%" },
+  metaStackCompact: { flex: 0 },
   productImageWrap: {
     borderRadius: 10,
     overflow: "hidden",
@@ -1876,12 +1916,15 @@ const styles = StyleSheet.create({
     borderColor: "#dbe3ee",
     flexShrink: 0,
   },
-  productImageWrapDesktop: { width: "36%", alignSelf: "stretch" },
+  productImageWrapDesktop: { width: "36%", aspectRatio: 4 / 3, alignSelf: "flex-start" },
+  productImageWrapCompact: { width: "100%", aspectRatio: 16 / 9, alignSelf: "center" },
   productImage: { width: "100%", height: "100%", borderRadius: 10 },
   metaCard: { borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#f8fafc", padding: 8, gap: 2, height: DETAIL_ROW_HEIGHT, justifyContent: "center" },
+  metaCardCompact: { minHeight: 40, height: "auto" },
   metaLabel: { color: "#64748b", fontSize: 11, fontWeight: "700" },
   metaValue: { color: "#0f172a", fontSize: 13, fontWeight: "700" },
   metaRow: { flexDirection: "row", gap: 8 },
+  metaRowCompact: { flexDirection: "row" },
   metaCardHalf: { flex: 1, borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#f8fafc", padding: 8, gap: 2, height: DETAIL_ROW_HEIGHT, justifyContent: "center" },
   batchTableCard: {
     borderRadius: 10,
@@ -1912,6 +1955,7 @@ const styles = StyleSheet.create({
   batchColQty: { width: "12%" },
   batchColExp: { width: "36%" },
   batchEmpty: { color: "#64748b", fontSize: 12, padding: 10 },
+  batchTableWrap: { minHeight: 120 },
   inactiveModalCard: { backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 8 },
   inactiveTableCard: { borderRadius: 10, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#fff", overflow: "hidden" },
   activateButton: { alignSelf: "center", minHeight: 30, borderRadius: 8, borderWidth: 1, borderColor: "#bbf7d0", backgroundColor: "#f0fdf4", paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },

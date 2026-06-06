@@ -4,7 +4,8 @@ import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppNavigationSidebar, { NavigationItem, ProfileDropdownItem } from "../navigation/AppNavigationSidebar";
-import { canAccessMainApp, clearAuthSession, getAuthSession, normalizeRole } from "../../utils/authSession";
+import { InventoryConfirmModal } from "../inventory/ActionModals";
+import { canAccessMainApp, getAuthSession, logoutAuthSession, normalizeRole, subscribeAuthSession } from "../../utils/authSession";
 
 const SIDEBAR_LOGO = require("../../assets/images/ui/logo_horizontal.png");
 const PROFILE_PLACEHOLDER = require("../../assets/images/placeholders/default-profile.png");
@@ -43,15 +44,20 @@ export default function MemberShell({ title, subtitle, active, onNavigate, child
   const [profileName, setProfileName] = useState("Member");
   const [profileRole, setProfileRole] = useState("MEMBER");
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   useEffect(() => {
     let activeSession = true;
+    const applySession = (session: Awaited<ReturnType<typeof getAuthSession>>) => {
+      setProfileName(session?.user?.full_name || "Member");
+      setProfileRole(normalizeRole(session?.user?.role_name) || "MEMBER");
+      setProfileImage(session?.user?.profile_image || null);
+    };
+
     getAuthSession()
       .then((session) => {
         if (!activeSession) return;
-        setProfileName(session?.user?.full_name || "Member");
-        setProfileRole(normalizeRole(session?.user?.role_name) || "MEMBER");
-        setProfileImage(session?.user?.profile_image || null);
+        applySession(session);
       })
       .catch(() => {
         if (activeSession) {
@@ -61,14 +67,21 @@ export default function MemberShell({ title, subtitle, active, onNavigate, child
         }
       });
 
+    const unsubscribe = subscribeAuthSession((session) => {
+      if (!activeSession || !session?.user) return;
+      applySession(session);
+    });
+
     return () => {
       activeSession = false;
+      unsubscribe();
     };
   }, []);
 
   const handleLogout = useCallback(async () => {
+    setLogoutConfirmOpen(false);
     setProfileMenuOpen(false);
-    await clearAuthSession();
+    await logoutAuthSession();
     router.replace("/login");
   }, [router]);
 
@@ -104,11 +117,14 @@ export default function MemberShell({ title, subtitle, active, onNavigate, child
       label: "Logout",
       icon: "log-out",
       tone: "danger" as const,
-      onPress: handleLogout,
+      onPress: () => {
+        setProfileMenuOpen(false);
+        setLogoutConfirmOpen(true);
+      },
     });
 
     return items;
-  }, [handleLogout, profileRole, router]);
+  }, [profileRole, router]);
 
   return (
     <View
@@ -172,6 +188,15 @@ export default function MemberShell({ title, subtitle, active, onNavigate, child
           </View>
         </View>
       </View>
+      <InventoryConfirmModal
+        visible={logoutConfirmOpen}
+        title="Logout?"
+        message="Are you sure you want to end this session?"
+        confirmLabel="Logout"
+        tone="danger"
+        onCancel={() => setLogoutConfirmOpen(false)}
+        onConfirm={handleLogout}
+      />
     </View>
   );
 }

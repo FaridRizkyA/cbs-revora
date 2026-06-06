@@ -1,5 +1,6 @@
 import { Asset } from "expo-asset";
 import { buildExportFileName, sanitizeFileNamePart } from "../../../utils/exportFileName";
+import { downloadExcelWorkbook, ExcelColumn } from "../../../utils/excelExport";
 
 export type ReportValue = string | number | boolean | Date | null | undefined;
 
@@ -497,6 +498,56 @@ export const buildReportPdfFileName = ({
     documentNumber,
     date,
     extension: "pdf",
+  });
+};
+
+export const buildReportExcelFileName = ({
+  reportKey,
+  variant,
+  documentNumber,
+  date,
+}: ReportFileNameOptions) => {
+  const prefix = ["cbs-revora", reportKey, variant].map(sanitizeFileNamePart).filter(Boolean).join("-");
+
+  return buildExportFileName({
+    prefix: prefix || "report",
+    documentNumber,
+    date,
+    extension: "xlsx",
+  });
+};
+
+const widthToExcelWidth = (width?: string) => {
+  if (!width) return 18;
+  const numeric = Number(String(width).replace(/[^0-9.]/g, ""));
+  if (!Number.isFinite(numeric) || numeric <= 0) return 18;
+  if (String(width).includes("%")) return Math.max(10, Math.min(36, numeric * 1.2));
+  return Math.max(8, Math.min(42, numeric / 4));
+};
+
+export const downloadReportTableExcel = async <Row,>(data: ReportTablePrintData<Row> & { fileName?: string }) => {
+  const columns: ExcelColumn<Row>[] = (data.columns || []).map((column) => ({
+    key: column.key,
+    title: column.title,
+    align: column.align,
+    width: widthToExcelWidth(column.width),
+    getValue: column.getValue,
+  }));
+
+  await downloadExcelWorkbook({
+    title: data.title,
+    subtitle: data.subtitle,
+    reportKey: data.reportKey,
+    generatedAt: data.generatedAt,
+    generatedBy: data.generatedBy,
+    meta: data.meta,
+    rows: data.rows,
+    columns,
+    fileName: data.fileName || buildReportExcelFileName({
+      reportKey: data.reportKey,
+      variant: "table",
+      date: data.generatedAt,
+    }),
   });
 };
 

@@ -1,6 +1,6 @@
 import * as Print from "expo-print";
-import { useEffect, useMemo, useState } from "react";
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import DatePickerField from "../../../components/inventory/DatePickerField";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
@@ -16,6 +16,7 @@ import SendEmailModal from "../../../components/modals/SendEmailModal";
 import {
   buildStockOutDetailReportPrintHtml,
   buildStockOutTableReportPrintHtml,
+  downloadStockOutTableReportExcel,
 } from "../../../components/reports/stock-out/StockOutReportPrintTemplate";
 import { API_BASE_URL } from "../../../utils/api";
 import { logClientActivity } from "../../../utils/activityLog";
@@ -133,6 +134,13 @@ export default function StockOutScreen() {
   const [resultTitle, setResultTitle] = useState("");
   const [resultMessage, setResultMessage] = useState("");
 
+  const showResult = useCallback((status: "success" | "error", title: string, message: string) => {
+    setResultStatus(status);
+    setResultTitle(title);
+    setResultMessage(message);
+    setResultModalOpen(true);
+  }, []);
+
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [emailTarget, setEmailTarget] = useState<"table" | "detail">("table");
 
@@ -224,6 +232,18 @@ export default function StockOutScreen() {
       .catch(() => setRows([]));
   };
 
+  const loadProducts = async () => {
+    const response = await fetch(`${API_BASE_URL}/api/products`);
+    const payload = await response.json();
+    const data = Array.isArray(payload?.data) ? payload.data : [];
+    setProducts(data.filter((x: any) => x.is_active !== "N"));
+    const map: Record<string, number> = {};
+    data.forEach((x: any) => {
+      map[x.id_product] = Number(x.available_stock || 0);
+    });
+    setStockByProductId(map);
+  };
+
   useEffect(() => {
     getAuthSession()
       .then((session) => {
@@ -232,15 +252,10 @@ export default function StockOutScreen() {
       })
       .catch(() => setRoleName("CASHIER"));
     loadRows();
-    fetch(`${API_BASE_URL}/api/products`)
-      .then((r) => r.json())
-      .then((p) => {
-        const data = Array.isArray(p?.data) ? p.data : [];
-        setProducts(data.filter((x: any) => x.is_active !== "N"));
-        const map: any = {};
-        data.forEach((x: any) => (map[x.id_product] = Number(x.available_stock || 0)));
-        setStockByProductId(map);
-      });
+    loadProducts().catch(() => {
+      setProducts([]);
+      setStockByProductId({});
+    });
   }, []);
 
   const loadBatchesByProduct = (idProduct: string) => {
@@ -383,7 +398,25 @@ export default function StockOutScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print stock out report.");
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print stock out report.");
+    }
+  };
+
+  const handleExportStockOutExcel = async () => {
+    try {
+      await downloadStockOutTableReportExcel({
+        rows: Array.isArray(filteredRows) ? filteredRows : [],
+        generatedAt: new Date(),
+        generatedBy: roleName,
+        meta: buildCurrentStockOutReportMeta(),
+      });
+      await logClientActivity({
+        activityType: "EXPORT_EXCEL",
+        tableName: "tbl_stock_movements",
+        description: "Exported stock out report as Excel.",
+      });
+    } catch (error) {
+      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export stock out report.");
     }
   };
 
@@ -397,9 +430,23 @@ export default function StockOutScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print stock out detail.");
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print stock out detail.");
     }
   };
+
+  const openDetail = useCallback(async (row: StockOutDocument) => {
+    const type = String(row.stock_out_type || "SALE").toUpperCase();
+    const endpoint = type === "SALE" ? `${API_BASE_URL}/api/stock-out-documents/${row.id_stock_out}` : `${API_BASE_URL}/api/stock-out-manual-documents/${row.id_stock_out}`;
+    try {
+      const response = await fetch(endpoint);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.message || payload?.error || "Failed to fetch stock out detail.");
+      setSelectedDoc(payload?.data || null);
+    } catch (error) {
+      setSelectedDoc(null);
+      showResult("error", "Error", error instanceof Error ? error.message : "Failed to fetch stock out detail.");       
+    }
+  }, [showResult]);
 
   const tableColumns = useMemo<InventoryDataTableColumn<StockOutDocument>[]>(() => [
     { key: "stock_out_code", title: "Code", weight: 30, sortable: true, sortValue: (row) => row.stock_out_code || "", render: (row) => <Text style={styles.rowCell} numberOfLines={1}>{row.stock_out_code}</Text> },
@@ -414,7 +461,7 @@ export default function StockOutScreen() {
         </InventoryRowActionsMenu>
       </View>
     ) },
-  ], [openActionStockOutId]);
+  ], [openActionStockOutId, openDetail]);
 
   const saleDetailColumns = useMemo<InventoryDataTableColumn<StockOutItem>[]>(() => [
     { key: "product_name", title: "Product", weight: 18, render: (r) => <Text style={styles.detailRowCell} numberOfLines={1}>{r.product_name}</Text> },
@@ -449,20 +496,6 @@ export default function StockOutScreen() {
       render: (r) => <Text style={styles.detailRowCell}>{formatCurrency(Number(r.total_buy ?? (Number(r.buy_per_pcs || 0) * Number(r.quantity || 0))))}</Text>,
     },
   ], []);
-
-  const openDetail = async (row: StockOutDocument) => {
-    const type = String(row.stock_out_type || "SALE").toUpperCase();
-    const endpoint = type === "SALE" ? `${API_BASE_URL}/api/stock-out-documents/${row.id_stock_out}` : `${API_BASE_URL}/api/stock-out-manual-documents/${row.id_stock_out}`;
-    try {
-      const response = await fetch(endpoint);
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.message || payload?.error || "Failed to fetch stock out detail.");
-      setSelectedDoc(payload?.data || null);
-    } catch (error) {
-      setSelectedDoc(null);
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to fetch stock out detail.");       
-    }
-  };
 
   const submitManualStockOut = async () => {
     if (!userId) {
@@ -519,7 +552,10 @@ export default function StockOutScreen() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error || payload?.message || "Failed to create non-sales stock out.");
       setFormOpen(false); setManualReason("DAMAGED"); setManualReturnRefund(""); setManualNotes(""); setManualItems([{ id_product: "", quantity: "" }]);
-      loadRows(); setResultStatus("success"); setResultTitle("Action Completed"); setResultMessage("Non-sales stock out saved successfully.");
+      setBatchesByProduct({});
+      loadRows();
+      await loadProducts();
+      setResultStatus("success"); setResultTitle("Action Completed"); setResultMessage("Non-sales stock out saved successfully.");
       setResultModalOpen(true);
     } catch (error) {
       setResultStatus("error"); setResultTitle("Action Failed"); setResultMessage(error instanceof Error ? error.message : "Failed to create non-sales stock out.");
@@ -539,7 +575,7 @@ export default function StockOutScreen() {
           <View style={styles.headerActionRow}>
             <ExportDropdownMenu
               onExportPdf={handlePrintStockOutTable}
-              onExportExcel={() => Alert.alert("Export Excel", "This feature will be implemented soon.")}       
+              onExportExcel={handleExportStockOutExcel}
               onSendEmail={() => { setEmailTarget("table"); setEmailModalOpen(true); }}
             />
             {canInsert ? <PrimaryActionButton label="Add Stock Out" onPress={() => setFormOpen(true)} /> : null}
@@ -570,7 +606,7 @@ export default function StockOutScreen() {
         onApply={() => {
           const toDayNumber = (value: string) => Number(value.replaceAll("-", ""));
           if (draftDateStartFilter && draftDateEndFilter && toDayNumber(draftDateEndFilter) < toDayNumber(draftDateStartFilter)) {
-            Alert.alert("Validation", "End date must be the same as or after Start date.");
+            showResult("error", "Validation", "End date must be the same as or after Start date.");
             return;
           }
           setTypeFilter(draftTypeFilter);
@@ -758,7 +794,19 @@ export default function StockOutScreen() {
             </View>
       </ResponsiveModal>
 
-      <InventoryConfirmModal visible={confirmOpen} message="Create this stock out data?" onCancel={() => setConfirmOpen(false)} onConfirm={async () => { setConfirmOpen(false); await submitManualStockOut(); }} />
+      <InventoryConfirmModal
+        visible={confirmOpen}
+        title="Create Stock Out?"
+        message="Create this non-sales stock out document and reduce the selected item stock?"
+        confirmLabel="Create Stock Out"
+        loading={saving}
+        tone="danger"
+        onCancel={() => (saving ? null : setConfirmOpen(false))}
+        onConfirm={async () => {
+          setConfirmOpen(false);
+          await submitManualStockOut();
+        }}
+      />
       <InventoryResultModal visible={resultModalOpen} status={resultStatus} title={resultTitle} message={resultMessage} onClose={() => setResultModalOpen(false)} />
 
       <ResponsiveModal visible={Boolean(selectedDoc)} onClose={() => setSelectedDoc(null)} maxWidthDesktop={980} cardStyle={styles.detailModalCard}>
@@ -810,7 +858,7 @@ export default function StockOutScreen() {
       onApply={() => {
         const toDayNumber = (value: string) => Number(value.replaceAll("-", ""));
         if (draftDateStartFilter && draftDateEndFilter && toDayNumber(draftDateEndFilter) < toDayNumber(draftDateStartFilter)) {
-          Alert.alert("Validation", "End date must be the same as or after Start date.");
+          showResult("error", "Validation", "End date must be the same as or after Start date.");
           return;
         }
         setTypeFilter(draftTypeFilter);

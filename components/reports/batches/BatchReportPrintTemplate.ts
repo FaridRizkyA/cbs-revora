@@ -2,6 +2,7 @@ import {
   buildReportDetailPrintHtml,
   buildReportPdfFileName,
   buildReportTablePrintHtml,
+  downloadReportTableExcel,
   ReportMetaItem,
   ReportTableColumn,
 } from "../shared/ReportPrintTemplate";
@@ -144,6 +145,24 @@ export const buildBatchTableReportPrintHtml = ({
   meta = [],
 }: BatchReportOptions) =>
   buildReportTablePrintHtml({
+    title: "Batch Report",
+    subtitle: "Inventory batch ledger",
+    reportKey: REPORT_KEY,
+    generatedAt,
+    generatedBy,
+    meta: [{ label: "Total Rows", value: rows.length }, ...meta],
+    rows,
+    columns: batchTableColumns,
+    emptyText: "No batch data found.",
+  });
+
+export const downloadBatchTableReportExcel = ({
+  rows,
+  generatedAt = new Date(),
+  generatedBy,
+  meta = [],
+}: BatchReportOptions) =>
+  downloadReportTableExcel({
     title: "Batch Report",
     subtitle: "Inventory batch ledger",
     reportKey: REPORT_KEY,

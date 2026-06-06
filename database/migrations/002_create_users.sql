@@ -3,6 +3,8 @@ CREATE TABLE tbl_users (
 
     email VARCHAR(150) NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    active_session_jti VARCHAR(100),
+    active_session_expires_at TIMESTAMP,
 
     is_active CHAR(1) NOT NULL DEFAULT 'Y',
 

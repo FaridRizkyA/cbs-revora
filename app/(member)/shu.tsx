@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import { InventoryResultModal } from "../../components/inventory/ActionModals";
 import MemberShell from "../../components/member/MemberShell";
 import InventoryDataTable, { InventoryDataTableColumn } from "../../components/inventory/InventoryDataTable";
 import { formatDate, formatRupiah } from "../../components/shu/formatters";
 import { fetchWithAuth } from "../../utils/fetchWithAuth";
-import { getAuthSession, normalizeRole } from "../../utils/authSession";
+import { getAuthSession } from "../../utils/authSession";
 
 type OverviewResponse = {
   member: {
@@ -36,9 +37,9 @@ type ShuHistoryRow = {
   calculation_status?: string;
   member_total_spending?: number;
   spending_percentage?: number;
-  eligible_shu_usaha?: boolean;
-  shu_belanja_amount?: number;
-  shu_usaha_amount?: number;
+  eligible_business_shu?: boolean;
+  sales_shu_amount?: number;
+  business_shu_amount?: number;
   shu_amount?: number;
   distribution_status?: string;
 };
@@ -50,6 +51,13 @@ export default function MemberShuScreen() {
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [history, setHistory] = useState<ShuHistoryRow[]>([]);
+  const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [resultMessage, setResultMessage] = useState("");
+
+  const showError = (message: string) => {
+    setResultMessage(message);
+    setResultModalOpen(true);
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -77,32 +85,10 @@ export default function MemberShuScreen() {
   }, []);
 
   useEffect(() => {
-    let active = true;
-    getAuthSession()
-      .then(async (session) => {
-        if (!active) return;
-        if (!session?.token || !normalizeRole(session?.user?.role_name)) {
-          router.replace("/login");
-          return;
-        }
-
-        const accessResponse = await fetchWithAuth("/api/member/access");
-        const accessPayload = await accessResponse.json();
-        if (!accessResponse.ok || !accessPayload?.data?.is_member) {
-          router.replace("/login");
-          return;
-        }
-
-        loadData().catch((error) => {
-          Alert.alert("Error", error instanceof Error ? error.message : "Failed to load SHU.");
-        });
-      })
-      .catch(() => router.replace("/login"));
-
-    return () => {
-      active = false;
-    };
-  }, [loadData, router]);
+    loadData().catch((error) => {
+      showError(error instanceof Error ? error.message : "Failed to load SHU.");
+    });
+  }, [loadData]);
 
   const columns = useMemo<InventoryDataTableColumn<ShuHistoryRow>[]>(() => [
     {
@@ -141,26 +127,26 @@ export default function MemberShuScreen() {
       weight: 10,
       align: "center",
       sortable: true,
-      sortValue: (row) => (row.eligible_shu_usaha ? 1 : 0),
-      render: (row) => <Text style={styles.cellText}>{row.eligible_shu_usaha ? "Eligible" : "No"}</Text>,
+      sortValue: (row) => (row.eligible_business_shu ? 1 : 0),
+      render: (row) => <Text style={styles.cellText}>{row.eligible_business_shu ? "Eligible" : "No"}</Text>,
     },
     {
-      key: "shu_belanja",
-      title: "Shopping SHU",
+      key: "sales_shu",
+      title: "Sales SHU",
       weight: 14,
       align: "right",
       sortable: true,
-      sortValue: (row) => Number(row.shu_belanja_amount || 0),
-      render: (row) => <Text style={styles.cellText}>{formatRupiah(Number(row.shu_belanja_amount || 0))}</Text>,
+      sortValue: (row) => Number(row.sales_shu_amount || 0),
+      render: (row) => <Text style={styles.cellText}>{formatRupiah(Number(row.sales_shu_amount || 0))}</Text>,
     },
     {
-      key: "shu_usaha",
+      key: "business_shu",
       title: "Business SHU",
       weight: 14,
       align: "right",
       sortable: true,
-      sortValue: (row) => Number(row.shu_usaha_amount || 0),
-      render: (row) => <Text style={styles.cellText}>{formatRupiah(Number(row.shu_usaha_amount || 0))}</Text>,
+      sortValue: (row) => Number(row.business_shu_amount || 0),
+      render: (row) => <Text style={styles.cellText}>{formatRupiah(Number(row.business_shu_amount || 0))}</Text>,
     },
     {
       key: "shu_total",
@@ -210,6 +196,13 @@ export default function MemberShuScreen() {
           emptyText="No SHU history found."
         />
       </View>
+      <InventoryResultModal
+        visible={resultModalOpen}
+        status="error"
+        title="Error"
+        message={resultMessage}
+        onClose={() => setResultModalOpen(false)}
+      />
     </MemberShell>
   );
 }

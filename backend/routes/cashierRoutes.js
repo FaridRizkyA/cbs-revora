@@ -19,6 +19,7 @@ const {
   getStockOutDocuments,
   getStockOutDocumentById,
   getSalesItems,
+  getSalesCosts,
   createSupplier,
   updateSupplier,
   setSupplierActiveState,
@@ -50,6 +51,7 @@ router.get("/stock-in-documents/:idStockIn", getStockInDocumentById);
 router.get("/stock-out-documents", getStockOutDocuments);
 router.get("/stock-out-documents/:idStockOut", getStockOutDocumentById);
 router.get("/sales-items", getSalesItems);
+router.get("/sales-costs", getSalesCosts);
 router.get("/suppliers", getSuppliers);
 router.post("/suppliers", createSupplier);
 router.put("/suppliers/:idSupplier", updateSupplier);

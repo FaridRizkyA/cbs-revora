@@ -1,21 +1,19 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
-import DatePickerField from "../../../components/inventory/DatePickerField";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
 import InventoryFilterSection from "../../../components/inventory/InventoryFilterSection";
-import InventoryPageHeader from "../../../components/inventory/InventoryPageHeader";
-import PrimaryActionButton from "../../../components/inventory/PrimaryActionButton";
-import InventoryRowActionsMenu from "../../../components/inventory/InventoryRowActionsMenu";
 import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu";
+import { InventoryConfirmModal, InventoryResultModal } from "../../../components/inventory/ActionModals";
 import SendEmailModal from "../../../components/modals/SendEmailModal";
 import {
   buildShuDetailReportPrintHtml,
   buildShuYearlyReportPrintHtml,
+  downloadShuDetailReportExcel,
+  downloadShuYearlyReportExcel,
   ShuSignatureSlot,
 } from "../../../components/reports/shu";
 import { formatDate, formatDateTime, formatRupiah } from "../../../components/shu/formatters";
@@ -197,9 +195,21 @@ export default function ShuScreen() {
   const [roleName, setRoleName] = useState("CASHIER");
   const [canFinalizeShu, setCanFinalizeShu] = useState(false);
   const [finalizeHintOpen, setFinalizeHintOpen] = useState(false);
+  const [pendingPeriodAction, setPendingPeriodAction] = useState<"calculate" | "finalize" | null>(null);
 
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [emailTarget, setEmailTarget] = useState<"table" | "detail">("table");
+  const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [resultStatus, setResultStatus] = useState<"success" | "error">("success");
+  const [resultTitle, setResultTitle] = useState("");
+  const [resultMessage, setResultMessage] = useState("");
+
+  const showResult = (status: "success" | "error", title: string, message: string) => {
+    setResultStatus(status);
+    setResultTitle(title);
+    setResultMessage(message);
+    setResultModalOpen(true);
+  };
 
   const canManage = canManageShu(roleName);
 
@@ -261,7 +271,7 @@ export default function ShuScreen() {
         });
       } else {
         setDetailError(message);
-        Alert.alert("Error", message);
+        showResult("error", "Error", message);
         setDetailData(null);
       }
     } finally {
@@ -357,6 +367,13 @@ export default function ShuScreen() {
     },
     [selectedRow, loadYearlySummary, loadDetail]
   );
+
+  const executePendingPeriodAction = async () => {
+    const action = pendingPeriodAction;
+    setPendingPeriodAction(null);
+    if (!action) return;
+    await runPeriodAction(action);
+  };
 
   const yearlyColumns = useMemo<InventoryDataTableColumn<ShuYearRow>[]>(
     () => [
@@ -534,9 +551,9 @@ export default function ShuScreen() {
         description: "Sent SHU report via email.",
       });
 
-      Alert.alert("Success", "Email sent successfully.");
+      showResult("success", "Email Sent", "Email sent successfully.");
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to send email.");
+      showResult("error", "Email Failed", error instanceof Error ? error.message : "Failed to send email.");
     }
   };
 
@@ -550,7 +567,25 @@ export default function ShuScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print SHU yearly summary.");
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print SHU yearly summary.");
+    }
+  };
+
+  const handleExportShuYearlyExcel = async () => {
+    try {
+      await downloadShuYearlyReportExcel({
+        rows: filteredRows,
+        generatedAt: new Date(),
+        generatedBy: roleName,
+        meta: buildCurrentShuReportMeta(),
+      });
+      await logClientActivity({
+        activityType: "EXPORT_EXCEL",
+        tableName: "tbl_shu_periods",
+        description: "Exported SHU yearly summary as Excel.",
+      });
+    } catch (error) {
+      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export SHU yearly summary.");
     }
   };
 
@@ -567,7 +602,28 @@ export default function ShuScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print SHU detail.");      
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print SHU detail.");      
+    }
+  };
+
+  const handleExportShuDetailExcel = async () => {
+    if (!detailData) return;
+
+    try {
+      const signatures = await buildShuSignatureSlots(roleName);
+      await downloadShuDetailReportExcel({
+        detail: detailData,
+        signatures,
+        generatedAt: new Date(),
+        generatedBy: roleName,
+      });
+      await logClientActivity({
+        activityType: "EXPORT_EXCEL",
+        tableName: "tbl_shu_periods",
+        description: "Exported SHU detail as Excel.",
+      });
+    } catch (error) {
+      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export SHU detail.");
     }
   };
 
@@ -640,7 +696,7 @@ export default function ShuScreen() {
           <Text style={styles.cardTitle}>SHU (Patronage Refund) Yearly Summary</Text>
           <ExportDropdownMenu
             onExportPdf={handlePrintShuYearlySummary}
-            onExportExcel={() => Alert.alert("Export Excel", "This feature will be implemented soon.")}
+            onExportExcel={handleExportShuYearlyExcel}
             onSendEmail={() => {
               setEmailTarget("table");
               setEmailModalOpen(true);
@@ -771,6 +827,7 @@ export default function ShuScreen() {
                 <ExportDropdownMenu
                   variant="detail"
                   onExportPdf={handlePrintShuDetail}
+                  onExportExcel={handleExportShuDetailExcel}
                   onSendEmail={() => {
                     setEmailTarget("detail");
                     setEmailModalOpen(true);
@@ -792,7 +849,7 @@ export default function ShuScreen() {
               {(canManage || canFinalizeShu) && !isDetailFinalized ? (
                 <View style={styles.actionRow}>
                   {canManage ? (
-                    <Pressable style={[styles.button, styles.buttonPrimary]} onPress={() => runPeriodAction("calculate")} disabled={!!runningAction}>
+                    <Pressable style={[styles.button, styles.buttonPrimary]} onPress={() => setPendingPeriodAction("calculate")} disabled={!!runningAction}>
                       <Text style={styles.buttonPrimaryText}>{runningAction === "calculate" ? "Recalculating..." : "Recalculate"}</Text>
                     </Pressable>
                   ) : null}
@@ -810,7 +867,7 @@ export default function ShuScreen() {
                           detailData.finalize_policy.finalize_allowed ? styles.buttonSuccess : styles.buttonMuted,
                           runningAction === "finalize" && styles.buttonDisabled,
                         ]}
-                        onPress={() => runPeriodAction("finalize")}
+                        onPress={() => setPendingPeriodAction("finalize")}
                         disabled={!detailData.finalize_policy.finalize_allowed || !!runningAction}
                       >
                         <Text style={styles.buttonSuccessText}>
@@ -886,6 +943,27 @@ export default function ShuScreen() {
         onClose={() => setEmailModalOpen(false)}
         reportTitle={emailTarget === "table" ? "SHU Yearly Summary" : "SHU Period Detail"}
         onSend={handleSendEmailReport}
+      />
+      <InventoryConfirmModal
+        visible={Boolean(pendingPeriodAction)}
+        title={pendingPeriodAction === "finalize" ? "Finalize SHU Period?" : "Recalculate SHU Period?"}
+        message={
+          pendingPeriodAction === "finalize"
+            ? "Finalize this SHU period? This will lock the current calculation snapshot and it cannot be recalculated again."
+            : "Recalculate this SHU period using the latest transaction and financial data?"
+        }
+        confirmLabel={pendingPeriodAction === "finalize" ? "Finalize" : "Recalculate"}
+        tone={pendingPeriodAction === "finalize" ? "danger" : "primary"}
+        loading={!!runningAction}
+        onCancel={() => (runningAction ? null : setPendingPeriodAction(null))}
+        onConfirm={executePendingPeriodAction}
+      />
+      <InventoryResultModal
+        visible={resultModalOpen}
+        status={resultStatus}
+        title={resultTitle}
+        message={resultMessage}
+        onClose={() => setResultModalOpen(false)}
       />
     </ScrollView>
   );

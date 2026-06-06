@@ -2,6 +2,7 @@ import {
   buildReportDetailPrintHtml,
   buildReportPdfFileName,
   buildReportTablePrintHtml,
+  downloadReportTableExcel,
   ReportMetaItem,
   ReportTableColumn,
 } from "../shared/ReportPrintTemplate";
@@ -150,6 +151,24 @@ export const buildStockAdjustmentTableReportPrintHtml = ({
   meta = [],
 }: StockAdjustmentReportOptions) =>
   buildReportTablePrintHtml({
+    title: "Stock Adjustment Report",
+    subtitle: "Inventory stock correction journal",
+    reportKey: REPORT_KEY,
+    generatedAt,
+    generatedBy,
+    meta: [{ label: "Total Rows", value: rows.length }, ...meta],
+    rows,
+    columns: stockAdjustmentTableColumns,
+    emptyText: "No stock adjustment data found.",
+  });
+
+export const downloadStockAdjustmentTableReportExcel = ({
+  rows,
+  generatedAt = new Date(),
+  generatedBy,
+  meta = [],
+}: StockAdjustmentReportOptions) =>
+  downloadReportTableExcel({
     title: "Stock Adjustment Report",
     subtitle: "Inventory stock correction journal",
     reportKey: REPORT_KEY,

@@ -1,6 +1,6 @@
 import * as Print from "expo-print";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import DatePickerField from "../../../components/inventory/DatePickerField";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
@@ -16,6 +16,7 @@ import SendEmailModal from "../../../components/modals/SendEmailModal";
 import {
   buildStockAdjustmentDetailReportPrintHtml,
   buildStockAdjustmentTableReportPrintHtml,
+  downloadStockAdjustmentTableReportExcel,
 } from "../../../components/reports/stock-adjustment/StockAdjustmentReportPrintTemplate";
 import { API_BASE_URL } from "../../../utils/api";
 import { logClientActivity } from "../../../utils/activityLog";
@@ -101,6 +102,13 @@ export default function StockAdjustmentScreen() {
   const [resultStatus, setResultStatus] = useState<"success" | "error">("success");
   const [resultTitle, setResultTitle] = useState("");
   const [resultMessage, setResultMessage] = useState("");
+
+  const showResult = (status: "success" | "error", title: string, message: string) => {
+    setResultStatus(status);
+    setResultTitle(title);
+    setResultMessage(message);
+    setResultModalOpen(true);
+  };
   const [selectedRow, setSelectedRow] = useState<Movement | null>(null);
   const [openActionAdjustmentId, setOpenActionAdjustmentId] = useState<string | null>(null);
 
@@ -139,6 +147,13 @@ export default function StockAdjustmentScreen() {
       .catch(() => setRows([]));
   };
 
+  const loadProducts = async () => {
+    const response = await fetch(`${API_BASE_URL}/api/products`);
+    const payload = await response.json();
+    const safeRows = Array.isArray(payload?.data) ? payload.data : [];
+    setProducts(safeRows.filter((item) => item?.is_active !== "N"));
+  };
+
   useEffect(() => {
     getAuthSession()
       .then((session) => {
@@ -149,13 +164,7 @@ export default function StockAdjustmentScreen() {
 
     loadRows();
 
-    fetch(`${API_BASE_URL}/api/products`)
-      .then((response) => response.json())
-      .then((payload) => {
-        const safeRows = Array.isArray(payload?.data) ? payload.data : [];
-        setProducts(safeRows.filter((item) => item?.is_active !== "N"));
-      })
-      .catch(() => setProducts([]));
+    loadProducts().catch(() => setProducts([]));
   }, []);
 
   const productOptions = useMemo(
@@ -344,7 +353,25 @@ export default function StockAdjustmentScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print stock adjustment report.");
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print stock adjustment report.");
+    }
+  };
+
+  const handleExportStockAdjustmentExcel = async () => {
+    try {
+      await downloadStockAdjustmentTableReportExcel({
+        rows: Array.isArray(filteredRows) ? filteredRows : [],
+        generatedAt: new Date(),
+        generatedBy: roleName,
+        meta: buildCurrentStockAdjustmentReportMeta(),
+      });
+      await logClientActivity({
+        activityType: "EXPORT_EXCEL",
+        tableName: "tbl_stock_movements",
+        description: "Exported stock adjustment report as Excel.",
+      });
+    } catch (error) {
+      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export stock adjustment report.");
     }
   };
 
@@ -359,7 +386,7 @@ export default function StockAdjustmentScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print stock adjustment detail.");
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print stock adjustment detail.");
     }
   };
 
@@ -491,6 +518,7 @@ export default function StockAdjustmentScreen() {
       setQuantity("");
       setNotes("");
       loadRows();
+      await loadProducts();
       setResultStatus("success");
       setResultTitle("Action Completed");
       setResultMessage("Stock adjustment saved successfully.");
@@ -514,7 +542,7 @@ export default function StockAdjustmentScreen() {
           <View style={styles.headerActionRow}>
             <ExportDropdownMenu
               onExportPdf={handlePrintStockAdjustmentTable}
-              onExportExcel={() => Alert.alert("Export Excel", "This feature will be implemented soon.")}       
+              onExportExcel={handleExportStockAdjustmentExcel}
               onSendEmail={() => { setEmailTarget("table"); setEmailModalOpen(true); }}       
             />
             {canInsert ? <PrimaryActionButton label="Add Adjustment" onPress={() => setFormOpen(true)} /> : null}
@@ -566,11 +594,11 @@ export default function StockAdjustmentScreen() {
         onApply={() => {
           const toDayNumber = (value: string) => Number(value.replaceAll("-", ""));
           if (draftDateStartFilter && draftDateEndFilter && toDayNumber(draftDateEndFilter) < toDayNumber(draftDateStartFilter)) {
-            Alert.alert("Validation", "End date must be the same as or after Start date.");
+            showResult("error", "Validation", "End date must be the same as or after Start date.");
             return;
           }
           if (draftMinQtyFilter.trim() && draftMaxQtyFilter.trim() && Number(draftMaxQtyFilter) < Number(draftMinQtyFilter)) {
-            Alert.alert("Validation", "Max qty must be greater than or equal to Min qty.");
+            showResult("error", "Validation", "Max qty must be greater than or equal to Min qty.");
             return;
           }
           setTypeFilter(draftTypeFilter);
@@ -733,9 +761,16 @@ export default function StockAdjustmentScreen() {
 
       <InventoryConfirmModal
         visible={confirmOpen}
-        message="Create this stock adjustment data?"
-        onCancel={() => setConfirmOpen(false)}
-        onConfirm={async () => { setConfirmOpen(false); await submitAdjustment(); }}
+        title="Create Stock Adjustment?"
+        message="Create this stock adjustment record and update the selected batch stock?"
+        confirmLabel="Create Adjustment"
+        tone={adjustmentType === "DECREASE" ? "danger" : "primary"}
+        loading={saving}
+        onCancel={() => (saving ? null : setConfirmOpen(false))}
+        onConfirm={async () => {
+          setConfirmOpen(false);
+          await submitAdjustment();
+        }}
       />
 
       <InventoryResultModal

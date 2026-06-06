@@ -268,7 +268,6 @@ const buildReceiptHtml = (data) => {
 
       <section class="summary">
         <div class="row"><span>Subtotal</span><span>${escapeHtml(formatRupiah(subtotal))}</span></div>
-        <div class="row"><span>Discount</span><span>${escapeHtml(formatRupiah(discount))}</span></div>
         <div class="row total"><span>Total</span><span>${escapeHtml(formatRupiah(total))}</span></div>
         <div class="row"><span>Payment</span><span>${escapeHtml(data.paymentMethod)}</span></div>
         <div class="row"><span>Paid</span><span>${escapeHtml(formatRupiah(data.amountPaid))}</span></div>
@@ -339,6 +338,7 @@ const sendReceiptEmail = async ({
   const pdfBuffer = await renderReceiptPdfBuffer(html);
   const attachmentName = sanitizeAttachmentFileName(`receipt_${saleNumber}.pdf`);
   const logoPath = path.join(__dirname, "..", "..", "assets", "images", "ui", "logo_horizontal.png");
+  const cbsLogoPath = path.join(__dirname, "..", "..", "assets", "images", "ui", "logo_koperasi_cbs.png");
   const emailHtml = buildReceiptEmailContent({
     recipientName: member?.name || to.split("@")[0],
     saleNumber,
@@ -364,6 +364,7 @@ const sendReceiptEmail = async ({
         content: pdfBuffer,
         contentType: "application/pdf",
       },
+      { filename: "logo_cbs.png", path: cbsLogoPath, cid: "cbs-logo" },
       { filename: "logo.png", path: logoPath, cid: "revora-logo" },
     ],
   });

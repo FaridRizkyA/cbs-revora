@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import ActiveFilterBadges from "../../../components/inventory/ActiveFilterBadges";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import IconFilterButton from "../../../components/inventory/IconFilterButton";
 import PrimaryActionButton from "../../../components/inventory/PrimaryActionButton";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
+import { InventoryConfirmModal, InventoryResultModal } from "../../../components/inventory/ActionModals";
 import { API_BASE_URL } from "../../../utils/api";
 import { canInsertStockMovement, getAuthSession, normalizeRole } from "../../../utils/authSession";
 
@@ -71,6 +72,18 @@ export default function StockOutManualScreen() {
   const [draftOperatorFilter, setDraftOperatorFilter] = useState("ALL");
   const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [resultStatus, setResultStatus] = useState<"success" | "error">("success");
+  const [resultTitle, setResultTitle] = useState("");
+  const [resultMessage, setResultMessage] = useState("");
+
+  const showResult = (status: "success" | "error", title: string, message: string) => {
+    setResultStatus(status);
+    setResultTitle(title);
+    setResultMessage(message);
+    setResultModalOpen(true);
+  };
   const [reason, setReason] = useState("DAMAGED");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<DraftItem[]>([{ id_product: "", quantity: "" }]);
@@ -87,6 +100,13 @@ export default function StockOutManualScreen() {
       .catch(() => setRows([]));
   };
 
+  const loadProducts = async () => {
+    const response = await fetch(`${API_BASE_URL}/api/products`);
+    const payload = await response.json();
+    const safeRows = Array.isArray(payload?.data) ? payload.data : [];
+    setProducts(safeRows.filter((item) => item?.is_active !== "N"));
+  };
+
   useEffect(() => {
     getAuthSession()
       .then((session) => {
@@ -95,13 +115,7 @@ export default function StockOutManualScreen() {
       })
       .catch(() => setRoleName("CASHIER"));
     loadRows();
-    fetch(`${API_BASE_URL}/api/products`)
-      .then((response) => response.json())
-      .then((payload) => {
-        const safeRows = Array.isArray(payload?.data) ? payload.data : [];
-        setProducts(safeRows.filter((item) => item?.is_active !== "N"));
-      })
-      .catch(() => setProducts([]));
+    loadProducts().catch(() => setProducts([]));
   }, []);
 
   const operatorOptions = useMemo(() => {
@@ -145,18 +159,24 @@ export default function StockOutManualScreen() {
       if (!response.ok) throw new Error(payload?.error || payload?.message || "Failed to fetch detail.");
       setSelectedDoc(payload?.data || null);
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to fetch detail.");
+      showResult("error", "Error", error instanceof Error ? error.message : "Failed to fetch detail.");
     }
   };
 
   const submit = async () => {
     if (!userId) {
-      Alert.alert("Session", "User session tidak ditemukan, silakan login ulang.");
+      setResultStatus("error");
+      setResultTitle("Session Expired");
+      setResultMessage("User session was not found. Please sign in again.");
+      setResultModalOpen(true);
       return;
     }
     const hasInvalid = items.some((item) => !item.id_product || !Number.isInteger(Number(item.quantity)) || Number(item.quantity) <= 0);
     if (hasInvalid) {
-      Alert.alert("Validation", "Semua row wajib pilih produk dan qty > 0.");
+      setResultStatus("error");
+      setResultTitle("Validation Error");
+      setResultMessage("Every row must have a product and quantity greater than 0.");
+      setResultModalOpen(true);
       return;
     }
 
@@ -179,9 +199,16 @@ export default function StockOutManualScreen() {
       setNotes("");
       setItems([{ id_product: "", quantity: "" }]);
       loadRows();
-      Alert.alert("Success", "Stock out non-sales berhasil disimpan.");
+      await loadProducts();
+      setResultStatus("success");
+      setResultTitle("Action Completed");
+      setResultMessage("Stock out non-sales saved successfully.");
+      setResultModalOpen(true);
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to create stock out non-sales.");
+      setResultStatus("error");
+      setResultTitle("Action Failed");
+      setResultMessage(error instanceof Error ? error.message : "Failed to create stock out non-sales.");
+      setResultModalOpen(true);
     } finally {
       setSaving(false);
     }
@@ -311,9 +338,31 @@ export default function StockOutManualScreen() {
             </ScrollView>
             <View style={styles.modalActions}>
               <Pressable style={styles.cancelBtn} onPress={() => (saving ? null : setFormOpen(false))}><Text style={styles.cancelBtnText}>Cancel</Text></Pressable>
-              <Pressable style={styles.submitBtn} onPress={submit} disabled={saving}><Text style={styles.submitBtnText}>{saving ? "Saving..." : "Save Stock Out"}</Text></Pressable>
+              <Pressable style={styles.submitBtn} onPress={() => setConfirmOpen(true)} disabled={saving}><Text style={styles.submitBtnText}>{saving ? "Saving..." : "Save Stock Out"}</Text></Pressable>
             </View>
       </ResponsiveModal>
+
+      <InventoryConfirmModal
+        visible={confirmOpen}
+        title="Create Stock Out?"
+        message="Create this non-sales stock out document and reduce the selected item stock?"
+        confirmLabel="Create Stock Out"
+        tone="danger"
+        loading={saving}
+        onCancel={() => (saving ? null : setConfirmOpen(false))}
+        onConfirm={async () => {
+          setConfirmOpen(false);
+          await submit();
+        }}
+      />
+
+      <InventoryResultModal
+        visible={resultModalOpen}
+        status={resultStatus}
+        title={resultTitle}
+        message={resultMessage}
+        onClose={() => setResultModalOpen(false)}
+      />
 
       <ResponsiveModal
         visible={Boolean(selectedDoc)}

@@ -1,7 +1,6 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import DatePickerField from "../../../components/inventory/DatePickerField";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
@@ -12,10 +11,12 @@ import InventoryPageHeader from "../../../components/inventory/InventoryPageHead
 import PrimaryActionButton from "../../../components/inventory/PrimaryActionButton";
 import InventoryRowActionsMenu from "../../../components/inventory/InventoryRowActionsMenu";
 import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu";
+import { InventoryConfirmModal, InventoryResultModal } from "../../../components/inventory/ActionModals";
 import SendEmailModal from "../../../components/modals/SendEmailModal";
 import {
   buildExternalFinancialDetailReportPrintHtml,
   buildExternalFinancialTableReportPrintHtml,
+  downloadExternalFinancialTableReportExcel,
 } from "../../../components/reports/external-financial/ExternalFinancialReportPrintTemplate";
 import { formatDate, formatRupiah } from "../../../components/shu/formatters";
 import { API_BASE_URL } from "../../../utils/api";
@@ -40,6 +41,10 @@ type FormState = {
   amount: string;
   notes: string;
 };
+
+type PendingAction =
+  | { type: "save" }
+  | { type: "status"; row: ExternalFinancialEntry };
 
 const emptyForm: FormState = {
   entry_type: "INCOME",
@@ -100,6 +105,18 @@ export default function ExternalFinancialScreen() {
   const [selectedRow, setSelectedRow] = useState<ExternalFinancialEntry | null>(null);
   const [openActionEntryId, setOpenActionEntryId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [resultStatus, setResultStatus] = useState<"success" | "error">("success");
+  const [resultTitle, setResultTitle] = useState("");
+  const [resultMessage, setResultMessage] = useState("");
+
+  const showResult = (status: "success" | "error", title: string, message: string) => {
+    setResultStatus(status);
+    setResultTitle(title);
+    setResultMessage(message);
+    setResultModalOpen(true);
+  };
 
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [emailTarget, setEmailTarget] = useState<"table" | "detail">("table");
@@ -174,11 +191,11 @@ export default function ExternalFinancialScreen() {
   const submitForm = async () => {
     const amount = Number(form.amount || 0);
     if (!form.entry_source.trim()) {
-      Alert.alert("Validation", "Source is required.");
+      showResult("error", "Validation", "Source is required.");
       return;
     }
     if (!Number.isFinite(amount) || amount <= 0) {
-      Alert.alert("Validation", "Amount must be greater than 0.");
+      showResult("error", "Validation", "Amount must be greater than 0.");
       return;
     }
 
@@ -201,8 +218,15 @@ export default function ExternalFinancialScreen() {
       if (!response.ok) throw new Error(payload.message || "Failed to save external financial entry.");
       setFormOpen(false);
       loadRows();
+      setResultStatus("success");
+      setResultTitle("Action Completed");
+      setResultMessage(editingRow ? "External financial entry updated successfully." : "External financial entry created successfully.");
+      setResultModalOpen(true);
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to save external financial entry.");
+      setResultStatus("error");
+      setResultTitle("Action Failed");
+      setResultMessage(error instanceof Error ? error.message : "Failed to save external financial entry.");
+      setResultModalOpen(true);
     } finally {
       setSaving(false);
     }
@@ -222,10 +246,40 @@ export default function ExternalFinancialScreen() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.message || "Failed to update entry status.");
       loadRows();
+      setResultStatus("success");
+      setResultTitle("Action Completed");
+      setResultMessage(row.is_active === "Y" ? "External financial entry deactivated successfully." : "External financial entry activated successfully.");
+      setResultModalOpen(true);
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to update entry status.");
+      setResultStatus("error");
+      setResultTitle("Action Failed");
+      setResultMessage(error instanceof Error ? error.message : "Failed to update entry status.");
+      setResultModalOpen(true);
     }
   }, [loadRows]);
+
+  const getPendingActionMessage = () => {
+    if (pendingAction?.type === "save") {
+      return editingRow ? "Save changes to this external financial entry?" : "Create this external financial entry?";
+    }
+    if (pendingAction?.type === "status") {
+      return pendingAction.row.is_active === "Y"
+        ? "Deactivate this external financial entry? It will be hidden from active lists."
+        : "Activate this external financial entry?";
+    }
+    return "Continue this action?";
+  };
+
+  const executePendingAction = async () => {
+    const action = pendingAction;
+    if (!action) return;
+    setPendingAction(null);
+    if (action.type === "save") {
+      await submitForm();
+      return;
+    }
+    await toggleActive(action.row);
+  };
 
   const buildCurrentExternalFinancialReportMeta = () => {
     const items: { label: string; value: string }[] = [];
@@ -236,11 +290,6 @@ export default function ExternalFinancialScreen() {
     if (dateEndFilter) items.push({ label: "End Date", value: dateEndFilter });
     if (minAmountFilter.trim()) items.push({ label: "Min Amount", value: minAmountFilter });
     if (maxAmountFilter.trim()) items.push({ label: "Max Amount", value: maxAmountFilter });
-    const income = activeRows.filter(r => r.entry_type === "INCOME").reduce((acc, r) => acc + Number(r.amount || 0), 0);
-    const outcome = activeRows.filter(r => r.entry_type === "OUTCOME").reduce((acc, r) => acc + Number(r.amount || 0), 0);
-    items.push({ label: "Total Income", value: formatRupiah(income) });
-    items.push({ label: "Total Outcome", value: formatRupiah(outcome) });
-    items.push({ label: "NET Amount", value: formatRupiah(income - outcome) });
     return items;
   };
 
@@ -305,9 +354,15 @@ export default function ExternalFinancialScreen() {
         description: "Sent external financial report via email.",
       });
 
-      Alert.alert("Success", "Email sent successfully.");
+      setResultStatus("success");
+      setResultTitle("Email Sent");
+      setResultMessage("Report has been sent successfully.");
+      setResultModalOpen(true);
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to send email.");
+      setResultStatus("error");
+      setResultTitle("Send Failed");
+      setResultMessage(error instanceof Error ? error.message : "Failed to send email.");
+      setResultModalOpen(true);
     }
   };
 
@@ -321,7 +376,25 @@ export default function ExternalFinancialScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print external financial report.");
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print external financial report.");
+    }
+  };
+
+  const handleExportExternalFinancialExcel = async () => {
+    try {
+      await downloadExternalFinancialTableReportExcel({
+        rows: activeRows,
+        generatedAt: new Date(),
+        generatedBy: roleName,
+        meta: buildCurrentExternalFinancialReportMeta(),
+      });
+      await logClientActivity({
+        activityType: "EXPORT_EXCEL",
+        tableName: "tbl_external_financial_entries",
+        description: "Exported external financial report as Excel.",
+      });
+    } catch (error) {
+      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export external financial report.");
     }
   };
 
@@ -336,7 +409,7 @@ export default function ExternalFinancialScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print external financial detail.");
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print external financial detail.");
     }
   };
 
@@ -383,7 +456,7 @@ export default function ExternalFinancialScreen() {
                     style={[styles.actionOutlineBtn, styles.actionOutlineDanger]}
                     onPress={() => {
                       setOpenActionEntryId(null);
-                      toggleActive(row);
+                      setPendingAction({ type: "status", row });
                     }}
                   >
                     <Text style={[styles.actionOutlineBtnText, styles.actionOutlineDangerText]}>Deactivate</Text>
@@ -394,7 +467,7 @@ export default function ExternalFinancialScreen() {
           </View>
       },
     ],
-    [canManage, openActionEntryId, openEdit, toggleActive]
+    [canManage, openActionEntryId, openEdit]
   );
 
   const inactiveColumns = useMemo<InventoryDataTableColumn<ExternalFinancialEntry>[]>(
@@ -411,13 +484,13 @@ export default function ExternalFinancialScreen() {
         align: "center",
         render: (row) =>
           canManage ? (
-          <Pressable style={styles.activateButton} onPress={() => toggleActive(row)}>
+          <Pressable style={styles.activateButton} onPress={() => setPendingAction({ type: "status", row })}>
             <Text style={styles.activateButtonText}>Activate</Text>
           </Pressable>
           ) : null,
       },
     ],
-    [canManage, toggleActive]
+    [canManage]
   );
 
   return (
@@ -429,7 +502,7 @@ export default function ExternalFinancialScreen() {
           <View style={styles.headerActionRow}>
             <ExportDropdownMenu
               onExportPdf={handlePrintExternalFinancialTable}
-              onExportExcel={() => Alert.alert("Export Excel", "This feature will be implemented soon.")}
+              onExportExcel={handleExportExternalFinancialExcel}
               onSendEmail={() => {
                 setEmailTarget("table");
                 setEmailModalOpen(true);
@@ -487,7 +560,7 @@ export default function ExternalFinancialScreen() {
         visible={filterOpen}
         onApply={() => {
           if (draftDateStartFilter && draftDateEndFilter && draftDateEndFilter < draftDateStartFilter) {        
-            Alert.alert("Validation", "End date must be the same as or after start date.");
+            showResult("error", "Validation", "End date must be the same as or after start date.");
             return;
           }
           setTypeFilter(draftTypeFilter);
@@ -651,11 +724,30 @@ export default function ExternalFinancialScreen() {
           <Pressable style={styles.cancelBtn} onPress={() => setFormOpen(false)} disabled={saving}>
             <Text style={styles.cancelBtnText}>Cancel</Text>
           </Pressable>
-          <Pressable style={styles.submitBtn} onPress={submitForm} disabled={saving}>
+          <Pressable style={styles.submitBtn} onPress={() => setPendingAction({ type: "save" })} disabled={saving}>
             <Text style={styles.submitBtnText}>{saving ? "Saving..." : "Save"}</Text>
           </Pressable>
         </View>
       </ResponsiveModal>
+
+      <InventoryConfirmModal
+        visible={Boolean(pendingAction)}
+        title="Please Confirm"
+        message={getPendingActionMessage()}
+        confirmLabel={pendingAction?.type === "status" && pendingAction.row.is_active === "Y" ? "Deactivate" : "Yes, Continue"}
+        tone={pendingAction?.type === "status" && pendingAction.row.is_active === "Y" ? "danger" : pendingAction?.type === "status" ? "success" : "primary"}
+        loading={saving}
+        onCancel={() => (saving ? null : setPendingAction(null))}
+        onConfirm={executePendingAction}
+      />
+
+      <InventoryResultModal
+        visible={resultModalOpen}
+        status={resultStatus}
+        title={resultTitle}
+        message={resultMessage}
+        onClose={() => setResultModalOpen(false)}
+      />
 
       <SendEmailModal
         visible={emailModalOpen}

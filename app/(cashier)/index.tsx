@@ -6,7 +6,6 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Platform,
   Pressable,
@@ -20,8 +19,9 @@ import {
   View,
 } from "react-native";
 import ResponsiveModal from "../../components/common/ResponsiveModal";
+import { InventoryConfirmModal, InventoryResultModal } from "../../components/inventory/ActionModals";
 import { buildReceiptPrintHtml, formatReceiptProductLabel, ReceiptData, ReceiptItem } from "../../components/cashier/ReceiptPrintTemplate";
-import { AuthUser, clearAuthSession, getAuthSession } from "../../utils/authSession";
+import { AuthUser, getAuthSession, logoutAuthSession, subscribeAuthSession } from "../../utils/authSession";
 import { API_BASE_URL } from "../../utils/api";
 import { logClientActivity } from "../../utils/activityLog";
 
@@ -163,6 +163,11 @@ export default function Index() {
   const [receiptEmailTracking, setReceiptEmailTracking] = useState<{ saleId: string; saleNumber: string } | null>(null);
   const [receiptEmailToast, setReceiptEmailToast] = useState<ReceiptEmailToastState>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [clearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
+  const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [resultTitle, setResultTitle] = useState("");
+  const [resultMessage, setResultMessage] = useState("");
   const ignoreNextProductCardPressRef = useRef(false);
   const successScale = useRef(new Animated.Value(0.7)).current;
   const barcodeInputRef = useRef<TextInput | null>(null);
@@ -172,6 +177,12 @@ export default function Index() {
   const receiptEmailPollBusyRef = useRef(false);
   const cashierId = sessionUser?.id_user ?? null;
   const cashierName = sessionUser?.full_name?.trim() || "Cashier";
+
+  const showError = useCallback((title: string, message: string) => {
+    setResultTitle(title);
+    setResultMessage(message);
+    setResultModalOpen(true);
+  }, []);
 
   const selectedMember = useMemo(
     () => members.find((member) => member.id_member === selectedMemberId) ?? null,
@@ -283,8 +294,14 @@ export default function Index() {
         router.replace("/login");
       });
 
+    const unsubscribe = subscribeAuthSession((session) => {
+      if (!active || !session?.user) return;
+      setSessionUser(session.user);
+    });
+
     return () => {
       active = false;
+      unsubscribe();
     };
   }, [router]);
 
@@ -420,7 +437,7 @@ export default function Index() {
 
   const addToCart = (product: Product) => {
     if (product.available_stock <= 0) {
-      Alert.alert("Out of stock", `${product.product_name} has no available stock.`);
+      showError("Out of Stock", `${product.product_name} has no available stock.`);
       return;
     }
 
@@ -432,7 +449,7 @@ export default function Index() {
       }
 
       if (existingItem.quantity >= product.available_stock) {
-        Alert.alert("Insufficient stock", `Only ${product.available_stock} item(s) available.`);
+        showError("Insufficient Stock", `Only ${product.available_stock} item(s) available.`);
         return currentCart;
       }
 
@@ -453,7 +470,7 @@ export default function Index() {
 
         const clampedQuantity = Math.max(0, Math.min(nextQuantity, item.available_stock));
         if (nextQuantity > item.available_stock) {
-          Alert.alert("Insufficient stock", `Only ${item.available_stock} item(s) available.`);
+          showError("Insufficient Stock", `Only ${item.available_stock} item(s) available.`);
         }
 
         return { ...item, quantity: clampedQuantity };
@@ -534,16 +551,13 @@ export default function Index() {
       });
 
       if (!apiMatch) {
-        Alert.alert("Product not found", "Barcode does not match any active product.");
+        showError("Product Not Found", "Barcode does not match any active product.");
         return;
       }
 
       submitBarcodeProduct(apiMatch);
     } catch (error) {
-      Alert.alert(
-        "Barcode search failed",
-        error instanceof Error ? error.message : "An error occurred while searching product."
-      );
+      showError("Barcode Search Failed", error instanceof Error ? error.message : "An error occurred while searching product.");
     }
   };
 
@@ -559,7 +573,7 @@ export default function Index() {
 
   const submitCheckout = async (amountPaid: number, method: PaymentMethod) => {
     if (!cashierId) {
-      Alert.alert("Session expired", "Please sign in again.");
+      showError("Session Expired", "Please sign in again.");
       return false;
     }
 
@@ -628,10 +642,11 @@ export default function Index() {
       }
 
       setCart([]);
-      await fetchProducts();
+      setSelectedMemberId(null);
+      await Promise.all([fetchProducts(), fetchMembers()]);
       return true;
     } catch (error) {
-      Alert.alert("Checkout failed", error instanceof Error ? error.message : "Checkout failed.");
+      showError("Checkout Failed", error instanceof Error ? error.message : "Checkout failed.");
       return false;
     } finally {
       setCheckoutLoading(false);
@@ -673,7 +688,7 @@ export default function Index() {
 
   const handleCashContinue = () => {
     if (parsedCashAmount < subtotal) {
-      Alert.alert("Insufficient cash", "Cash amount must be greater than or equal to total.");
+      showError("Insufficient Cash", "Cash amount must be greater than or equal to total.");
       return;
     }
 
@@ -723,7 +738,7 @@ export default function Index() {
       try {
         await Print.printAsync({ html });
       } catch (error) {
-        Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print receipt.");
+        showError("Print Failed", error instanceof Error ? error.message : "Failed to print receipt.");
       }
       return;
     }
@@ -732,7 +747,7 @@ export default function Index() {
 
     const printWindow = window.open("", "_blank", "width=420,height=720");
     if (!printWindow) {
-      Alert.alert("Print blocked", "Please allow pop-ups to print the receipt.");
+      showError("Print Blocked", "Please allow pop-ups to print the receipt.");
       return;
     }
 
@@ -746,9 +761,18 @@ export default function Index() {
   };
 
   const handleLogout = async () => {
+    setLogoutConfirmOpen(false);
     clearReceiptToastTimer();
-    await clearAuthSession();
+    await logoutAuthSession();
     router.replace("/login");
+  };
+
+  const handleClearCart = () => {
+    setClearCartConfirmOpen(false);
+    setCart([]);
+    setSelectedMemberId(null);
+    setCashAmountInput("");
+    setSubmittedCashAmount(0);
   };
 
   return (
@@ -802,7 +826,10 @@ export default function Index() {
           },
         ]}
       >
-        <Image source={SIDEBAR_LOGO} style={styles.topBarLogo} contentFit="contain" />
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Image source={require("../../assets/images/ui/logo_koperasi_cbs.png")} style={{ width: 44, height: 44 }} contentFit="contain" />
+          <Image source={SIDEBAR_LOGO} style={styles.topBarLogo} contentFit="contain" />
+        </View>
         <View style={styles.topBarRight}>
           <View style={styles.profileMenuWrap}>
             <Pressable style={styles.profileTrigger} onPress={() => setProfileMenuOpen((prev) => !prev)}>
@@ -834,7 +861,7 @@ export default function Index() {
                   style={styles.dropdownItem}
                   onPress={() => {
                     setProfileMenuOpen(false);
-                    handleLogout();
+                    setLogoutConfirmOpen(true);
                   }}
                 >
                   <Feather name="log-out" size={14} color="#dc2626" />
@@ -849,7 +876,7 @@ export default function Index() {
       <View style={styles.mainArea}>
         <View style={styles.productsPanel}>
           <View style={styles.productsHeader}>
-            <Text style={styles.sectionTitle}>Products</Text>
+            <Text style={styles.sectionTitle}>Cashier Mode</Text>
             <View style={styles.searchBox}>
               <AppIcon name="search" size={16} color="#64748b" />
               <TextInput
@@ -995,9 +1022,13 @@ export default function Index() {
               <AppIcon name="cart" size={16} color="#0f172a" />
               <Text style={styles.cartTitle}>Cart</Text>
             </View>
-            <Pressable style={styles.clearButton} onPress={() => setCart([])}>
-              <AppIcon name="trash" size={14} color="#ef4444" />
-            </Pressable>
+            <Pressable
+              style={[styles.clearButton, cart.length === 0 && styles.checkoutButtonDisabled]}
+              onPress={() => setClearCartConfirmOpen(true)}
+              disabled={cart.length === 0}
+            >
+                <AppIcon name="trash" size={14} color="#ef4444" />
+              </Pressable>
           </View>
 
           <View style={styles.contextCard}>
@@ -1267,8 +1298,9 @@ export default function Index() {
           <>
             <Text style={styles.modalTitle}>Receipt Preview</Text>
             <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.receiptLogoWrap}>
-                <Image source={SIDEBAR_LOGO} style={styles.receiptLogo} contentFit="contain" />
+              <View style={[styles.receiptLogoWrap, { flexDirection: "row", alignItems: "center" }]}>
+                <Image source={require("../../assets/images/ui/logo_koperasi_cbs.png")} style={{ width: 58, height: 58 }} contentFit="contain" />
+                <Image source={SIDEBAR_LOGO} style={[styles.receiptLogo, { marginLeft: -16 }]} contentFit="contain" />
               </View>
               <Text style={styles.receiptMeta}>Cashier: {cashierName}</Text>
               <Text style={styles.receiptMeta}>Time: {new Date().toLocaleString("id-ID")}</Text>
@@ -1326,6 +1358,31 @@ export default function Index() {
           </>
         )}
       </ResponsiveModal>
+      <InventoryConfirmModal
+        visible={logoutConfirmOpen}
+        title="Logout?"
+        message="Are you sure you want to end this cashier session?"
+        confirmLabel="Logout"
+        tone="danger"
+        onCancel={() => setLogoutConfirmOpen(false)}
+        onConfirm={handleLogout}
+      />
+      <InventoryConfirmModal
+        visible={clearCartConfirmOpen}
+        title="Clear Cart?"
+        message="Remove all selected items from the current transaction?"
+        confirmLabel="Clear Cart"
+        tone="danger"
+        onCancel={() => setClearCartConfirmOpen(false)}
+        onConfirm={handleClearCart}
+      />
+      <InventoryResultModal
+        visible={resultModalOpen}
+        status="error"
+        title={resultTitle}
+        message={resultMessage}
+        onClose={() => setResultModalOpen(false)}
+      />
       </View>
     </View>
   );

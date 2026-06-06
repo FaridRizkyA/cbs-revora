@@ -2,6 +2,7 @@ import {
   buildReportDetailPrintHtml,
   buildReportPdfFileName,
   buildReportTablePrintHtml,
+  downloadReportTableExcel,
   ReportMetaItem,
   ReportTableColumn,
 } from "../shared/ReportPrintTemplate";
@@ -99,6 +100,24 @@ export const buildSupplierTableReportPrintHtml = ({
   meta = [],
 }: SupplierReportOptions) =>
   buildReportTablePrintHtml({
+    title: "Supplier Report",
+    subtitle: "Inventory supplier master data",
+    reportKey: REPORT_KEY,
+    generatedAt,
+    generatedBy,
+    meta: [{ label: "Total Rows", value: rows.length }, ...meta],
+    rows,
+    columns: supplierTableColumns,
+    emptyText: "No supplier data found.",
+  });
+
+export const downloadSupplierTableReportExcel = ({
+  rows,
+  generatedAt = new Date(),
+  generatedBy,
+  meta = [],
+}: SupplierReportOptions) =>
+  downloadReportTableExcel({
     title: "Supplier Report",
     subtitle: "Inventory supplier master data",
     reportKey: REPORT_KEY,

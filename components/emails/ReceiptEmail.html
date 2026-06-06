@@ -44,32 +44,39 @@
     margin: 0 0 14px 0;
   }
 
-  .receipt-email .meta-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-
-  .receipt-email .meta-item {
+  .receipt-email .meta-list-table {
+    width: 100%;
     background: #ffffff;
     border: 1px solid #dbe3ee;
     border-radius: 12px;
-    padding: 12px;
+    padding: 12px 14px;
+    box-sizing: border-box;
+    margin-bottom: 14px;
   }
 
-  .receipt-email .meta-label {
-    color: #64748b;
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .receipt-email .meta-value {
-    color: #0f172a;
+  .receipt-email .meta-list-table td {
+    padding: 6px 0;
     font-size: 14px;
+  }
+
+  .receipt-email .meta-list-label {
+    color: #64748b;
+    font-weight: 600;
+    width: 100px;
+    vertical-align: top;
+  }
+
+  .receipt-email .meta-list-separator {
+    color: #64748b;
+    width: 16px;
+    text-align: center;
+    vertical-align: top;
+  }
+
+  .receipt-email .meta-list-value {
+    color: #0f172a;
     font-weight: 700;
-    margin-top: 4px;
+    vertical-align: top;
     word-break: break-word;
   }
 
@@ -162,7 +169,6 @@
   }
 
   @media (max-width: 520px) {
-    .receipt-email .meta-grid,
     .receipt-email .summary-grid {
       grid-template-columns: 1fr;
     }
@@ -179,43 +185,43 @@
 
   <div class="panel">
     <div class="panel-title">Transaction Summary</div>
-    <div class="meta-grid">
-      <div class="meta-item">
-        <div class="meta-label">Receipt No.</div>
-        <div class="meta-value">{{SALE_NUMBER}}</div>
-      </div>
-      <div class="meta-item">
-        <div class="meta-label">Date</div>
-        <div class="meta-value">{{SALE_DATE}}</div>
-      </div>
-      <div class="meta-item">
-        <div class="meta-label">Cashier</div>
-        <div class="meta-value">{{CASHIER_NAME}}</div>
-      </div>
-      <div class="meta-item">
-        <div class="meta-label">Member</div>
-        <div class="meta-value">{{MEMBER_NAME}}</div>
-      </div>
-    </div>
-
-    <div class="summary-grid">
-      <div class="summary-item">
-        <div class="summary-label">Subtotal</div>
-        <div class="summary-value">{{SUBTOTAL}}</div>
-      </div>
-      <div class="summary-item">
-        <div class="summary-label">Discount</div>
-        <div class="summary-value">{{DISCOUNT}}</div>
-      </div>
-      <div class="summary-item">
-        <div class="summary-label">Total</div>
-        <div class="summary-value">{{TOTAL}}</div>
-      </div>
-      <div class="summary-item">
-        <div class="summary-label">Payment</div>
-        <div class="summary-value">{{PAYMENT_METHOD}}</div>
-      </div>
-    </div>
+    <table class="meta-list-table" cellspacing="0" cellpadding="0">
+      <tr>
+        <td class="meta-list-label">Receipt No.</td>
+        <td class="meta-list-separator">:</td>
+        <td class="meta-list-value">{{SALE_NUMBER}}</td>
+      </tr>
+      <tr>
+        <td class="meta-list-label">Date</td>
+        <td class="meta-list-separator">:</td>
+        <td class="meta-list-value">{{SALE_DATE}}</td>
+      </tr>
+      <tr>
+        <td class="meta-list-label">Cashier</td>
+        <td class="meta-list-separator">:</td>
+        <td class="meta-list-value">{{CASHIER_NAME}}</td>
+      </tr>
+      <tr>
+        <td class="meta-list-label">Member</td>
+        <td class="meta-list-separator">:</td>
+        <td class="meta-list-value">{{MEMBER_NAME}}</td>
+      </tr>
+      <tr>
+        <td class="meta-list-label">Payment</td>
+        <td class="meta-list-separator">:</td>
+        <td class="meta-list-value">{{PAYMENT_METHOD}}</td>
+      </tr>
+      <tr>
+        <td class="meta-list-label">Subtotal</td>
+        <td class="meta-list-separator">:</td>
+        <td class="meta-list-value">{{SUBTOTAL}}</td>
+      </tr>
+      <tr>
+        <td class="meta-list-label">Total</td>
+        <td class="meta-list-separator">:</td>
+        <td class="meta-list-value">{{TOTAL}}</td>
+      </tr>
+    </table>
 
     <table class="items-table" cellspacing="0" cellpadding="0">
       <thead>
@@ -229,16 +235,18 @@
       </tbody>
     </table>
 
-    <div class="summary-grid" style="margin-top: 14px;">
-      <div class="summary-item">
-        <div class="summary-label">Paid</div>
-        <div class="summary-value">{{AMOUNT_PAID}}</div>
-      </div>
-      <div class="summary-item">
-        <div class="summary-label">Change</div>
-        <div class="summary-value">{{CHANGE_AMOUNT}}</div>
-      </div>
-    </div>
+    <table class="meta-list-table" cellspacing="0" cellpadding="0" style="margin-top: 14px; margin-bottom: 0;">
+      <tr>
+        <td class="meta-list-label">Paid</td>
+        <td class="meta-list-separator">:</td>
+        <td class="meta-list-value">{{AMOUNT_PAID}}</td>
+      </tr>
+      <tr>
+        <td class="meta-list-label">Change</td>
+        <td class="meta-list-separator">:</td>
+        <td class="meta-list-value">{{CHANGE_AMOUNT}}</td>
+      </tr>
+    </table>
 
     {{NOTES_BLOCK}}
   </div>

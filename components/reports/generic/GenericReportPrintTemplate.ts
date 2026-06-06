@@ -1,6 +1,7 @@
 import {
   buildReportPdfFileName,
   buildReportTablePrintHtml,
+  downloadReportTableExcel,
   ReportMetaItem,
   ReportTableColumn,
   ReportValue,
@@ -61,6 +62,28 @@ export const buildGenericReportPrintHtml = ({
   meta = [],
 }: GenericReportPrintOptions) =>
   buildReportTablePrintHtml({
+    title,
+    subtitle,
+    reportKey,
+    generatedAt,
+    generatedBy,
+    meta: [{ label: "Total Rows", value: rows.length }, ...meta],
+    rows,
+    columns: buildColumns(columns),
+    emptyText: "No report data found.",
+  });
+
+export const downloadGenericReportExcel = ({
+  reportKey,
+  title,
+  subtitle = "Generated report table",
+  columns,
+  rows,
+  generatedAt = new Date(),
+  generatedBy,
+  meta = [],
+}: GenericReportPrintOptions) =>
+  downloadReportTableExcel({
     title,
     subtitle,
     reportKey,

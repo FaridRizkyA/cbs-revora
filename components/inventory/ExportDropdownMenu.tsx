@@ -14,6 +14,7 @@ export default function ExportDropdownMenu({ onExportPdf, onExportExcel, onSendE
   const anchorRef = useRef<View | null>(null);
   const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [menuHeight, setMenuHeight] = useState(130);
+  const canExportExcel = Boolean(onExportExcel);
 
   const toggleOpen = () => setOpen((prev) => !prev);
 
@@ -65,12 +66,12 @@ export default function ExportDropdownMenu({ onExportPdf, onExportExcel, onSendE
                 <Text style={[styles.menuItemText, styles.menuItemTextPdf]}>Export as PDF</Text>
               </Pressable>
               
-              {variant === "table" ? (
+              {canExportExcel ? (
                 <Pressable
                   style={[styles.menuItem, styles.menuItemExcel]}
                   onPress={() => {
                     toggleOpen();
-                    if (onExportExcel) onExportExcel();
+                    onExportExcel();
                   }}
                 >
                   <MaterialCommunityIcons name="file-excel-box" size={18} color="#15803d" />

@@ -8,6 +8,8 @@ type ConfirmModalProps = {
   message: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  tone?: "primary" | "success" | "danger";
+  loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -27,9 +29,14 @@ export function InventoryConfirmModal({
   message,
   confirmLabel = "Yes, Continue",
   cancelLabel = "Cancel",
+  tone = "primary",
+  loading = false,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
+  const confirmStyle =
+    tone === "danger" ? styles.submitBtnDanger : tone === "success" ? styles.submitBtnSuccess : styles.submitBtn;
+
   return (
     <ResponsiveModal
       visible={visible}
@@ -43,11 +50,11 @@ export function InventoryConfirmModal({
       <Text style={styles.modalTitle}>{title}</Text>
       <Text style={styles.confirmText}>{message}</Text>
       <View style={styles.confirmActionRow}>
-        <Pressable style={styles.cancelBtn} onPress={onCancel}>
+        <Pressable style={[styles.cancelBtn, loading && styles.disabledBtn]} onPress={onCancel} disabled={loading}>
           <Text style={styles.cancelBtnText}>{cancelLabel}</Text>
         </Pressable>
-        <Pressable style={styles.submitBtn} onPress={onConfirm}>
-          <Text style={styles.submitBtnText}>{confirmLabel}</Text>
+        <Pressable style={[confirmStyle, loading && styles.disabledBtn]} onPress={onConfirm} disabled={loading}>
+          <Text style={styles.submitBtnText}>{loading ? "Processing..." : confirmLabel}</Text>
         </Pressable>
       </View>
     </ResponsiveModal>
@@ -94,7 +101,10 @@ const styles = StyleSheet.create({
   cancelBtn: { minHeight: 36, borderRadius: 10, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" },
   cancelBtnText: { color: "#334155", fontSize: 12, fontWeight: "700" },
   submitBtn: { minHeight: 36, borderRadius: 10, backgroundColor: "#1d4ed8", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" },
+  submitBtnSuccess: { minHeight: 36, borderRadius: 10, backgroundColor: "#16a34a", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" },
+  submitBtnDanger: { minHeight: 36, borderRadius: 10, backgroundColor: "#dc2626", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" },
   submitBtnText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  disabledBtn: { opacity: 0.6 },
   resultModalCard: { width: "100%", maxWidth: 380, backgroundColor: "#fff", borderRadius: 14, padding: 18, alignItems: "center", gap: 10 },
   resultTitle: { color: "#0f172a", fontSize: 18, fontWeight: "800" },
   resultMessage: { color: "#475569", fontSize: 13, textAlign: "center", lineHeight: 20 },

@@ -2,6 +2,7 @@ import {
   buildReportDetailPrintHtml,
   buildReportPdfFileName,
   buildReportTablePrintHtml,
+  downloadReportTableExcel,
   ReportMetaItem,
   ReportTableColumn,
 } from "../shared/ReportPrintTemplate";
@@ -133,6 +134,33 @@ export const buildExternalFinancialTableReportPrintHtml = ({
   const summary = calculateSummary(rows);
 
   return buildReportTablePrintHtml({
+    title: "External Financial Report",
+    subtitle: "External income and outcome entries",
+    reportKey: REPORT_KEY,
+    generatedAt,
+    generatedBy,
+    meta: [
+      { label: "Total Rows", value: rows.length },
+      { label: "Total Income", value: formatRupiah(summary.totalIncome) },
+      { label: "Total Outcome", value: formatRupiah(summary.totalOutcome) },
+      { label: "Net Amount", value: formatRupiah(summary.netAmount) },
+      ...meta,
+    ],
+    rows,
+    columns: externalFinancialTableColumns,
+    emptyText: "No external financial data found.",
+  });
+};
+
+export const downloadExternalFinancialTableReportExcel = ({
+  rows,
+  generatedAt = new Date(),
+  generatedBy,
+  meta = [],
+}: ExternalFinancialReportOptions) => {
+  const summary = calculateSummary(rows);
+
+  return downloadReportTableExcel({
     title: "External Financial Report",
     subtitle: "External income and outcome entries",
     reportKey: REPORT_KEY,

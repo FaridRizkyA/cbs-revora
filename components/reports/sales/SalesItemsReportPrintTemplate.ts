@@ -4,6 +4,7 @@ import {
   ReportMetaItem,
   ReportTableColumn,
 } from "../shared/ReportPrintTemplate";
+import { buildExcelFileName, buildExcelTableHtmlWithEmbeddedLogos, ExcelColumn } from "../../../utils/excelExport";
 
 export type SalesItemReportRow = {
   id_sale_item?: string;
@@ -103,11 +104,86 @@ const salesItemsTableColumns: ReportTableColumn<SalesItemReportRow>[] = [
   },
 ];
 
+const salesItemsExcelColumns: ExcelColumn<SalesItemReportRow>[] = [
+  {
+    key: "row_number",
+    title: "No.",
+    width: 8,
+    align: "center",
+    getValue: (_row, index) => index + 1,
+  },
+  {
+    key: "sale_code",
+    title: "Sale Code",
+    width: 22,
+    getValue: (row) => row.sale_code,
+  },
+  {
+    key: "product_name",
+    title: "Product",
+    width: 30,
+    getValue: (row) => row.product_name,
+  },
+  {
+    key: "quantity",
+    title: "Qty",
+    width: 10,
+    align: "center",
+    getValue: (row) => row.quantity,
+  },
+  {
+    key: "sell_per_pcs",
+    title: "Price",
+    width: 16,
+    align: "right",
+    getValue: (row) => Number(row.sell_per_pcs || 0),
+  },
+  {
+    key: "total_sell",
+    title: "Total Sell",
+    width: 18,
+    align: "right",
+    getValue: (row) => Number(row.total_sell || 0),
+  },
+  {
+    key: "cashier_name",
+    title: "Cashier",
+    width: 20,
+    getValue: (row) => row.cashier_name,
+  },
+  {
+    key: "sale_date",
+    title: "Date",
+    width: 20,
+    getValue: (row) => formatDateTime(row.sale_date),
+  },
+];
+
 export const buildSalesItemsTableReportPdfFileName = (date?: string | Date | null) =>
   buildReportPdfFileName({
     reportKey: REPORT_KEY,
     variant: "table",
     date,
+  });
+
+export const buildSalesItemsTableExcelFileName = (date?: string | Date | null) =>
+  buildExcelFileName(REPORT_KEY, date);
+
+export const buildSalesItemsTableExcelHtml = ({
+  rows,
+  generatedAt = new Date(),
+  generatedBy,
+  meta = [],
+}: SalesItemsReportOptions) =>
+  buildExcelTableHtmlWithEmbeddedLogos({
+    title: "Sales Items Report",
+    subtitle: "Sold products from sales transactions",
+    reportKey: REPORT_KEY,
+    generatedAt,
+    generatedBy,
+    meta,
+    rows,
+    columns: salesItemsExcelColumns,
   });
 
 export const buildSalesItemsTableReportPrintHtml = ({

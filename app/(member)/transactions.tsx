@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { InventoryResultModal } from "../../components/inventory/ActionModals";
 import MemberShell from "../../components/member/MemberShell";
 import InventoryDataTable, { InventoryDataTableColumn } from "../../components/inventory/InventoryDataTable";
 import ResponsiveModal from "../../components/common/ResponsiveModal";
@@ -9,7 +10,7 @@ import { buildReceiptPrintHtml } from "../../components/cashier/ReceiptPrintTemp
 import { buildMemberTransactionsReportPrintHtml, MemberTransactionReportRow } from "../../components/reports/member/MemberTransactionsReportPrintTemplate";
 import { formatDateTime, formatRupiah } from "../../components/shu/formatters";
 import { fetchWithAuth } from "../../utils/fetchWithAuth";
-import { AuthSession, getAuthSession, normalizeRole } from "../../utils/authSession";
+import { AuthSession, getAuthSession } from "../../utils/authSession";
 import { logClientActivity } from "../../utils/activityLog";
 import { useRouter } from "expo-router";
 
@@ -28,19 +29,20 @@ type TransactionDetail = MemberTransactionReportRow & {
   member_code?: string | null;
   member_name?: string | null;
   member_email?: string | null;
-  items?: Array<{
+  items?: {
     id_sale_item?: string;
     product_code?: string | null;
     product_name?: string | null;
     quantity?: number;
     unit_price?: number;
     subtotal?: number;
-  }>;
+  }[];
 };
 
 type RangeKey = "DAILY" | "WEEKLY" | "MONTHLY" | "ALL";
+type ViewMode = "TRANSACTION" | "ITEM";
 
-const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
+const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
   { key: "DAILY", label: "Daily" },
   { key: "WEEKLY", label: "Weekly" },
   { key: "MONTHLY", label: "Monthly" },
@@ -79,12 +81,22 @@ export default function MemberTransactionsScreen() {
   const [loading, setLoading] = useState(true);
   const [printing, setPrinting] = useState(false);
   const [range, setRange] = useState<RangeKey>("MONTHLY");
+  const [viewMode, setViewMode] = useState<ViewMode>("TRANSACTION");
   const [overview, setOverview] = useState<MemberOverview | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [rows, setRows] = useState<MemberTransactionReportRow[]>([]);
   const [selectedRow, setSelectedRow] = useState<TransactionDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [resultTitle, setResultTitle] = useState("");
+  const [resultMessage, setResultMessage] = useState("");
+
+  const showError = (title: string, message: string) => {
+    setResultTitle(title);
+    setResultMessage(message);
+    setResultModalOpen(true);
+  };
 
   const loadTransactions = useCallback(async (nextRange: RangeKey) => {
     setLoading(true);
@@ -112,33 +124,11 @@ export default function MemberTransactionsScreen() {
   }, []);
 
   useEffect(() => {
-    let active = true;
-    getAuthSession()
-      .then(async (session) => {
-        if (!active) return;
-        if (!session?.token || !normalizeRole(session?.user?.role_name)) {
-          router.replace("/login");
-          return;
-        }
-
-        const accessResponse = await fetchWithAuth("/api/member/access");
-        const accessPayload = await accessResponse.json();
-        if (!accessResponse.ok || !accessPayload?.data?.is_member) {
-          router.replace("/login");
-          return;
-        }
-
-        setSession(session);
-        loadTransactions(range).catch((error) => {
-          Alert.alert("Error", error instanceof Error ? error.message : "Failed to load transactions.");
-        });
-      })
-      .catch(() => router.replace("/login"));
-
-    return () => {
-      active = false;
-    };
-  }, [loadTransactions, range, router]);
+    getAuthSession().then(s => setSession(s));
+    loadTransactions(range).catch((error) => {
+      showError("Error", error instanceof Error ? error.message : "Failed to load transactions.");
+    });
+  }, [loadTransactions, range]);
 
   const loadDetail = useCallback(async (idSale: string) => {
     setDetailLoading(true);
@@ -151,7 +141,7 @@ export default function MemberTransactionsScreen() {
       setSelectedRow(payload?.data || null);
       setDetailOpen(true);
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to load transaction detail.");
+      showError("Error", error instanceof Error ? error.message : "Failed to load transaction detail.");
     } finally {
       setDetailLoading(false);
     }
@@ -170,7 +160,7 @@ export default function MemberTransactionsScreen() {
       });
       await printHtml(html, "PRINT_REPORT", "Printed member spending detail report.");
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print spending detail.");
+      showError("Print Failed", error instanceof Error ? error.message : "Failed to print spending detail.");
     } finally {
       setPrinting(false);
     }
@@ -204,7 +194,7 @@ export default function MemberTransactionsScreen() {
       });
       await printHtml(html, "PRINT_RECEIPT", `Printed sale receipt ${selectedRow.sale_number}.`);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print receipt.");
+      showError("Print Failed", error instanceof Error ? error.message : "Failed to print receipt.");
     } finally {
       setPrinting(false);
     }
@@ -262,18 +252,76 @@ export default function MemberTransactionsScreen() {
       sortValue: (row) => row.total_amount || 0,
       render: (row) => <Text style={styles.cellText}>{formatRupiah(Number(row.total_amount || 0))}</Text>,
     },
-      {
-        key: "action",
-        title: "Action",
-        weight: 12,
-        align: "center",
-        render: (row) => (
-          <Pressable style={styles.detailButton} onPress={() => loadDetail(row.id_sale)}>
-            <Text style={styles.detailButtonText}>Details</Text>
-          </Pressable>
-        ),
-      },
+    {
+      key: "action",
+      title: "Action",
+      weight: 12,
+      align: "center",
+      render: (row) => (
+        <Pressable style={styles.detailButton} onPress={() => loadDetail(row.id_sale)}>
+          <Text style={styles.detailButtonText}>Details</Text>
+        </Pressable>
+      ),
+    },
   ], [loadDetail]);
+
+  const itemColumns = useMemo<InventoryDataTableColumn<any>[]>(() => [
+    {
+      key: "date",
+      title: "Date",
+      weight: 14,
+      render: (row) => <Text style={styles.cellText}>{formatDateTime(row.sale_date)}</Text>,
+    },
+    {
+      key: "product",
+      title: "Product",
+      weight: 35,
+      render: (row) => (
+        <View>
+          <Text style={[styles.cellText, { fontWeight: "700" }]}>{row.product_name}</Text>
+          <Text style={[styles.cellText, { fontSize: 10, color: "#64748b" }]}>{row.product_code}</Text>
+        </View>
+      ),
+    },
+    {
+      key: "qty",
+      title: "Qty",
+      weight: 10,
+      align: "right",
+      render: (row) => <Text style={styles.cellText}>{row.quantity}</Text>,
+    },
+    {
+      key: "price",
+      title: "Unit Price",
+      weight: 18,
+      align: "right",
+      render: (row) => <Text style={styles.cellText}>{formatRupiah(row.unit_price)}</Text>,
+    },
+    {
+      key: "subtotal",
+      title: "Subtotal",
+      weight: 23,
+      align: "right",
+      render: (row) => <Text style={[styles.cellText, { fontWeight: "800" }]}>{formatRupiah(row.subtotal)}</Text>,
+    },
+  ], []);
+
+  const flattenedItems = useMemo(() => {
+    const items: any[] = [];
+    rows.forEach((row) => {
+      if (Array.isArray(row.items)) {
+        row.items.forEach((item) => {
+          items.push({
+            ...item,
+            sale_date: row.sale_date,
+            sale_number: row.sale_number,
+            payment_method: row.payment_method,
+          });
+        });
+      }
+    });
+    return items;
+  }, [rows]);
 
   const totalSpending = overview?.metrics?.total_spending || rows.reduce((sum, row) => sum + Number(row.total_amount || 0), 0);
 
@@ -292,28 +340,52 @@ export default function MemberTransactionsScreen() {
     >
       <View style={styles.summaryRow}>
         <Metric label="Total Transactions" value={String(rows.length)} />
+        <Metric label="Total Items" value={String(flattenedItems.length)} />
         <Metric label="Total Spending" value={formatRupiah(totalSpending)} />
-        <Metric label="Last Transaction" value={formatDate(overview?.metrics?.last_transaction_date || null)} />
       </View>
 
-      <View style={styles.filterRow}>
-        {RANGE_OPTIONS.map((item) => {
-          const active = item.key === range;
-          return (
-            <Pressable key={item.key} style={[styles.filterButton, active && styles.filterButtonActive]} onPress={() => setRange(item.key)}>
-              <Text style={[styles.filterButtonText, active && styles.filterButtonTextActive]}>{item.label}</Text>
-            </Pressable>
-          );
-        })}
+      <View style={styles.filterSection}>
+        <View style={styles.filterRow}>
+          {RANGE_OPTIONS.map((item) => {
+            const active = item.key === range;
+            return (
+              <Pressable key={item.key} style={[styles.filterButton, active && styles.filterButtonActive]} onPress={() => setRange(item.key)}>
+                <Text style={[styles.filterButtonText, active && styles.filterButtonTextActive]}>{item.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={styles.viewToggle}>
+          <Pressable style={[styles.toggleBtn, viewMode === "TRANSACTION" && styles.toggleBtnActive]} onPress={() => setViewMode("TRANSACTION")}>
+            <Feather name="list" size={14} color={viewMode === "TRANSACTION" ? "#fff" : "#64748b"} />
+            <Text style={[styles.toggleText, viewMode === "TRANSACTION" && styles.toggleTextActive]}>Transactions</Text>
+          </Pressable>
+          <Pressable style={[styles.toggleBtn, viewMode === "ITEM" && styles.toggleBtnActive]} onPress={() => setViewMode("ITEM")}>
+            <Feather name="box" size={14} color={viewMode === "ITEM" ? "#fff" : "#64748b"} />
+            <Text style={[styles.toggleText, viewMode === "ITEM" && styles.toggleTextActive]}>Items</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.card}>
-        <InventoryDataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(row) => row.id_sale}
-          emptyText="No spending history found for this period."
-        />
+        {loading ? (
+          <Text style={styles.stateText}>Loading spending history...</Text>
+        ) : viewMode === "TRANSACTION" ? (
+          <InventoryDataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(row) => row.id_sale}
+            emptyText="No spending history found for this period."
+          />
+        ) : (
+          <InventoryDataTable
+            columns={itemColumns}
+            rows={flattenedItems}
+            rowKey={(row, idx) => `${row.id_sale_item}-${idx}`}
+            emptyText="No items found for this period."
+          />
+        )}
       </View>
 
       <ResponsiveModal
@@ -377,6 +449,13 @@ export default function MemberTransactionsScreen() {
           </Pressable>
         </View>
       </ResponsiveModal>
+      <InventoryResultModal
+        visible={resultModalOpen}
+        status="error"
+        title={resultTitle}
+        message={resultMessage}
+        onClose={() => setResultModalOpen(false)}
+      />
     </MemberShell>
   );
 }
@@ -415,6 +494,44 @@ const styles = StyleSheet.create({
   metricLabel: { color: "#64748b", fontSize: 11, fontWeight: "700" },
   metricValue: { color: "#0f172a", fontSize: 14, fontWeight: "800" },
   filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  filterSection: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+  viewToggle: {
+    flexDirection: "row",
+    backgroundColor: "#f1f5f9",
+    padding: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  toggleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 9,
+    gap: 6,
+  },
+  toggleBtnActive: {
+    backgroundColor: "#1d4ed8",
+    shadowColor: "#1d4ed8",
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  toggleText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748b",
+  },
+  toggleTextActive: {
+    color: "#fff",
+  },
   filterButton: {
     minHeight: 36,
     borderRadius: 10,

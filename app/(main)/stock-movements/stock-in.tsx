@@ -1,7 +1,6 @@
-import { Feather } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import StockInFormModal from "../../../components/inventory/StockInFormModal";
@@ -12,11 +11,13 @@ import InventoryRowActionsMenu from "../../../components/inventory/InventoryRowA
 import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu";
 import InventoryFilterSection from "../../../components/inventory/InventoryFilterSection";
 import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
+import { InventoryConfirmModal, InventoryResultModal } from "../../../components/inventory/ActionModals";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import SendEmailModal from "../../../components/modals/SendEmailModal";
 import {
   buildStockInDetailReportPrintHtml,
   buildStockInTableReportPrintHtml,
+  downloadStockInTableReportExcel,
 } from "../../../components/reports/stock-in/StockInReportPrintTemplate";
 import { API_BASE_URL } from "../../../utils/api";
 import { logClientActivity } from "../../../utils/activityLog";
@@ -139,6 +140,13 @@ export default function StockInScreen() {
   const [resultTitle, setResultTitle] = useState("");
   const [resultMessage, setResultMessage] = useState("");
 
+  const showResult = useCallback((status: "success" | "error", title: string, message: string) => {
+    setResultStatus(status);
+    setResultTitle(title);
+    setResultMessage(message);
+    setResultModalOpen(true);
+  }, []);
+
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [emailTarget, setEmailTarget] = useState<"table" | "detail">("table");
 
@@ -163,7 +171,26 @@ export default function StockInScreen() {
       .catch(() => setRows([]));
   };
 
-  const openDetail = async (idStockIn: string) => {
+  const loadSuppliers = async () => {
+    const response = await fetch(`${API_BASE_URL}/api/suppliers`);
+    const payload = await response.json();
+    const safeRows = Array.isArray(payload?.data) ? payload.data : [];
+    setSuppliers(safeRows.filter((item) => item?.is_active === "Y"));
+  };
+
+  const loadProductsBySupplier = async (idSupplier: string) => {
+    if (!idSupplier) {
+      setProducts([]);
+      return;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/suppliers/${idSupplier}/products`);
+    const payload = await response.json();
+    const safeRows = Array.isArray(payload?.data) ? payload.data : [];
+    setProducts(safeRows.filter((item) => item?.is_active === "Y"));
+  };
+
+  const openDetail = useCallback(async (idStockIn: string) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/stock-in-documents/${idStockIn}`);
       const payload = await response.json();
@@ -172,9 +199,9 @@ export default function StockInScreen() {
       }
       setSelectedDoc(payload?.data || null);
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to fetch stock in detail.");        
+      showResult("error", "Error", error instanceof Error ? error.message : "Failed to fetch stock in detail.");        
     }
-  };
+  }, [showResult]);
 
   useEffect(() => {
     getAuthSession()
@@ -184,13 +211,7 @@ export default function StockInScreen() {
       })
       .catch(() => setRoleName("CASHIER"));
     loadRows();
-    fetch(`${API_BASE_URL}/api/suppliers`)
-      .then((response) => response.json())
-      .then((payload) => {
-        const safeRows = Array.isArray(payload?.data) ? payload.data : [];
-        setSuppliers(safeRows.filter((item) => item?.is_active === "Y"));
-      })
-      .catch(() => setSuppliers([]));
+    loadSuppliers().catch(() => setSuppliers([]));
   }, []);
 
   useEffect(() => {
@@ -199,13 +220,7 @@ export default function StockInScreen() {
       return;
     }
 
-    fetch(`${API_BASE_URL}/api/suppliers/${selectedSupplierId}/products`)
-      .then((response) => response.json())
-      .then((payload) => {
-        const safeRows = Array.isArray(payload?.data) ? payload.data : [];
-        setProducts(safeRows.filter((item) => item?.is_active === "Y"));
-      })
-      .catch(() => setProducts([]));
+    loadProductsBySupplier(selectedSupplierId).catch(() => setProducts([]));
   }, [selectedSupplierId]);
 
   const hasInvalidRows = useMemo(
@@ -379,7 +394,25 @@ export default function StockInScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print stock in report."); 
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print stock in report."); 
+    }
+  };
+
+  const handleExportStockInExcel = async () => {
+    try {
+      await downloadStockInTableReportExcel({
+        rows: Array.isArray(filteredRows) ? filteredRows : [],
+        generatedAt: new Date(),
+        generatedBy: roleName,
+        meta: buildCurrentStockInReportMeta(),
+      });
+      await logClientActivity({
+        activityType: "EXPORT_EXCEL",
+        tableName: "tbl_stock_in_headers",
+        description: "Exported stock in report as Excel.",
+      });
+    } catch (error) {
+      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export stock in report.");
     }
   };
 
@@ -394,7 +427,7 @@ export default function StockInScreen() {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print stock in detail."); 
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print stock in detail."); 
     }
   };
 
@@ -459,7 +492,7 @@ export default function StockInScreen() {
         </View>
       ),
     },
-  ], [openActionStockInId]);
+  ], [openActionStockInId, openDetail]);
 
   const detailColumns = useMemo<InventoryDataTableColumn<StockInDocumentItem>[]>(() => [
     {
@@ -561,6 +594,8 @@ export default function StockInScreen() {
 
       setFormOpen(false);
       loadRows();
+      await loadSuppliers();
+      await loadProductsBySupplier(selectedSupplierId);
       setResultStatus("success");
       setResultTitle("Action Completed");
       setResultMessage("Stock in saved successfully.");
@@ -596,7 +631,7 @@ export default function StockInScreen() {
           <View style={styles.headerActionRow}>
             <ExportDropdownMenu
               onExportPdf={handlePrintStockInTable}
-              onExportExcel={() => Alert.alert("Export Excel", "This feature will be implemented soon.")}       
+              onExportExcel={handleExportStockInExcel}
               onSendEmail={() => {
                 setEmailTarget("table");
                 setEmailModalOpen(true);
@@ -660,7 +695,7 @@ export default function StockInScreen() {
             draftDateEndFilter &&
             toDayNumber(draftDateEndFilter) < toDayNumber(draftDateStartFilter)
           ) {
-            Alert.alert("Validation", "End date must be the same as or after Start date.");
+            showResult("error", "Validation", "End date must be the same as or after Start date.");
             return;
           }
           setSupplierFilter(draftSupplierFilter);
@@ -792,43 +827,26 @@ export default function StockInScreen() {
         onSubmit={() => setConfirmOpen(true)}
       />
 
-      <ResponsiveModal
+      <InventoryConfirmModal
         visible={confirmOpen}
-        onClose={() => setConfirmOpen(false)}
-        maxWidthDesktop={420}
-        maxWidthPhoneRatio={0.96}
-        maxHeightDesktopRatio={0.84}
-        maxHeightPhoneRatio={0.9}
-        cardStyle={styles.confirmModalCard}
-      >
-        <Text style={styles.modalTitle}>Please Confirm</Text>
-        <Text style={styles.confirmText}>Create this stock in data?</Text>
-        <View style={styles.confirmActionRow}>
-          <Pressable style={styles.cancelBtn} onPress={() => setConfirmOpen(false)}>
-            <Text style={styles.cancelBtnText}>Cancel</Text>
-          </Pressable>
-          <Pressable style={styles.submitBtn} onPress={async () => { setConfirmOpen(false); await submitStockIn(); }}>
-            <Text style={styles.submitBtnText}>Yes, Continue</Text>
-          </Pressable>
-        </View>
-      </ResponsiveModal>
+        title="Create Stock In?"
+        message="Create this stock in document and add these items to inventory?"
+        confirmLabel="Create Stock In"
+        loading={saving}
+        onCancel={() => (saving ? null : setConfirmOpen(false))}
+        onConfirm={async () => {
+          setConfirmOpen(false);
+          await submitStockIn();
+        }}
+      />
 
-      <ResponsiveModal
+      <InventoryResultModal
         visible={resultModalOpen}
+        status={resultStatus}
+        title={resultTitle}
+        message={resultMessage}
         onClose={() => setResultModalOpen(false)}
-        maxWidthDesktop={380}
-        maxWidthPhoneRatio={0.94}
-        maxHeightDesktopRatio={0.82}
-        maxHeightPhoneRatio={0.9}
-        cardStyle={styles.resultModalCard}
-      >
-        <Feather name={resultStatus === "success" ? "check-circle" : "x-circle"} size={42} color={resultStatus === "success" ? "#16a34a" : "#dc2626"} />
-        <Text style={styles.resultTitle}>{resultTitle}</Text>
-        <Text style={styles.resultMessage}>{resultMessage}</Text>
-        <Pressable style={styles.resultCloseBtn} onPress={() => setResultModalOpen(false)}>
-          <Text style={styles.resultCloseBtnText}>OK</Text>
-        </Pressable>
-      </ResponsiveModal>
+      />
 
       <ResponsiveModal
         visible={Boolean(selectedDoc)}

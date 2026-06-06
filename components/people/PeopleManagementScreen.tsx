@@ -1,11 +1,12 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import ResponsiveModal from "../common/ResponsiveModal";
 import DatePickerField from "../inventory/DatePickerField";
 import FilterSelectField from "../inventory/FilterSelectField";
 import FilterSheetModal from "../inventory/FilterSheetModal";
+import { InventoryConfirmModal, InventoryResultModal } from "../inventory/ActionModals";
 import InventoryDataTable, { InventoryDataTableColumn } from "../inventory/InventoryDataTable";
 import InventoryFilterSection from "../inventory/InventoryFilterSection";
 import InventoryPageHeader from "../inventory/InventoryPageHeader";
@@ -20,6 +21,7 @@ import { API_BASE_URL } from "../../utils/api";
 import { logClientActivity } from "../../utils/activityLog";
 import { canManagePeople, getAuthSession, normalizeRole } from "../../utils/authSession";
 import { pickSquareImageAsync } from "../../utils/imageUpload";
+import { isValidPasswordPolicy, PASSWORD_POLICY_MESSAGE } from "../../utils/passwordPolicy";
 
 type ScreenType = "users" | "members" | "staffs";
 
@@ -104,6 +106,12 @@ type WebCropState = {
   naturalWidth: number;
   naturalHeight: number;
 };
+
+type PendingAction =
+  | { type: "save-person" }
+  | { type: "save-grade" }
+  | { type: "person-status"; row: PersonRow }
+  | { type: "grade-status"; grade: StaffGrade };
 
 const emptyForm: FormState = {
   id_user: "",
@@ -242,6 +250,18 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
   const [saving, setSaving] = useState(false);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [isProfileLocked, setIsProfileLocked] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [resultStatus, setResultStatus] = useState<"success" | "error">("success");
+  const [resultTitle, setResultTitle] = useState("");
+  const [resultMessage, setResultMessage] = useState("");
+
+  const showResult = useCallback((status: "success" | "error", title: string, message: string) => {
+    setResultStatus(status);
+    setResultTitle(title);
+    setResultMessage(message);
+    setResultModalOpen(true);
+  }, []);
 
   // Filter States
   const [filterOpen, setFilterOpen] = useState(false);
@@ -470,10 +490,10 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
       setWebCrop((current) => (current ? { ...current, naturalWidth, naturalHeight } : current));
       setCropTransform((current) => clampCropTransform(Math.max(current.scale, minCoverScale), current.translateX, current.translateY, naturalWidth, naturalHeight));
     };
-    image.onerror = () => { if (!cancelled) { Alert.alert("Error", "Failed to load image for cropping."); closeWebCropper(); } };
+    image.onerror = () => { if (!cancelled) { showResult("error", "Error", "Failed to load image for cropping."); closeWebCropper(); } };
     image.src = webCrop.sourceUri;
     return () => { cancelled = true; };
-  }, [webCrop, closeWebCropper, clampCropTransform, cropBoxSize, cropViewportSize]);
+  }, [webCrop, closeWebCropper, clampCropTransform, cropBoxSize, cropViewportSize, showResult]);
 
   const applyWebCrop = async () => {
     if (!webCrop || Platform.OS !== "web") return;
@@ -514,7 +534,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
         return;
       }
       setSelectedImage({ uri: image.uri, name: image.name || "profile.jpg", mimeType: image.mimeType });
-    } catch { Alert.alert("Error", "Failed to pick image."); }
+    } catch { showResult("error", "Error", "Failed to pick image."); }
   };
 
   const openCreate = () => {
@@ -672,7 +692,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : `Failed to print ${screenConfig.title.toLowerCase()} report.`);
+      showResult("error", "Print Failed", error instanceof Error ? error.message : `Failed to print ${screenConfig.title.toLowerCase()} report.`);
     }
   };
 
@@ -688,41 +708,45 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
       });
       await printReportHtml(html);
     } catch (error) {
-      Alert.alert("Print failed", error instanceof Error ? error.message : "Failed to print profile detail.");
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print profile detail.");
     }
   };
 
   const submitForm = async () => {
     if (type === "users" && !form.email.trim()) {
-      Alert.alert("Validation", "Email is required.");
+      showResult("error", "Validation", "Email is required.");
       return;
     }
-    if (type === "users" && !editingRow && form.password.length < 6) {
-      Alert.alert("Validation", "Password must be at least 6 characters.");
+    if (type === "users" && !editingRow && !isValidPasswordPolicy(form.password)) {
+      showResult("error", "Validation", PASSWORD_POLICY_MESSAGE);
+      return;
+    }
+    if (type === "users" && editingRow && form.password && !isValidPasswordPolicy(form.password)) {
+      showResult("error", "Validation", PASSWORD_POLICY_MESSAGE);
       return;
     }
     if (type === "users" && form.password && form.password_confirmation !== form.password) {
-      Alert.alert("Validation", "Password confirmation does not match.");
+      showResult("error", "Validation", "Password confirmation does not match.");
       return;
     }
     if (type !== "users" && !form.id_user) {
-      Alert.alert("Validation", "Linked user is required.");
+      showResult("error", "Validation", "Linked user is required.");
       return;
     }
     if (type !== "users" && !form.first_name.trim()) {
-      Alert.alert("Validation", "First name is required.");
+      showResult("error", "Validation", "First name is required.");
       return;
     }
     if (type !== "users" && !isValidPersonName(form.first_name, true)) {
-      Alert.alert("Validation", "First name may only contain letters and spaces.");
+      showResult("error", "Validation", "First name may only contain letters and spaces.");
       return;
     }
     if (type !== "users" && !isValidPersonName(form.last_name)) {
-      Alert.alert("Validation", "Last name may only contain letters and spaces.");
+      showResult("error", "Validation", "Last name may only contain letters and spaces.");
       return;
     }
     if (type !== "users" && !isValidPhone(form.phone_number)) {
-      Alert.alert("Validation", "Phone may only contain digits, +, spaces, and hyphens, with 3 to 20 digits.");
+      showResult("error", "Validation", "Phone may only contain digits, +, spaces, and hyphens, with 3 to 20 digits.");
       return;
     }
 
@@ -780,8 +804,13 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
       setFormOpen(false);
       loadRows();
       loadSupportData();
+      showResult(
+        "success",
+        "Action Completed",
+        editingRow ? `${screenConfig.title.slice(0, -1)} updated successfully.` : `${screenConfig.title.slice(0, -1)} created successfully.`
+      );
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to save data.");
+      showResult("error", "Action Failed", error instanceof Error ? error.message : "Failed to save data.");
     } finally {
       setSaving(false);
     }
@@ -790,11 +819,11 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
   const submitGradeForm = async () => {
     const gradeOrder = Number(gradeForm.grade_order || 0);
     if (!gradeForm.grade_name.trim()) {
-      Alert.alert("Validation", "Grade name is required.");
+      showResult("error", "Validation", "Grade name is required.");
       return;
     }
     if (!Number.isInteger(gradeOrder) || gradeOrder < 0) {
-      Alert.alert("Validation", "Grade order must be a non-negative integer.");
+      showResult("error", "Validation", "Grade order must be a non-negative integer.");
       return;
     }
 
@@ -817,8 +846,9 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
       if (!response.ok) throw new Error(payload?.error || payload?.message || "Failed to save grade.");
       setGradeFormOpen(false);
       loadSupportData();
+      showResult("success", "Action Completed", editingGrade ? "Grade updated successfully." : "Grade created successfully.");
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to save grade.");
+      showResult("error", "Action Failed", error instanceof Error ? error.message : "Failed to save grade.");
     } finally {
       setSaving(false);
     }
@@ -836,10 +866,15 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
       if (!response.ok) throw new Error(payload?.error || payload?.message || "Failed to update status.");      
       loadRows();
       loadSupportData();
+      showResult(
+        "success",
+        "Action Completed",
+        row.is_active === "Y" ? `${screenConfig.title.slice(0, -1)} deactivated successfully.` : `${screenConfig.title.slice(0, -1)} activated successfully.`
+      );
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to update status.");
+      showResult("error", "Action Failed", error instanceof Error ? error.message : "Failed to update status.");
     }
-  }, [actorId, loadRows, loadSupportData, screenConfig.endpoint, type]);
+  }, [actorId, loadRows, loadSupportData, screenConfig.endpoint, screenConfig.title, showResult, type]);
 
   const toggleGradeStatus = useCallback(async (grade: StaffGrade) => {
     try {
@@ -851,10 +886,54 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error || payload?.message || "Failed to update grade status.");
       loadSupportData();
+      showResult(
+        "success",
+        "Action Completed",
+        grade.is_active === "Y" ? "Grade deactivated successfully." : "Grade activated successfully."
+      );
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to update grade status.");
+      showResult("error", "Action Failed", error instanceof Error ? error.message : "Failed to update grade status.");
     }
-  }, [actorId, loadSupportData]);
+  }, [actorId, loadSupportData, showResult]);
+
+  const getPendingActionMessage = () => {
+    if (pendingAction?.type === "save-person") {
+      return editingRow ? `Save changes to this ${screenConfig.title.slice(0, -1).toLowerCase()}?` : `Create this ${screenConfig.title.slice(0, -1).toLowerCase()}?`;
+    }
+    if (pendingAction?.type === "save-grade") {
+      return editingGrade ? "Save changes to this grade?" : "Create this grade?";
+    }
+    if (pendingAction?.type === "person-status") {
+      return pendingAction.row.is_active === "Y"
+        ? `Deactivate this ${screenConfig.title.slice(0, -1).toLowerCase()}? It will be hidden from active lists.`
+        : `Activate this ${screenConfig.title.slice(0, -1).toLowerCase()}?`;
+    }
+    if (pendingAction?.type === "grade-status") {
+      return pendingAction.grade.is_active === "Y"
+        ? "Deactivate this grade? It will be hidden from active lists."
+        : "Activate this grade?";
+    }
+    return "Continue this action?";
+  };
+
+  const executePendingAction = async () => {
+    const action = pendingAction;
+    if (!action) return;
+    setPendingAction(null);
+    if (action.type === "save-person") {
+      await submitForm();
+      return;
+    }
+    if (action.type === "save-grade") {
+      await submitGradeForm();
+      return;
+    }
+    if (action.type === "person-status") {
+      await toggleStatus(action.row);
+      return;
+    }
+    await toggleGradeStatus(action.grade);
+  };
 
   const columns = useMemo<InventoryDataTableColumn<PersonRow>[]>(() => {
     const base: InventoryDataTableColumn<PersonRow>[] =
@@ -984,7 +1063,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
                     style={[styles.actionOutlineBtn, styles.actionOutlineDanger]}
                     onPress={() => {
                       setOpenActionId(null);
-                      toggleStatus(row);
+                      setPendingAction({ type: "person-status", row });
                     }}
                   >
                     <Text style={[styles.actionOutlineBtnText, styles.actionOutlineDangerText]}>Deactivate</Text>
@@ -998,7 +1077,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
     });
 
     return base;
-  }, [canManage, openActionId, openEdit, toggleStatus, type]);
+  }, [canManage, openActionId, openEdit, type]);
 
   const inactiveColumns = useMemo<InventoryDataTableColumn<PersonRow>[]>(
     () => [
@@ -1010,13 +1089,13 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
         align: "center",
         render: (row) =>
           canManage ? (
-            <Pressable style={styles.activateButton} onPress={() => toggleStatus(row)}>
+            <Pressable style={styles.activateButton} onPress={() => setPendingAction({ type: "person-status", row })}>
               <Text style={styles.activateButtonText}>Activate</Text>
             </Pressable>
           ) : null,
       },
     ],
-    [canManage, columns, toggleStatus]
+    [canManage, columns]
   );
 
   const gradeColumns = useMemo<InventoryDataTableColumn<StaffGrade>[]>(() => [
@@ -1080,7 +1159,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
                   style={[styles.actionOutlineBtn, styles.actionOutlineDanger]}
                   onPress={() => {
                     setOpenActionId(null);
-                    toggleGradeStatus(grade);
+                    setPendingAction({ type: "grade-status", grade });
                   }}
                 >
                   <Text style={[styles.actionOutlineBtnText, styles.actionOutlineDangerText]}>Deactivate</Text> 
@@ -1091,7 +1170,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
         </View>
       ),
     },
-  ], [canManage, openActionId, openEditGrade, toggleGradeStatus, activeGrades]);
+  ], [canManage, openActionId, openEditGrade, activeGrades]);
 
   const inactiveGradeColumns = useMemo<InventoryDataTableColumn<StaffGrade>[]>(
     () => [
@@ -1103,13 +1182,13 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
         align: "center",
         render: (grade) =>
           canManage ? (
-            <Pressable style={styles.activateButton} onPress={() => toggleGradeStatus(grade)}>
+            <Pressable style={styles.activateButton} onPress={() => setPendingAction({ type: "grade-status", grade })}>
               <Text style={styles.activateButtonText}>Activate</Text>
             </Pressable>
           ) : null,
       },
     ],
-    [canManage, gradeColumns, toggleGradeStatus]
+    [canManage, gradeColumns]
   );
 
   const isGradesTab = type === "staffs" && staffsTab === "grades" && roleName === "ADMIN";
@@ -1278,7 +1357,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
             <Pressable style={styles.cancelButton} onPress={() => setGradeFormOpen(false)} disabled={saving}>     
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </Pressable>
-            <Pressable style={styles.submitButton} onPress={submitGradeForm} disabled={saving}>
+            <Pressable style={styles.submitButton} onPress={() => setPendingAction({ type: "save-grade" })} disabled={saving}>
               <Text style={styles.submitButtonText}>{saving ? "Saving..." : "Save"}</Text>
             </Pressable>
           </View>
@@ -1444,7 +1523,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
             <Pressable style={styles.cancelButton} onPress={() => setFormOpen(false)} disabled={saving}>
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </Pressable>
-            <Pressable style={styles.submitButton} onPress={submitForm} disabled={saving}>
+            <Pressable style={styles.submitButton} onPress={() => setPendingAction({ type: "save-person" })} disabled={saving}>
               <Text style={styles.submitButtonText}>{saving ? "Saving..." : "Save"}</Text>
             </Pressable>
           </View>
@@ -1565,6 +1644,37 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
           </>
         ) : null}
       </FilterSheetModal>
+      <InventoryConfirmModal
+        visible={Boolean(pendingAction)}
+        title="Please Confirm"
+        message={getPendingActionMessage()}
+        confirmLabel={
+          pendingAction?.type === "person-status" && pendingAction.row.is_active === "Y"
+            ? "Deactivate"
+            : pendingAction?.type === "grade-status" && pendingAction.grade.is_active === "Y"
+              ? "Deactivate"
+              : "Yes, Continue"
+        }
+        tone={
+          pendingAction?.type === "person-status" && pendingAction.row.is_active === "Y"
+            ? "danger"
+            : pendingAction?.type === "grade-status" && pendingAction.grade.is_active === "Y"
+              ? "danger"
+              : pendingAction?.type === "person-status" || pendingAction?.type === "grade-status"
+                ? "success"
+                : "primary"
+        }
+        loading={saving}
+        onCancel={() => (saving ? null : setPendingAction(null))}
+        onConfirm={executePendingAction}
+      />
+      <InventoryResultModal
+        visible={resultModalOpen}
+        status={resultStatus}
+        title={resultTitle}
+        message={resultMessage}
+        onClose={() => setResultModalOpen(false)}
+      />
     </View>
   );
 }

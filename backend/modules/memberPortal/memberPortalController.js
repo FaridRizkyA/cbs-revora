@@ -148,7 +148,7 @@ const getMemberOverview = async (req, res) => {
     }
 
     const currentPeriod = getShuPeriodBounds();
-    const [salesResult, recentSalesResult, currentShuPeriodResult, currentShuDistributionResult] = await Promise.all([
+    const [salesResult, recentSalesResult, currentShuPeriodResult, currentShuDistributionResult, monthlyTrendResult] = await Promise.all([
       client.query(
         `
         SELECT
@@ -197,19 +197,12 @@ const getMemberOverview = async (req, res) => {
         `
         SELECT
           d.id_shu_distribution,
-          d.id_shu_period,
           d.id_member,
-          d.member_total_spending::float AS member_total_spending,
-          d.spending_percentage::float AS spending_percentage,
-          d.eligible_shu_usaha,
-          d.shu_belanja_amount::float AS shu_belanja_amount,
-          d.shu_usaha_amount::float AS shu_usaha_amount,
+          d.sales_shu_amount::float AS sales_shu_amount,
+          d.business_shu_amount::float AS business_shu_amount,
           d.shu_amount::float AS shu_amount,
           d.distribution_status,
-          p.period_name,
-          p.start_date,
-          p.end_date,
-          p.calculation_status
+          p.period_name
         FROM tbl_shu_distributions d
         JOIN tbl_shu_periods p
           ON p.id_shu_period = d.id_shu_period
@@ -219,6 +212,25 @@ const getMemberOverview = async (req, res) => {
         LIMIT 1;
         `,
         [member.id_member, currentPeriod.period_name]
+      ),
+      client.query(
+        `
+        WITH months AS (
+          SELECT date_trunc('month', NOW() - (m || ' month')::interval) as month
+          FROM generate_series(0, 5) AS m
+        )
+        SELECT
+          to_char(months.month, 'Mon YYYY') as month_label,
+          COALESCE(SUM(s.total_amount), 0)::float as total_spending
+        FROM months
+        LEFT JOIN tbl_sales s
+          ON date_trunc('month', s.sale_date) = months.month
+          AND s.id_member = $1
+          AND s.is_active = 'Y'
+        GROUP BY months.month
+        ORDER BY months.month ASC;
+        `,
+        [member.id_member]
       ),
     ]);
 
@@ -242,6 +254,7 @@ const getMemberOverview = async (req, res) => {
           current_shu_period: currentShuPeriod.period_name,
         },
         recent_transactions: recentSalesResult.rows,
+        monthly_trend: monthlyTrendResult.rows,
         current_shu: currentShuDistributionResult.rows[0]
           ? {
               ...currentShuDistributionResult.rows[0],
@@ -415,9 +428,9 @@ const listMemberShuHistory = async (req, res) => {
         p.calculation_status,
         d.member_total_spending::float AS member_total_spending,
         d.spending_percentage::float AS spending_percentage,
-        d.eligible_shu_usaha,
-        d.shu_belanja_amount::float AS shu_belanja_amount,
-        d.shu_usaha_amount::float AS shu_usaha_amount,
+        d.eligible_business_shu,
+        d.sales_shu_amount::float AS sales_shu_amount,
+        d.business_shu_amount::float AS business_shu_amount,
         d.shu_amount::float AS shu_amount,
         d.distribution_status
       FROM tbl_shu_distributions d
