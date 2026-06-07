@@ -23,6 +23,7 @@ import { InventoryConfirmModal, InventoryResultModal } from "../../components/in
 import { buildReceiptPrintHtml, formatReceiptProductLabel, ReceiptData, ReceiptItem } from "../../components/cashier/ReceiptPrintTemplate";
 import { AuthUser, getAuthSession, logoutAuthSession, subscribeAuthSession } from "../../utils/authSession";
 import { API_BASE_URL } from "../../utils/api";
+import { fetchWithAuth } from "../../utils/fetchWithAuth";
 import { logClientActivity } from "../../utils/activityLog";
 
 const PRODUCT_PLACEHOLDER = require("../../assets/images/placeholders/default-product.png");
@@ -117,12 +118,6 @@ type CheckoutResult = {
   receipt_email_error?: string | null;
 };
 
-type ReceiptEmailToastState = {
-  kind: "info" | "success" | "error";
-  title: string;
-  message: string;
-} | null;
-
 const formatRupiah = (value: number) =>
   new Intl.NumberFormat("id-ID", {
     style: "currency",
@@ -161,7 +156,6 @@ export default function Index() {
   const [receiptMemberSnapshot, setReceiptMemberSnapshot] = useState<{ code?: string | null; name?: string | null } | null>(null);
   const [receiptPaymentMethod, setReceiptPaymentMethod] = useState<PaymentMethod>("CASH");
   const [receiptEmailTracking, setReceiptEmailTracking] = useState<{ saleId: string; saleNumber: string } | null>(null);
-  const [receiptEmailToast, setReceiptEmailToast] = useState<ReceiptEmailToastState>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [clearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
@@ -173,8 +167,6 @@ export default function Index() {
   const barcodeInputRef = useRef<TextInput | null>(null);
   const barcodeAutoSubmitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchFocusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const receiptToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const receiptEmailPollBusyRef = useRef(false);
   const cashierId = sessionUser?.id_user ?? null;
   const cashierName = sessionUser?.full_name?.trim() || "Cashier";
 
@@ -201,24 +193,6 @@ export default function Index() {
 
   const cashChangePreview = Math.max(parsedCashAmount - subtotal, 0);
 
-  const clearReceiptToastTimer = useCallback(() => {
-    if (receiptToastTimerRef.current) {
-      clearTimeout(receiptToastTimerRef.current);
-      receiptToastTimerRef.current = null;
-    }
-  }, []);
-
-  const showReceiptToast = useCallback((toast: Exclude<ReceiptEmailToastState, null>, autoDismissMs: number | null = null) => {
-    clearReceiptToastTimer();
-    setReceiptEmailToast(toast);
-    if (autoDismissMs && autoDismissMs > 0) {
-      receiptToastTimerRef.current = setTimeout(() => {
-        setReceiptEmailToast(null);
-        receiptToastTimerRef.current = null;
-      }, autoDismissMs);
-    }
-  }, [clearReceiptToastTimer]);
-
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLowerCase();
 
@@ -240,7 +214,7 @@ export default function Index() {
   }, [members, memberSearch]);
 
   const fetchProducts = useCallback(async () => {
-    const response = await fetch(`${API_BASE_URL}/api/products`);
+    const response = await fetchWithAuth("/api/products");
     const payload = await response.json();
 
     if (!response.ok) {
@@ -251,7 +225,7 @@ export default function Index() {
   }, []);
 
   const fetchMembers = useCallback(async () => {
-    const response = await fetch(`${API_BASE_URL}/api/members`);
+    const response = await fetchWithAuth("/api/members");
     const payload = await response.json();
 
     if (!response.ok) {
@@ -338,94 +312,6 @@ export default function Index() {
       useNativeDriver: true,
     }).start();
   }, [checkoutResult, isReceiptModalOpen, successScale]);
-
-  useEffect(() => {
-    if (!receiptEmailTracking?.saleId) {
-      return;
-    }
-
-    let active = true;
-
-    const pollReceiptEmailStatus = async () => {
-      if (receiptEmailPollBusyRef.current) {
-        return;
-      }
-
-      receiptEmailPollBusyRef.current = true;
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/sales/${receiptEmailTracking.saleId}/receipt-email-status`);
-        const payload = await response.json();
-
-        if (!active || !response.ok) {
-          return;
-        }
-
-        const status = String(payload?.data?.status || "").trim().toUpperCase();
-
-        if (status === "PENDING" || status === "QUEUED") {
-          showReceiptToast(
-            {
-              kind: "info",
-              title: "Receipt email in progress",
-              message: `Sending receipt for ${receiptEmailTracking.saleNumber}.`,
-            },
-            null
-          );
-          return;
-        }
-
-        if (status === "SENT") {
-          showReceiptToast(
-            {
-              kind: "success",
-              title: "Receipt email sent",
-              message: `Receipt for ${receiptEmailTracking.saleNumber} was delivered successfully.`,
-            },
-            4500
-          );
-          setReceiptEmailTracking(null);
-          return;
-        }
-
-        if (status === "FAILED") {
-          showReceiptToast(
-            {
-              kind: "error",
-              title: "Receipt email failed",
-              message: payload?.data?.failed_reason || `Receipt for ${receiptEmailTracking.saleNumber} could not be sent.`,
-            },
-            6000
-          );
-          setReceiptEmailTracking(null);
-          return;
-        }
-
-        if (status === "SKIPPED") {
-          setReceiptEmailTracking(null);
-          return;
-        }
-      } catch {
-        // keep polling on transient failures
-      } finally {
-        receiptEmailPollBusyRef.current = false;
-      }
-    };
-
-    pollReceiptEmailStatus();
-    const timer = setInterval(() => {
-      pollReceiptEmailStatus().catch(() => {});
-    }, 3000);
-
-    return () => {
-      active = false;
-      clearInterval(timer);
-      receiptEmailPollBusyRef.current = false;
-    };
-  }, [receiptEmailTracking, showReceiptToast]);
-
-  useEffect(() => () => {
-    clearReceiptToastTimer();
-  }, [clearReceiptToastTimer]);
 
   const getProductSource = (product: Product) => {
     if (product.product_image) {
@@ -580,7 +466,7 @@ export default function Index() {
     setCheckoutLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/sales/checkout`, {
+      const response = await fetchWithAuth("/api/sales/checkout", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -622,23 +508,6 @@ export default function Index() {
           saleId: payload.data.id_sale,
           saleNumber: payload.data.sale_number,
         });
-        showReceiptToast(
-          {
-            kind: "info",
-            title: "Receipt email queued",
-            message: `Sending receipt for ${payload.data.sale_number}.`,
-          },
-          null
-        );
-      } else if (payload.data.receipt_email_status === "failed") {
-        showReceiptToast(
-          {
-            kind: "error",
-            title: "Receipt email queue failed",
-            message: payload.data.receipt_email_error || `Receipt for ${payload.data.sale_number} could not be queued.`,
-          },
-          6000
-        );
       }
 
       setCart([]);
@@ -762,7 +631,6 @@ export default function Index() {
 
   const handleLogout = async () => {
     setLogoutConfirmOpen(false);
-    clearReceiptToastTimer();
     await logoutAuthSession();
     router.replace("/login");
   };
@@ -777,36 +645,6 @@ export default function Index() {
 
   return (
     <View style={styles.viewportShell}>
-      {receiptEmailToast ? (
-        <View style={styles.toastHost} pointerEvents="box-none">
-          <View
-            style={[
-              styles.toastCard,
-              { width: Math.min(360, Math.max(280, width - 32)) },
-              receiptEmailToast.kind === "success" && styles.toastCardSuccess,
-              receiptEmailToast.kind === "error" && styles.toastCardError,
-              receiptEmailToast.kind === "info" && styles.toastCardInfo,
-            ]}
-          >
-            <MaterialCommunityIcons
-              name={
-                receiptEmailToast.kind === "success"
-                  ? "check-circle"
-                  : receiptEmailToast.kind === "error"
-                    ? "alert-circle"
-                    : "clock-outline"
-              }
-              size={20}
-              color={receiptEmailToast.kind === "success" ? "#16a34a" : receiptEmailToast.kind === "error" ? "#dc2626" : "#2563eb"}
-            />
-            <View style={styles.toastTextWrap}>
-              <Text style={styles.toastTitle}>{receiptEmailToast.title}</Text>
-              <Text style={styles.toastMessage}>{receiptEmailToast.message}</Text>
-            </View>
-            {receiptEmailToast.kind === "info" ? <ActivityIndicator size="small" color="#2563eb" /> : null}
-          </View>
-        </View>
-      ) : null}
       <View
         style={[
           styles.scaledCanvas,
@@ -1279,9 +1117,6 @@ export default function Index() {
                   setIsReceiptModalOpen(false);
                   setCheckoutResult(null);
                   setSubmittedCashAmount(0);
-                  if (!receiptEmailTracking) {
-                    clearReceiptToastTimer();
-                  }
                 }}
               >
                 <Text style={[styles.modalSecondaryText, styles.successButtonText]}>Done</Text>
@@ -1395,57 +1230,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-  },
-  toastHost: {
-    position: "absolute",
-    top: 16,
-    right: 16,
-    zIndex: 500,
-    elevation: 30,
-    alignItems: "flex-end",
-  },
-  toastCard: {
-    minHeight: 54,
-    borderRadius: 14,
-    borderWidth: 1,
-    backgroundColor: "#ffffff",
-    borderColor: "#dbe3ee",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    shadowColor: "#0f172a",
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-  },
-  toastCardInfo: {
-    borderColor: "#bfdbfe",
-    backgroundColor: "#eff6ff",
-  },
-  toastCardSuccess: {
-    borderColor: "#bbf7d0",
-    backgroundColor: "#f0fdf4",
-  },
-  toastCardError: {
-    borderColor: "#fecaca",
-    backgroundColor: "#fef2f2",
-  },
-  toastTextWrap: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  toastTitle: {
-    color: "#0f172a",
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  toastMessage: {
-    color: "#475569",
-    fontSize: 12,
-    lineHeight: 16,
   },
   scaledCanvas: {
     backgroundColor: "#f8fafc",
@@ -2265,4 +2049,3 @@ const styles = StyleSheet.create({
     gap: 3,
   },
 });
-

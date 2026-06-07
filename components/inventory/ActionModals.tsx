@@ -10,13 +10,14 @@ type ConfirmModalProps = {
   cancelLabel?: string;
   tone?: "primary" | "success" | "danger";
   loading?: boolean;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 };
 
 type ResultModalProps = {
   visible: boolean;
-  status: "success" | "error";
+  status: "success" | "error" | "info";
   title: string;
   message: string;
   closeLabel?: string;
@@ -31,6 +32,7 @@ export function InventoryConfirmModal({
   cancelLabel = "Cancel",
   tone = "primary",
   loading = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
@@ -53,7 +55,11 @@ export function InventoryConfirmModal({
         <Pressable style={[styles.cancelBtn, loading && styles.disabledBtn]} onPress={onCancel} disabled={loading}>
           <Text style={styles.cancelBtnText}>{cancelLabel}</Text>
         </Pressable>
-        <Pressable style={[confirmStyle, loading && styles.disabledBtn]} onPress={onConfirm} disabled={loading}>
+        <Pressable 
+          style={[confirmStyle, (loading || confirmDisabled) && styles.disabledBtn]} 
+          onPress={onConfirm} 
+          disabled={loading || confirmDisabled}
+        >
           <Text style={styles.submitBtnText}>{loading ? "Processing..." : confirmLabel}</Text>
         </Pressable>
       </View>
@@ -69,6 +75,9 @@ export function InventoryResultModal({
   closeLabel = "OK",
   onClose,
 }: ResultModalProps) {
+  const iconName = status === "success" ? "check-circle" : status === "error" ? "x-circle" : "info";
+  const iconColor = status === "success" ? "#16a34a" : status === "error" ? "#dc2626" : "#2563eb";
+
   return (
     <ResponsiveModal
       visible={visible}
@@ -80,9 +89,9 @@ export function InventoryResultModal({
       cardStyle={styles.resultModalCard}
     >
       <Feather
-        name={status === "success" ? "check-circle" : "x-circle"}
+        name={iconName}
         size={42}
-        color={status === "success" ? "#16a34a" : "#dc2626"}
+        color={iconColor}
       />
       <Text style={styles.resultTitle}>{title}</Text>
       <Text style={styles.resultMessage}>{message}</Text>

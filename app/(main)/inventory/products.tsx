@@ -14,14 +14,17 @@ import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu
 import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import SendEmailModal from "../../../components/modals/SendEmailModal";
+import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import {
   buildProductDetailReportPrintHtml,
   buildProductTableReportPrintHtml,
   downloadProductTableReportExcel,
+  productTableColumns,
 } from "../../../components/reports/products/ProductReportPrintTemplate";
+import { buildReportPdfFileName } from "../../../components/reports/shared/ReportPrintTemplate";
 import { canManageInventoryMaster, getAuthSession, normalizeRole } from "../../../utils/authSession";
-import { API_BASE_URL } from "../../../utils/api";
 import { logClientActivity } from "../../../utils/activityLog";
+import { printReportHtml } from "../../../utils/printUtils";
 import { pickSquareImageAsync } from "../../../utils/imageUpload";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
 
@@ -85,33 +88,6 @@ const EMPTY_PRODUCT_FORM: ProductFormState = {
   selling_price: "",
   minimum_stock: "",
   product_image: "",
-};
-
-const printReportHtml = async (html: string) => {
-  await logClientActivity({
-    activityType: "PRINT_REPORT",
-    tableName: "tbl_products",
-    description: "Printed product report.",
-  });
-  if (Platform.OS !== "web") {
-    await Print.printAsync({ html });
-    return;
-  }
-
-  if (typeof window === "undefined") return;
-
-  const printWindow = window.open("", "_blank", "width=1024,height=720");
-  if (!printWindow) {
-    throw new Error("Please allow pop-ups to print this report.");
-  }
-
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.setTimeout(() => {
-    printWindow.print();
-  }, 250);
 };
 
 const formatRupiah = (value: number) =>
@@ -418,7 +394,7 @@ export default function ProductsScreen() {
     try {
       setLoading(true);
       setErrorMessage(null);
-      const response = await fetch(`${API_BASE_URL}/api/products`);
+      const response = await fetchWithAuth("/api/products");
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.message || "Failed to fetch products.");
@@ -433,7 +409,7 @@ export default function ProductsScreen() {
 
   const fetchSuppliers = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/suppliers`);
+      const response = await fetchWithAuth("/api/suppliers");
       const payload = await response.json();
       if (response.ok) {
         setSuppliers(Array.isArray(payload.data) ? payload.data : []);
@@ -570,7 +546,7 @@ export default function ProductsScreen() {
           } as unknown as Blob);
         }
 
-        const uploadResponse = await fetch(`${API_BASE_URL}/api/products/upload-image`, {
+        const uploadResponse = await fetchWithAuth("/api/products/upload-image", {
           method: "POST",
           body: formData,
         });
@@ -581,8 +557,8 @@ export default function ProductsScreen() {
         uploadedProductImageUrl = uploadPayload.data.image_url;
       }
 
-      const endpoint = isEdit ? `${API_BASE_URL}/api/products/${editingProductId}` : `${API_BASE_URL}/api/products`;
-      const response = await fetch(endpoint, {
+      const endpoint = isEdit ? `/api/products/${editingProductId}` : "/api/products";
+      const response = await fetchWithAuth(endpoint, {
         method: isEdit ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
@@ -648,7 +624,7 @@ export default function ProductsScreen() {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/products/${product.id_product}/status`, {
+      const response = await fetchWithAuth(`/api/products/${product.id_product}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id_user: actorId, is_active: nextState }),
@@ -768,7 +744,7 @@ export default function ProductsScreen() {
     return items;
   };
 
-  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string) => {
+  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string, includeExcel: boolean) => {
     try {
       const isTable = emailTarget === "table";
       const generatedAt = new Date();
@@ -794,7 +770,9 @@ export default function ProductsScreen() {
         subject: isTable ? "Product List Report" : `Product Detail - ${selectedProduct?.product_name}`,
         message,
         format: "PDF",
-        title: isTable ? "Product List" : "Product Detail",
+        include_excel: includeExcel,
+        title: isTable ? "Product Report" : "Product Detail",
+        subtitle: isTable ? "Inventory product master data" : "",
         generated_by: roleName,
         print_html: printHtml,
         meta: isTable ? buildCurrentProductReportMeta() : [
@@ -803,21 +781,29 @@ export default function ProductsScreen() {
           { label: "Barcode", value: selectedProduct?.barcode },
           { label: "Price", value: formatRupiah(selectedProduct?.selling_price || 0) },
         ],
-        columns: isTable ? [
-          { key: "product_code", title: "Code" },
-          { key: "product_name", title: "Product" },
-          { key: "barcode", title: "Barcode" },
-          { key: "selling_price", title: "Price" },
-          { key: "available_stock", title: "Stock" },
-        ] : [
-          { key: "batch_code", title: "Batch" },
-          { key: "batch_qty", title: "Qty" },
-          { key: "expired_date", title: "Expired" },
-        ],
-        rows: isTable ? activeProducts : selectedProductBatches,
+        columns: isTable 
+          ? productTableColumns.map(c => ({ key: c.key, title: c.title, align: c.align }))
+          : [
+            { key: "batch_code", title: "Batch" },
+            { key: "batch_qty", title: "Qty" },
+            { key: "expired_date", title: "Expired" },
+          ],
+        rows: isTable 
+          ? activeProducts.map((row, idx) => {
+              const rowData: any = {};
+              productTableColumns.forEach(c => {
+                rowData[c.key] = c.getValue(row, idx);
+              });
+              return rowData;
+            })
+          : selectedProductBatches.map(b => ({
+              batch_code: b.batch_code,
+              batch_qty: b.batch_qty,
+              expired_date: b.expired_date ? new Date(b.expired_date).toISOString().slice(0, 10) : "-",
+            })),
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/reports/send-email`, {
+      const response = await fetchWithAuth("/api/reports/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(await withEmailPdfAttachment(payload)),
@@ -851,7 +837,11 @@ export default function ProductsScreen() {
         generatedBy: roleName,
         meta: buildCurrentProductReportMeta(),
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_products",
+        description: "Printed product report.",
+        fileName: buildReportPdfFileName({ reportKey: "products", variant: "table" }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print product report.");
     }
@@ -878,7 +868,7 @@ export default function ProductsScreen() {
   const openProductDetail = async (product: Product) => {
     setDetailImageLoadError(false);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/products/${product.id_product}/batches`);
+      const response = await fetchWithAuth(`/api/products/${product.id_product}/batches`);
       const payload = await response.json();
       if (response.ok) {
         setSelectedProductBatches(Array.isArray(payload.data) ? payload.data : []);
@@ -900,7 +890,15 @@ export default function ProductsScreen() {
         generatedBy: roleName,
         meta: [{ label: "Active Batches", value: selectedProductBatches.length }],
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_products",
+        description: `Printed product detail: ${selectedProduct.product_name}`,
+        fileName: buildReportPdfFileName({
+          reportKey: "products",
+          variant: "detail",
+          documentNumber: selectedProduct.product_code,
+        }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print product detail.");
     }

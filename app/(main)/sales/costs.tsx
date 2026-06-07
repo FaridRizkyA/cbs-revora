@@ -1,4 +1,3 @@
-import * as Print from "expo-print";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import DatePickerField from "../../../components/inventory/DatePickerField";
@@ -13,11 +12,14 @@ import SendEmailModal from "../../../components/modals/SendEmailModal";
 import {
   buildSalesCostTableReportPrintHtml,
   downloadSalesCostTableReportExcel,
+  salesCostTableColumns,
 } from "../../../components/reports/sales/SalesCostReportPrintTemplate";
+import { buildReportPdfFileName } from "../../../components/reports/shared/ReportPrintTemplate";
 import { logClientActivity } from "../../../utils/activityLog";
-import { API_BASE_URL } from "../../../utils/api";
+import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import { getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
+import { printReportHtml } from "../../../utils/printUtils";
 
 type SalesCost = {
   id_stock_in_item: string;
@@ -89,7 +91,7 @@ export default function SalesCostScreen() {
   };
 
   const loadRows = () => {
-    fetch(`${API_BASE_URL}/api/sales-costs`)
+    fetchWithAuth("/api/sales-costs")
       .then((response) => response.json())
       .then((payload) => setRows(Array.isArray(payload?.data) ? payload.data : []))
       .catch(() => setRows([]));
@@ -234,33 +236,6 @@ export default function SalesCostScreen() {
     return items;
   };
 
-  const printReportHtml = async (html: string) => {
-    await logClientActivity({
-      activityType: "PRINT_REPORT",
-      tableName: "tbl_stock_in_items",
-      description: "Printed sales cost report.",
-    });
-    if (Platform.OS !== "web") {
-      await Print.printAsync({ html });
-      return;
-    }
-
-    if (typeof window === "undefined") return;
-
-    const printWindow = window.open("", "_blank", "width=1024,height=720");
-    if (!printWindow) {
-      throw new Error("Please allow pop-ups to print this report.");
-    }
-
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.setTimeout(() => {
-      printWindow.print();
-    }, 250);
-  };
-
   const handlePrintSalesCostTable = async () => {
     try {
       const html = buildSalesCostTableReportPrintHtml({
@@ -269,7 +244,11 @@ export default function SalesCostScreen() {
         generatedBy: roleName,
         meta: buildCurrentSalesCostReportMeta(),
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_stock_in_items",
+        description: "Printed sales cost report.",
+        fileName: buildReportPdfFileName({ reportKey: "sales-cost", variant: "table", date: new Date() }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print sales cost report.");
     }
@@ -293,7 +272,7 @@ export default function SalesCostScreen() {
     }
   };
 
-  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string) => {
+  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string, includeExcel: boolean) => {
     try {
       const generatedAt = new Date();
       const printHtml = buildSalesCostTableReportPrintHtml({
@@ -308,23 +287,23 @@ export default function SalesCostScreen() {
         subject: "Sales Cost Report",
         message,
         format: "PDF",
-        title: "Sales Cost",
+        include_excel: includeExcel,
+        title: "Sales Cost Report",
+        subtitle: "Stock purchase costs from stock-in items",
         generated_by: roleName,
         print_html: printHtml,
         meta: buildCurrentSalesCostReportMeta(),
-        columns: [
-          { key: "stock_in_code", title: "Stock In Code" },
-          { key: "product_name", title: "Product" },
-          { key: "quantity", title: "Qty" },
-          { key: "buy_per_pcs", title: "Buy/Pcs" },
-          { key: "total_cost", title: "Total Cost" },
-          { key: "supplier_name", title: "Supplier" },
-          { key: "stock_in_date", title: "Date" },
-        ],
-        rows: filteredRows,
+        columns: salesCostTableColumns.map((c) => ({ key: c.key, title: c.title, align: c.align })),
+        rows: filteredRows.map((row, idx) => {
+          const rowData: any = {};
+          salesCostTableColumns.forEach((c) => {
+            rowData[c.key] = c.getValue(row, idx);
+          });
+          return rowData;
+        }),
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/reports/send-email`, {
+      const response = await fetchWithAuth("/api/reports/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(await withEmailPdfAttachment(payload)),

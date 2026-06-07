@@ -17,7 +17,7 @@ import {
   buildPeopleTableReportPrintHtml,
 } from "../reports/people/PeopleReportPrintTemplate";
 import { formatDate } from "../shu/formatters";
-import { API_BASE_URL } from "../../utils/api";
+import { fetchWithAuth } from "../../utils/fetchWithAuth";
 import { logClientActivity } from "../../utils/activityLog";
 import { canManagePeople, getAuthSession, normalizeRole } from "../../utils/authSession";
 import { pickSquareImageAsync } from "../../utils/imageUpload";
@@ -295,7 +295,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
   }, [cropTransform]);
 
   const loadRows = useCallback(() => {
-    fetch(`${API_BASE_URL}${screenConfig.endpoint}`)
+    fetchWithAuth(screenConfig.endpoint)
       .then((response) => response.json())
       .then((payload) => setRows(Array.isArray(payload?.data) ? payload.data : []))
       .catch(() => setRows([]));
@@ -303,9 +303,9 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
 
   const loadSupportData = useCallback(() => {
     Promise.all([
-      fetch(`${API_BASE_URL}/api/people/users`).then((response) => response.json()).catch(() => ({ data: [] })),
-      fetch(`${API_BASE_URL}/api/people/staff-grades`).then((response) => response.json()).catch(() => ({ data: [] })),
-      fetch(`${API_BASE_URL}/api/people/staff-grades?include_inactive=1`).then((response) => response.json()).catch(() => ({ data: [] })),
+      fetchWithAuth("/api/people/users").then((response) => response.json()).catch(() => ({ data: [] })),
+      fetchWithAuth("/api/people/staff-grades").then((response) => response.json()).catch(() => ({ data: [] })),
+      fetchWithAuth("/api/people/staff-grades?include_inactive=1").then((response) => response.json()).catch(() => ({ data: [] })),
     ]).then(([userPayload, gradePayload, allGradePayload]) => {
       setUsers(Array.isArray(userPayload?.data) ? userPayload.data : []);
       setGrades(Array.isArray(gradePayload?.data) ? gradePayload.data : []);
@@ -340,7 +340,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
     }
 
     if (type !== "users" && formOpen && !editingRow) {
-      fetch(`${API_BASE_URL}/api/people/users/${value}/profile`)
+      fetchWithAuth(`/api/people/users/${value}/profile`)
         .then((r) => r.json())
         .then((p) => {
           const profile = p?.data;
@@ -764,7 +764,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
         } else {
           formData.append("image", { uri: selectedImage.uri, name: selectedImage.name, type: selectedImage.mimeType || "image/jpeg" } as any);
         }
-        const uploadRes = await fetch(`${API_BASE_URL}/api/people/profile-image`, { method: "POST", body: formData });
+        const uploadRes = await fetchWithAuth("/api/people/profile-image", { method: "POST", body: formData });
         const uploadData = await uploadRes.json();
         if (!uploadRes.ok) throw new Error(uploadData?.message || "Failed to upload image.");
         uploadedImageUrl = uploadData.data.image_url;
@@ -773,7 +773,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
       }
 
       const id = editingRow ? getRowId(type, editingRow) : "";
-      const endpoint = editingRow ? `${API_BASE_URL}${screenConfig.endpoint}/${id}` : `${API_BASE_URL}${screenConfig.endpoint}`;
+      const endpoint = editingRow ? `${screenConfig.endpoint}/${id}` : screenConfig.endpoint;
       const payload =
         type === "users"
           ? {
@@ -794,7 +794,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
               exit_date: type === "staffs" ? form.exit_date || null : null,
               actor_id: actorId,
             };
-      const response = await fetch(endpoint, {
+      const response = await fetchWithAuth(endpoint, {
         method: editingRow ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -830,9 +830,9 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
     setSaving(true);
     try {
       const endpoint = editingGrade
-        ? `${API_BASE_URL}/api/people/staff-grades/${editingGrade.id_staff_grade}`
-        : `${API_BASE_URL}/api/people/staff-grades`;
-      const response = await fetch(endpoint, {
+        ? `/api/people/staff-grades/${editingGrade.id_staff_grade}`
+        : `/api/people/staff-grades`;
+      const response = await fetchWithAuth(endpoint, {
         method: editingGrade ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -857,7 +857,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
   const toggleStatus = useCallback(async (row: PersonRow) => {
     try {
       const id = getRowId(type, row);
-      const response = await fetch(`${API_BASE_URL}${screenConfig.endpoint}/${id}/status`, {
+      const response = await fetchWithAuth(`${screenConfig.endpoint}/${id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_active: row.is_active === "Y" ? "N" : "Y", actor_id: actorId }),
@@ -878,7 +878,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
 
   const toggleGradeStatus = useCallback(async (grade: StaffGrade) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/people/staff-grades/${grade.id_staff_grade}/status`, {  
+      const response = await fetchWithAuth(`/api/people/staff-grades/${grade.id_staff_grade}/status`, {  
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_active: grade.is_active === "Y" ? "N" : "Y", actor_id: actorId }),

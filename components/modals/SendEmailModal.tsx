@@ -1,6 +1,6 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import ResponsiveModal from "../common/ResponsiveModal";
 import FilterSelectField from "../inventory/FilterSelectField";
 import { API_BASE_URL } from "../../utils/api";
@@ -14,7 +14,7 @@ type UserOption = {
 type SendEmailModalProps = {
   visible: boolean;
   onClose: () => void;
-  onSend: (email: string, message: string, fullName: string) => Promise<void>;
+  onSend: (email: string, message: string, fullName: string, includeExcel: boolean) => Promise<void>;
   reportTitle: string;
 };
 
@@ -23,6 +23,7 @@ export default function SendEmailModal({ visible, onClose, onSend, reportTitle }
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [selectedEmail, setSelectedEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [includeExcel, setIncludeExcel] = useState(false);
   const [sending, setSending] = useState(false);
 
   const defaultMessage = `Hello, here is the attachment regarding the ${reportTitle}.`;
@@ -31,6 +32,7 @@ export default function SendEmailModal({ visible, onClose, onSend, reportTitle }
     if (visible) {
       fetchUsers();
       setMessage("");
+      setIncludeExcel(false);
     }
   }, [visible, reportTitle]);
 
@@ -66,10 +68,11 @@ export default function SendEmailModal({ visible, onClose, onSend, reportTitle }
 
     setSending(true);
     try {
-      await onSend(selectedEmail, finalMessage, fullName);
+      await onSend(selectedEmail, finalMessage, fullName, includeExcel);
       onClose();
       setSelectedEmail("");
       setMessage("");
+      setIncludeExcel(false);
     } catch {
       // Error handled by parent
     } finally {
@@ -82,6 +85,8 @@ export default function SendEmailModal({ visible, onClose, onSend, reportTitle }
       visible={visible}
       onClose={onClose}
       maxWidthDesktop={480}
+      maxWidthPhoneRatio={0.94}
+      maxHeightPhoneRatio={0.85}
       cardStyle={styles.modalCard}
     >
       <View style={styles.header}>
@@ -89,7 +94,11 @@ export default function SendEmailModal({ visible, onClose, onSend, reportTitle }
         <Text style={styles.title}>Send via Email</Text>
       </View>
 
-      <View style={styles.body}>
+      <ScrollView 
+        style={styles.body} 
+        contentContainerStyle={styles.modalScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.label}>Recipient</Text>
         {loadingUsers ? (
           <ActivityIndicator size="small" color="#1d4ed8" style={{ alignSelf: 'flex-start', marginVertical: 10 }} />
@@ -112,12 +121,25 @@ export default function SendEmailModal({ visible, onClose, onSend, reportTitle }
           placeholder={defaultMessage}
           placeholderTextColor="#94a3b8"
         />
+
+        <Pressable 
+          style={styles.checkboxRow} 
+          onPress={() => setIncludeExcel(!includeExcel)}
+        >
+          <View style={[styles.checkbox, includeExcel && styles.checkboxChecked]}>
+            {includeExcel && <Feather name="check" size={14} color="#fff" />}
+          </View>
+          <View style={styles.checkboxTextWrap}>
+            <Text style={styles.checkboxLabel}>Include Excel (.xlsx) format</Text>
+            <Text style={styles.checkboxSub}>Useful for data analysis and manual calculation.</Text>
+          </View>
+        </Pressable>
         
         <View style={styles.infoBox}>
           <Feather name="info" size={14} color="#1e40af" />
-          <Text style={styles.infoText}>The report will be attached automatically as a {reportTitle.includes('Detail') ? 'PDF' : 'file'}.</Text>
+          <Text style={styles.infoText}>The report will be attached automatically as a PDF.</Text>
         </View>
-      </View>
+      </ScrollView>
 
       <View style={styles.footer}>
         <Pressable style={styles.cancelBtn} onPress={onClose} disabled={sending}>
@@ -138,7 +160,7 @@ export default function SendEmailModal({ visible, onClose, onSend, reportTitle }
 const styles = StyleSheet.create({
   modalCard: {
     padding: 20,
-    gap: 16,
+    gap: 0,
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#dbe3ee",
@@ -156,9 +178,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
     paddingBottom: 12,
+    marginBottom: 12,
   },
   title: { fontSize: 20, fontWeight: '800', color: '#0f172a' },
-  body: { gap: 8 },
+  body: { flexShrink: 1 },
+  modalScrollContent: { gap: 8, paddingBottom: 16 },
   label: { fontSize: 13, fontWeight: '700', color: '#475569' },
   textArea: {
     minHeight: 100,
@@ -173,6 +197,35 @@ const styles = StyleSheet.create({
   },
   infoBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#eff6ff', padding: 10, borderRadius: 8, marginTop: 8 },
   infoText: { fontSize: 12, color: '#1e40af', flex: 1 },
+  checkboxRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    marginTop: 8,
+    padding: 10,
+    backgroundColor: "#f8fafc",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
+  checkboxChecked: {
+    borderColor: "#1d4ed8",
+    backgroundColor: "#1d4ed8",
+  },
+  checkboxTextWrap: { flex: 1, gap: 2 },
+  checkboxLabel: { fontSize: 13, fontWeight: "700", color: "#0f172a" },
+  checkboxSub: { fontSize: 11, color: "#64748b" },
   footer: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 4 },
   cancelBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#cbd5e1' },
   cancelBtnText: { color: '#475569', fontWeight: '700', fontSize: 14 },

@@ -1,6 +1,5 @@
-import * as Print from "expo-print";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import DatePickerField from "../../../components/inventory/DatePickerField";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
@@ -18,9 +17,11 @@ import {
   buildExternalFinancialTableReportPrintHtml,
   downloadExternalFinancialTableReportExcel,
 } from "../../../components/reports/external-financial/ExternalFinancialReportPrintTemplate";
+import { buildReportPdfFileName } from "../../../components/reports/shared/ReportPrintTemplate";
 import { formatDate, formatRupiah } from "../../../components/shu/formatters";
-import { API_BASE_URL } from "../../../utils/api";
+import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import { logClientActivity } from "../../../utils/activityLog";
+import { printReportHtml } from "../../../utils/printUtils";
 import { canManageExternalFinancial, getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
 
@@ -55,33 +56,6 @@ const emptyForm: FormState = {
 };
 
 const displayText = (value?: string | null) => String(value || "-").replaceAll("_", " ");
-
-const printReportHtml = async (html: string) => {
-  await logClientActivity({
-    activityType: "PRINT_REPORT",
-    tableName: "tbl_external_financial_entries",
-    description: "Printed external financial report.",
-  });
-  if (Platform.OS !== "web") {
-    await Print.printAsync({ html });
-    return;
-  }
-
-  if (typeof window === "undefined") return;
-
-  const printWindow = window.open("", "_blank", "width=1024,height=720");
-  if (!printWindow) {
-    throw new Error("Please allow pop-ups to print this report.");
-  }
-
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.setTimeout(() => {
-    printWindow.print();
-  }, 250);
-};
 
 export default function ExternalFinancialScreen() {
   const [rows, setRows] = useState<ExternalFinancialEntry[]>([]);
@@ -124,7 +98,7 @@ export default function ExternalFinancialScreen() {
   const canManage = canManageExternalFinancial(roleName);
 
   const loadRows = useCallback(() => {
-    fetch(`${API_BASE_URL}/api/external-financial-entries`)
+    fetchWithAuth("/api/external-financial-entries")
       .then((response) => response.json())
       .then((payload) => setRows(Array.isArray(payload?.data) ? payload.data : []))
       .catch(() => setRows([]));
@@ -203,9 +177,9 @@ export default function ExternalFinancialScreen() {
     try {
       const session = await getAuthSession();
       const endpoint = editingRow
-        ? `${API_BASE_URL}/api/external-financial-entries/${editingRow.id_external_entry}`
-        : `${API_BASE_URL}/api/external-financial-entries`;
-      const response = await fetch(endpoint, {
+        ? `/api/external-financial-entries/${editingRow.id_external_entry}`
+        : `/api/external-financial-entries`;
+      const response = await fetchWithAuth(endpoint, {
         method: editingRow ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -235,7 +209,7 @@ export default function ExternalFinancialScreen() {
   const toggleActive = useCallback(async (row: ExternalFinancialEntry) => {
     try {
       const session = await getAuthSession();
-      const response = await fetch(`${API_BASE_URL}/api/external-financial-entries/${row.id_external_entry}/status`, {
+      const response = await fetchWithAuth(`/api/external-financial-entries/${row.id_external_entry}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -293,7 +267,7 @@ export default function ExternalFinancialScreen() {
     return items;
   };
 
-  const handleSendEmailReport = async (recipientEmail: string, message: string) => {
+  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string, includeExcel: boolean) => {
     try {
       const isTable = emailTarget === "table";
       const generatedAt = new Date();
@@ -313,9 +287,11 @@ export default function ExternalFinancialScreen() {
           : "";
       const payload = {
         recipient_email: recipientEmail,
+        recipient_name: fullName,
         subject: isTable ? "External Financial List Report" : `External Financial Detail - ${selectedRow?.entry_source}`,
         message,
         format: "PDF",
+        include_excel: includeExcel,
         title: isTable ? "External Financial List" : "External Financial Detail",
         generated_by: roleName,
         print_html: printHtml,
@@ -340,7 +316,7 @@ export default function ExternalFinancialScreen() {
         rows: isTable ? activeRows : [selectedRow],
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/reports/send-email`, {
+      const response = await fetchWithAuth("/api/reports/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(await withEmailPdfAttachment(payload)),
@@ -374,7 +350,11 @@ export default function ExternalFinancialScreen() {
         generatedBy: roleName,
         meta: buildCurrentExternalFinancialReportMeta(),
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_external_financial_entries",
+        description: "Printed external financial report.",
+        fileName: buildReportPdfFileName({ reportKey: "external-financial", variant: "table", date: new Date() }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print external financial report.");
     }
@@ -407,7 +387,11 @@ export default function ExternalFinancialScreen() {
         generatedAt: new Date(),
         generatedBy: roleName,
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_external_financial_entries",
+        description: `Printed external financial detail ${selectedRow.entry_source}`,
+        fileName: buildReportPdfFileName({ reportKey: "external-financial", variant: "detail", documentNumber: selectedRow.entry_source, date: new Date() }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print external financial detail.");
     }

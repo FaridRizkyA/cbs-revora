@@ -2,17 +2,18 @@ import { Feather } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { InventoryResultModal } from "../../components/inventory/ActionModals";
-import MemberShell from "../../components/member/MemberShell";
-import InventoryDataTable, { InventoryDataTableColumn } from "../../components/inventory/InventoryDataTable";
-import ResponsiveModal from "../../components/common/ResponsiveModal";
-import { buildReceiptPrintHtml } from "../../components/cashier/ReceiptPrintTemplate";
-import { buildMemberTransactionsReportPrintHtml, MemberTransactionReportRow } from "../../components/reports/member/MemberTransactionsReportPrintTemplate";
-import { formatDateTime, formatRupiah } from "../../components/shu/formatters";
-import { fetchWithAuth } from "../../utils/fetchWithAuth";
-import { AuthSession, getAuthSession } from "../../utils/authSession";
-import { logClientActivity } from "../../utils/activityLog";
+import { InventoryResultModal } from "../../../components/inventory/ActionModals";
+import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
+import ResponsiveModal from "../../../components/common/ResponsiveModal";
+import { buildReceiptPrintHtml } from "../../../components/cashier/ReceiptPrintTemplate";
+import { buildMemberTransactionsReportPrintHtml, MemberTransactionReportRow } from "../../../components/reports/member/MemberTransactionsReportPrintTemplate";
+import { formatDateTime, formatRupiah } from "../../../components/shu/formatters";
+import { fetchWithAuth } from "../../../utils/fetchWithAuth";
+import { AuthSession, getAuthSession } from "../../../utils/authSession";
+import { logClientActivity } from "../../../utils/activityLog";
 import { useRouter } from "expo-router";
+import PageContainer from "../../../components/layout/PageContainer";
+import InventoryPageHeader from "../../../components/inventory/InventoryPageHeader";
 
 type MemberOverview = {
   member: {
@@ -48,13 +49,6 @@ const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
   { key: "MONTHLY", label: "Monthly" },
   { key: "ALL", label: "All Time" },
 ];
-
-const formatDate = (value?: string | null) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" });
-};
 
 const printHtml = async (html: string, activityType: "PRINT_REPORT" | "PRINT_RECEIPT", description: string) => {
   await logClientActivity({ activityType, description });
@@ -326,67 +320,69 @@ export default function MemberTransactionsScreen() {
   const totalSpending = overview?.metrics?.total_spending || rows.reduce((sum, row) => sum + Number(row.total_amount || 0), 0);
 
   return (
-    <MemberShell
-      title="Spending Detail"
-      subtitle="Browse daily, weekly, monthly, or all-time spending history."
-      active="transactions"
-      onNavigate={(key) => router.push(`/(member)/${key}` as never)}
-      rightAction={
-        <Pressable style={styles.printButton} onPress={printTransactionsReport} disabled={printing || rows.length === 0}>
-          <Feather name="printer" size={14} color="#1d4ed8" />
-          <Text style={styles.printButtonText}>{printing ? "Printing..." : "Print Detail"}</Text>
-        </Pressable>
-      }
-    >
-      <View style={styles.summaryRow}>
-        <Metric label="Total Transactions" value={String(rows.length)} />
-        <Metric label="Total Items" value={String(flattenedItems.length)} />
-        <Metric label="Total Spending" value={formatRupiah(totalSpending)} />
-      </View>
+    <PageContainer>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <InventoryPageHeader
+          title="Spending Detail"
+          subtitle="Browse daily, weekly, monthly, or all-time spending history."
+          rightAction={
+            <Pressable style={styles.printButton} onPress={printTransactionsReport} disabled={printing || rows.length === 0}>
+              <Feather name="printer" size={14} color="#1d4ed8" />
+              <Text style={styles.printButtonText}>{printing ? "Printing..." : "Print Detail"}</Text>
+            </Pressable>
+          }
+        />
 
-      <View style={styles.filterSection}>
-        <View style={styles.filterRow}>
-          {RANGE_OPTIONS.map((item) => {
-            const active = item.key === range;
-            return (
-              <Pressable key={item.key} style={[styles.filterButton, active && styles.filterButtonActive]} onPress={() => setRange(item.key)}>
-                <Text style={[styles.filterButtonText, active && styles.filterButtonTextActive]}>{item.label}</Text>
-              </Pressable>
-            );
-          })}
+        <View style={styles.summaryRow}>
+          <Metric label="Total Transactions" value={String(rows.length)} />
+          <Metric label="Total Items" value={String(flattenedItems.length)} />
+          <Metric label="Total Spending" value={formatRupiah(totalSpending)} />
         </View>
 
-        <View style={styles.viewToggle}>
-          <Pressable style={[styles.toggleBtn, viewMode === "TRANSACTION" && styles.toggleBtnActive]} onPress={() => setViewMode("TRANSACTION")}>
-            <Feather name="list" size={14} color={viewMode === "TRANSACTION" ? "#fff" : "#64748b"} />
-            <Text style={[styles.toggleText, viewMode === "TRANSACTION" && styles.toggleTextActive]}>Transactions</Text>
-          </Pressable>
-          <Pressable style={[styles.toggleBtn, viewMode === "ITEM" && styles.toggleBtnActive]} onPress={() => setViewMode("ITEM")}>
-            <Feather name="box" size={14} color={viewMode === "ITEM" ? "#fff" : "#64748b"} />
-            <Text style={[styles.toggleText, viewMode === "ITEM" && styles.toggleTextActive]}>Items</Text>
-          </Pressable>
-        </View>
-      </View>
+        <View style={styles.filterSection}>
+          <View style={styles.filterRow}>
+            {RANGE_OPTIONS.map((item) => {
+              const active = item.key === range;
+              return (
+                <Pressable key={item.key} style={[styles.filterButton, active && styles.filterButtonActive]} onPress={() => setRange(item.key)}>
+                  <Text style={[styles.filterButtonText, active && styles.filterButtonTextActive]}>{item.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
 
-      <View style={styles.card}>
-        {loading ? (
-          <Text style={styles.stateText}>Loading spending history...</Text>
-        ) : viewMode === "TRANSACTION" ? (
-          <InventoryDataTable
-            columns={columns}
-            rows={rows}
-            rowKey={(row) => row.id_sale}
-            emptyText="No spending history found for this period."
-          />
-        ) : (
-          <InventoryDataTable
-            columns={itemColumns}
-            rows={flattenedItems}
-            rowKey={(row, idx) => `${row.id_sale_item}-${idx}`}
-            emptyText="No items found for this period."
-          />
-        )}
-      </View>
+          <View style={styles.viewToggle}>
+            <Pressable style={[styles.toggleBtn, viewMode === "TRANSACTION" && styles.toggleBtnActive]} onPress={() => setViewMode("TRANSACTION")}>
+              <Feather name="list" size={14} color={viewMode === "TRANSACTION" ? "#fff" : "#64748b"} />
+              <Text style={[styles.toggleText, viewMode === "TRANSACTION" && styles.toggleTextActive]}>Transactions</Text>
+            </Pressable>
+            <Pressable style={[styles.toggleBtn, viewMode === "ITEM" && styles.toggleBtnActive]} onPress={() => setViewMode("ITEM")}>
+              <Feather name="box" size={14} color={viewMode === "ITEM" ? "#fff" : "#64748b"} />
+              <Text style={[styles.toggleText, viewMode === "ITEM" && styles.toggleTextActive]}>Items</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          {loading ? (
+            <Text style={styles.stateText}>Loading spending history...</Text>
+          ) : viewMode === "TRANSACTION" ? (
+            <InventoryDataTable
+              columns={columns}
+              rows={rows}
+              rowKey={(row) => row.id_sale}
+              emptyText="No spending history found for this period."
+            />
+          ) : (
+            <InventoryDataTable
+              columns={itemColumns}
+              rows={flattenedItems}
+              rowKey={(row, idx) => `${row.id_sale_item}-${idx}`}
+              emptyText="No items found for this period."
+            />
+          )}
+        </View>
+      </ScrollView>
 
       <ResponsiveModal
         visible={detailOpen}
@@ -421,7 +417,6 @@ export default function MemberTransactionsScreen() {
               <Detail label="Total" value={formatRupiah(Number(selectedRow.total_amount || 0))} />
               <Detail label="Paid" value={formatRupiah(Number(selectedRow.amount_paid || 0))} />
               <Detail label="Change" value={formatRupiah(Number(selectedRow.change_amount || 0))} />
-              <Detail label="Notes" value={selectedRow.notes || "-"} full />
             </View>
 
             <View style={styles.itemsBlock}>
@@ -456,7 +451,7 @@ export default function MemberTransactionsScreen() {
         message={resultMessage}
         onClose={() => setResultModalOpen(false)}
       />
-    </MemberShell>
+    </PageContainer>
   );
 }
 
@@ -479,7 +474,8 @@ function Detail({ label, value, full = false }: { label: string; value: string; 
 }
 
 const styles = StyleSheet.create({
-  summaryRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  scrollContent: { gap: 16, paddingBottom: 8 },
+  summaryRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 4 },
   metricCard: {
     flexBasis: "32%",
     flexGrow: 1,
@@ -507,6 +503,8 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: 12,
     gap: 4,
+    borderWidth: 1,
+    borderColor: "#dbe3ee",
   },
   toggleBtn: {
     flexDirection: "row",
@@ -601,7 +599,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   modalSecondaryButtonText: { color: "#1d4ed8", fontSize: 12, fontWeight: "800" },
-  stateText: { color: "#64748b", fontSize: 12 },
+  stateText: { color: "#64748b", fontSize: 12, padding: 16 },
   modalContent: { gap: 14, paddingBottom: 4 },
   detailGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   detailCard: {

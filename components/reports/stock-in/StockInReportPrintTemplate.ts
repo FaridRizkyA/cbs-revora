@@ -86,7 +86,7 @@ const formatDateTime = (value?: string | Date | null) => {
   }).format(date);
 };
 
-const stockInTableColumns: ReportTableColumn<StockInReportRow>[] = [
+export const stockInTableColumns: ReportTableColumn<StockInReportRow>[] = [
   {
     key: "row_number",
     title: "No.",

@@ -1,8 +1,7 @@
 CREATE TABLE tbl_members (
     id_member UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    id_user UUID UNIQUE,
-    id_profile UUID UNIQUE,
+    id_user UUID UNIQUE NOT NULL,
 
     member_code VARCHAR(50) NOT NULL UNIQUE,
 
@@ -20,10 +19,6 @@ CREATE TABLE tbl_members (
     CONSTRAINT fk_members_user
         FOREIGN KEY (id_user)
         REFERENCES tbl_users(id_user),
-
-    CONSTRAINT fk_members_profile
-        FOREIGN KEY (id_profile)
-        REFERENCES tbl_profiles(id_profile),
 
     CONSTRAINT chk_members_total_spending
         CHECK (total_spending >= 0),

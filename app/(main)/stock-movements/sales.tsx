@@ -13,12 +13,15 @@ import SendEmailModal from "../../../components/modals/SendEmailModal";
 import {
   buildSalesItemsTableExcelFileName,
   buildSalesItemsTableReportPrintHtml,
+  salesItemsTableColumns,
 } from "../../../components/reports/sales/SalesItemsReportPrintTemplate";
+import { buildReportPdfFileName } from "../../../components/reports/shared/ReportPrintTemplate";
 import { logClientActivity } from "../../../utils/activityLog";
-import { API_BASE_URL } from "../../../utils/api";
+import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import { getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { downloadExcelWorkbook } from "../../../utils/excelExport";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
+import { printReportHtml } from "../../../utils/printUtils";
 
 type SalesItem = {
   id_sale_item: string;
@@ -92,7 +95,7 @@ export default function SalesItemsScreen() {
   };
 
   const loadRows = () => {
-    fetch(`${API_BASE_URL}/api/sales-items`)
+    fetchWithAuth("/api/sales-items")
       .then((response) => response.json())
       .then((payload) => setRows(Array.isArray(payload?.data) ? payload.data : []))
       .catch(() => setRows([]));
@@ -238,33 +241,6 @@ export default function SalesItemsScreen() {
     return items;
   };
 
-  const printReportHtml = async (html: string) => {
-    await logClientActivity({
-      activityType: "PRINT_REPORT",
-      tableName: "tbl_sale_items",
-      description: "Printed sales items report.",
-    });
-    if (Platform.OS !== "web") {
-      await Print.printAsync({ html });
-      return;
-    }
-
-    if (typeof window === "undefined") return;
-
-    const printWindow = window.open("", "_blank", "width=1024,height=720");
-    if (!printWindow) {
-      throw new Error("Please allow pop-ups to print this report.");
-    }
-
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.setTimeout(() => {
-      printWindow.print();
-    }, 250);
-  };
-
   const handlePrintSalesItemsTable = async () => {
     try {
       const html = buildSalesItemsTableReportPrintHtml({
@@ -273,7 +249,11 @@ export default function SalesItemsScreen() {
         generatedBy: roleName,
         meta: buildCurrentSalesItemsReportMeta(),
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_sale_items",
+        description: "Printed sales items report.",
+        fileName: buildReportPdfFileName({ reportKey: "inventory-sales-items", variant: "table", date: new Date() }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print sales items report.");
     }
@@ -312,7 +292,7 @@ export default function SalesItemsScreen() {
     }
   };
 
-  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string) => {
+  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string, includeExcel: boolean) => {
     try {
       const generatedAt = new Date();
       const printHtml = buildSalesItemsTableReportPrintHtml({
@@ -327,23 +307,23 @@ export default function SalesItemsScreen() {
         subject: "Sales Items Report",
         message,
         format: "PDF",
-        title: "Sales Items",
+        include_excel: includeExcel,
+        title: "Sales Items Report",
+        subtitle: "Sold products from sales transactions",
         generated_by: roleName,
         print_html: printHtml,
         meta: buildCurrentSalesItemsReportMeta(),
-        columns: [
-          { key: "sale_code", title: "Sale Code" },
-          { key: "product_name", title: "Product" },
-          { key: "quantity", title: "Qty" },
-          { key: "sell_per_pcs", title: "Price" },
-          { key: "total_sell", title: "Total Sell" },
-          { key: "cashier_name", title: "Cashier" },
-          { key: "sale_date", title: "Date" },
-        ],
-        rows: filteredRows,
+        columns: salesItemsTableColumns.map((c) => ({ key: c.key, title: c.title, align: c.align })),
+        rows: filteredRows.map((row, idx) => {
+          const rowData: any = {};
+          salesItemsTableColumns.forEach((c) => {
+            rowData[c.key] = c.getValue(row, idx);
+          });
+          return rowData;
+        }),
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/reports/send-email`, {
+      const response = await fetchWithAuth("/api/reports/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(await withEmailPdfAttachment(payload)),

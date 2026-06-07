@@ -113,7 +113,7 @@ const displayText = (value?: string | null) => String(value || "-").replaceAll("
 const sumBy = <Row,>(rows: Row[], getValue: (row: Row) => number) =>
   rows.reduce((total, row) => total + Number(getValue(row) || 0), 0);
 
-const yearlyColumns: ReportTableColumn<ShuYearReportRow>[] = [
+export const shuYearlyColumns: ReportTableColumn<ShuYearReportRow>[] = [
   {
     key: "row_number",
     title: "No.",
@@ -156,6 +156,16 @@ const yearlyColumns: ReportTableColumn<ShuYearReportRow>[] = [
   },
 ];
 
+export const distributionTableColumns: ReportTableColumn<ShuDetailReportData["member_distributions"][number]>[] = [
+  { key: "row_number", title: "No.", align: "center", width: "42px", getValue: (_row, index) => index + 1 },
+  { key: "full_name", title: "Member", width: "22%", getValue: (row) => row.full_name },
+  { key: "member_total_spending", title: "Spending", align: "right", width: "15%", getValue: (row) => formatRupiah(row.member_total_spending) },
+  { key: "sales_shu_amount", title: "Sales SHU", align: "right", width: "15%", getValue: (row) => formatRupiah(row.sales_shu_amount) },
+  { key: "spending_percentage", title: "SHU %", align: "right", width: "10%", getValue: (row) => percentText(row.spending_percentage) },
+  { key: "business_shu_amount", title: "Business SHU", align: "right", width: "15%", getValue: (row) => formatRupiah(row.business_shu_amount) },
+  { key: "shu_amount", title: "SHU Total", align: "right", width: "15%", getValue: (row) => formatRupiah(row.shu_amount) },
+];
+
 export const buildShuYearlyReportPdfFileName = (date?: string | Date | null) =>
   buildReportPdfFileName({
     reportKey: REPORT_KEY,
@@ -188,7 +198,7 @@ export const buildShuYearlyReportPrintHtml = ({
     generatedBy,
     meta: [{ label: "Total Rows", value: rows.length }, ...meta],
     rows,
-    columns: yearlyColumns,
+    columns: shuYearlyColumns,
     emptyText: "No SHU yearly summary data found.",
   });
 
@@ -206,7 +216,7 @@ export const downloadShuYearlyReportExcel = ({
     generatedBy,
     meta: [{ label: "Total Rows", value: rows.length }, ...meta],
     rows,
-    columns: yearlyColumns,
+    columns: shuYearlyColumns,
     emptyText: "No SHU yearly summary data found.",
   });
 

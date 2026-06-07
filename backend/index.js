@@ -4,8 +4,11 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const pool = require("./config/db");
-const cashierRoutes = require("./routes/cashierRoutes");
+const { authenticateToken } = require("./middleware/authMiddleware");
+
+// Route imports
 const authRoutes = require("./routes/authRoutes");
+const cashierRoutes = require("./routes/cashierRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const shuRoutes = require("./routes/shuRoutes");
 const externalFinancialRoutes = require("./routes/externalFinancialRoutes");
@@ -13,7 +16,7 @@ const peopleRoutes = require("./routes/peopleRoutes");
 const reportRoutes = require("./routes/reportRoutes");
 const activityLogRoutes = require("./routes/activityLogRoutes");
 const memberPortalRoutes = require("./routes/memberPortalRoutes");
-const { startReceiptEmailWorker } = require("./modules/emailQueue/receiptEmailQueue");
+const { startEmailWorker } = require("./modules/emailQueue/emailQueue");
 
 const app = express();
 
@@ -35,8 +38,14 @@ app.get("/", async (req, res) => {
   }
 });
 
-app.use("/api", cashierRoutes);
+// 1. Public Routes (No authentication required)
 app.use("/api", authRoutes);
+
+// 2. Protected Routes Middleware (All routes below require a valid token)
+app.use(authenticateToken);
+
+// 3. Operational Routes
+app.use("/api", cashierRoutes);
 app.use("/api", dashboardRoutes);
 app.use("/api", shuRoutes);
 app.use("/api", externalFinancialRoutes);
@@ -45,7 +54,7 @@ app.use("/api", reportRoutes);
 app.use("/api", activityLogRoutes);
 app.use("/api", memberPortalRoutes);
 
-startReceiptEmailWorker();
+startEmailWorker();
 
 app.listen(process.env.PORT, () => {
   console.log(`Server running on port ${process.env.PORT}`);

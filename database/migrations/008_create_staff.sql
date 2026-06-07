@@ -2,7 +2,6 @@ CREATE TABLE IF NOT EXISTS tbl_staff (
     id_staff UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     id_user UUID NOT NULL UNIQUE,
-    id_profile UUID,
     id_staff_grade UUID,
 
     staff_code VARCHAR(50) UNIQUE,
@@ -19,10 +18,6 @@ CREATE TABLE IF NOT EXISTS tbl_staff (
     CONSTRAINT fk_staff_user
         FOREIGN KEY (id_user)
         REFERENCES tbl_users(id_user),
-
-    CONSTRAINT fk_staff_profile
-        FOREIGN KEY (id_profile)
-        REFERENCES tbl_profiles(id_profile),
 
     CONSTRAINT fk_staff_grade
         FOREIGN KEY (id_staff_grade)

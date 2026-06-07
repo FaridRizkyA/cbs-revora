@@ -168,19 +168,6 @@ const login = async (req, res) => {
       });
     }
 
-    if (user.active_session_jti && user.active_session_expires_at && new Date(user.active_session_expires_at) > new Date()) {
-      await logActivitySafe(pool, req, {
-        idUser: user.id_user,
-        activityType: "LOGIN_FAILED",
-        tableName: "tbl_users",
-        recordId: user.id_user,
-        description: `Failed login attempt for ${user.email}: account is already online.`,
-      });
-      return res.status(409).json({
-        message: "This account is currently online. If this was not you, please contact an administrator.",
-      });
-    }
-
     const tokenId = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + TOKEN_DURATION_MS);
     const token = jwt.sign(

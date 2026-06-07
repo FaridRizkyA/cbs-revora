@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
-import { API_BASE_URL } from "../../../utils/api";
+import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import { formatActivityTypeLabel } from "../../../utils/activityLog";
 
 type ActivityLogRow = {
@@ -41,7 +41,7 @@ export default function LogsScreen() {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/activity-logs?limit=200`);
+      const response = await fetchWithAuth("/api/activity-logs?limit=200");
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.message || "Failed to fetch activity logs.");
       setRows(Array.isArray(payload?.data) ? payload.data : []);

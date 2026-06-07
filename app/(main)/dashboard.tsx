@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import DashboardChartsSection from "../../components/dashboard/charts/DashboardChartsSection";
 import { GraphsResponse } from "../../components/dashboard/charts/types";
-import { API_BASE_URL } from "../../utils/api";
+import { fetchWithAuth } from "../../utils/fetchWithAuth";
 
 type SummaryResponse = {
   total_sales: number;
@@ -47,9 +47,9 @@ export default function DashboardScreen() {
 
     try {
       const [summaryRes, graphsRes, recentRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/dashboard/summaryCard`),
-        fetch(`${API_BASE_URL}/api/dashboard/graphs`),
-        fetch(`${API_BASE_URL}/api/dashboard/recentTransaction?limit=10`),
+        fetchWithAuth("/api/dashboard/summaryCard"),
+        fetchWithAuth("/api/dashboard/graphs"),
+        fetchWithAuth("/api/dashboard/recentTransaction?limit=10"),
       ]);
 
       const [summaryPayload, graphsPayload, recentPayload] = await Promise.all([

@@ -1,13 +1,13 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { LineChart, PieChart } from "react-native-chart-kit";
-import { InventoryResultModal } from "../../components/inventory/ActionModals";
-import MemberShell from "../../components/member/MemberShell";
-import { formatRupiah } from "../../components/shu/formatters";
-import { fetchWithAuth } from "../../utils/fetchWithAuth";
-import { getAuthSession } from "../../utils/authSession";
+import { InventoryResultModal } from "../../../components/inventory/ActionModals";
+import { formatRupiah } from "../../../components/shu/formatters";
+import { fetchWithAuth } from "../../../utils/fetchWithAuth";
+import PageContainer from "../../../components/layout/PageContainer";
+import InventoryPageHeader from "../../../components/inventory/InventoryPageHeader";
 
 const isWeb = Platform.OS === "web";
 let WebLineChart: any = null;
@@ -173,141 +173,143 @@ export default function MemberDashboardScreen() {
   const hasMixData = mixData.length > 0;
 
   return (
-    <MemberShell
-      title="Dashboard"
-      subtitle="Your membership overview, spending trend, and current SHU status."
-      active="dashboard"
-      onNavigate={(key) => router.push(`/(member)/${key}` as never)}
-    >
-      <View style={styles.summaryRow}>
-        <Metric label="Transactions" value={String(totalTransactions)} />
-        <Metric label="Spending" value={formatRupiah(totalSpending)} />
-        <Metric label="Current SHU" value={formatRupiah(currentShu)} />
-      </View>
+    <PageContainer>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <InventoryPageHeader
+          title="Dashboard"
+          subtitle="Your membership overview, spending trend, and current SHU status."
+        />
 
-      <View style={styles.chartGrid}>
-        <ChartPanel title="Spending Trend" subtitle="Monthly spending over the last 6 months.">
-          {(width) =>
-            width > 0 && hasTrendData ? (
-              isWeb ? (
-                <View style={styles.webChartWrap}>
-                  <WebLineChart
-                    options={webChartOptions}
+        <View style={styles.summaryRow}>
+          <Metric label="Transactions" value={String(totalTransactions)} />
+          <Metric label="Spending" value={formatRupiah(totalSpending)} />
+          <Metric label="Current SHU" value={formatRupiah(currentShu)} />
+        </View>
+
+        <View style={styles.chartGrid}>
+          <ChartPanel title="Spending Trend" subtitle="Monthly spending over the last 6 months.">
+            {(width) =>
+              width > 0 && hasTrendData ? (
+                isWeb ? (
+                  <View style={styles.webChartWrap}>
+                    <WebLineChart
+                      options={webChartOptions}
+                      data={{
+                        labels: trendLabels,
+                        datasets: [
+                          {
+                            label: "Monthly Spending",
+                            data: trendData,
+                            borderColor: "#2563eb",
+                            backgroundColor: "rgba(37,99,235,0.2)",
+                            tension: 0.35,
+                          },
+                        ],
+                      }}
+                    />
+                  </View>
+                ) : (
+                  <LineChart
                     data={{
                       labels: trendLabels,
-                      datasets: [
-                        {
-                          label: "Monthly Spending",
-                          data: trendData,
-                          borderColor: "#2563eb",
-                          backgroundColor: "rgba(37,99,235,0.2)",
-                          tension: 0.35,
-                        },
-                      ],
+                      datasets: [{ data: trendData }],
                     }}
+                    width={width}
+                    height={240}
+                    yAxisLabel="Rp "
+                    yAxisSuffix=""
+                    withInnerLines
+                    withOuterLines={false}
+                    withShadow={false}
+                    bezier
+                    fromZero
+                    onDataPointClick={() => undefined}
+                    chartConfig={chartConfig}
+                    style={styles.chart}
                   />
-                </View>
+                )
               ) : (
-                <LineChart
-                  data={{
-                    labels: trendLabels,
-                    datasets: [{ data: trendData }],
-                  }}
-                  width={width}
-                  height={240}
-                  yAxisLabel="Rp "
-                  yAxisSuffix=""
-                  withInnerLines
-                  withOuterLines={false}
-                  withShadow={false}
-                  bezier
-                  fromZero
-                  onDataPointClick={() => undefined}
-                  chartConfig={chartConfig}
-                  style={styles.chart}
-                />
+                <Text style={styles.emptyState}>No spending data is available yet.</Text>
               )
-            ) : (
-              <Text style={styles.emptyState}>No spending data is available yet.</Text>
-            )
-          }
-        </ChartPanel>
+            }
+          </ChartPanel>
 
-        <ChartPanel title="SHU Breakdown" subtitle="Ratio of Sales SHU vs Business SHU.">
-          {(width) =>
-            width > 0 && hasMixData ? (
-              isWeb ? (
-                <View style={styles.webChartWrap}>
-                  <WebPieChart
-                    options={webChartOptions}
-                    data={{
-                      labels: mixData.map((item) => item.name),
-                      datasets: [
-                        {
-                          data: mixData.map((item) => item.amount),
-                          backgroundColor: mixData.map((item) => item.color),
-                        },
-                      ],
-                    }}
+          <ChartPanel title="SHU Breakdown" subtitle="Ratio of Sales SHU vs Business SHU.">
+            {(width) =>
+              width > 0 && hasMixData ? (
+                isWeb ? (
+                  <View style={styles.webChartWrap}>
+                    <WebPieChart
+                      options={webChartOptions}
+                      data={{
+                        labels: mixData.map((item) => item.name),
+                        datasets: [
+                          {
+                            data: mixData.map((item) => item.amount),
+                            backgroundColor: mixData.map((item) => item.color),
+                          },
+                        ],
+                      }}
+                    />
+                  </View>
+                ) : (
+                  <PieChart
+                    data={mixData.map((item) => ({
+                      name: item.name,
+                      population: item.amount,
+                      color: item.color,
+                      legendFontColor: item.legendFontColor,
+                      legendFontSize: item.legendFontSize,
+                    }))}
+                    width={width}
+                    height={220}
+                    chartConfig={chartConfig}
+                    accessor="population"
+                    backgroundColor="transparent"
+                    paddingLeft="8"
+                    absolute
                   />
-                </View>
+                )
               ) : (
-                <PieChart
-                  data={mixData.map((item) => ({
-                    name: item.name,
-                    population: item.amount,
-                    color: item.color,
-                    legendFontColor: item.legendFontColor,
-                    legendFontSize: item.legendFontSize,
-                  }))}
-                  width={width}
-                  height={220}
-                  chartConfig={chartConfig}
-                  accessor="population"
-                  backgroundColor="transparent"
-                  paddingLeft="8"
-                  absolute
-                />
+                <Text style={styles.emptyState}>No SHU distribution data for the current period.</Text>
               )
-            ) : (
-              <Text style={styles.emptyState}>No SHU distribution data for the current period.</Text>
-            )
-          }
-        </ChartPanel>
-      </View>
-
-      <View style={styles.listCard}>
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionHeaderCopy}>
-            <Text style={styles.sectionTitle}>Recent Transactions</Text>
-            <Text style={styles.sectionSubtitle}>Quick view of your latest purchases.</Text>
-          </View>
-          <Pressable style={styles.linkButton} onPress={() => router.push("/(member)/transactions")}>
-            <Feather name="arrow-right" size={14} color="#1d4ed8" />
-            <Text style={styles.linkButtonText}>View All</Text>
-          </Pressable>
+            }
+          </ChartPanel>
         </View>
 
-        {loading ? <Text style={styles.stateText}>Loading dashboard...</Text> : null}
-
-        {!loading && recentTransactions.length === 0 ? (
-          <Text style={styles.emptyState}>No transactions have been recorded yet.</Text>
-        ) : null}
-
-        <View style={styles.transactionList}>
-          {recentTransactions.map((row) => (
-            <View key={row.id_sale} style={styles.transactionRow}>
-              <View style={styles.transactionLeft}>
-                <Text style={styles.transactionTitle}>{row.sale_number || "-"}</Text>
-                <Text style={styles.transactionMeta}>
-                  {formatShortDateTime(row.sale_date)} • {row.payment_method || "-"} • {String(row.item_count || 0)} item(s)
-                </Text>
-              </View>
-              <Text style={styles.transactionAmount}>{formatRupiah(Number(row.total_amount || 0))}</Text>
+        <View style={styles.listCard}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionHeaderCopy}>
+              <Text style={styles.sectionTitle}>Recent Transactions</Text>
+              <Text style={styles.sectionSubtitle}>Quick view of your latest purchases.</Text>
             </View>
-          ))}
+            <Pressable style={styles.linkButton} onPress={() => router.push("/(main)/portal/transactions")}>
+              <Feather name="arrow-right" size={14} color="#1d4ed8" />
+              <Text style={styles.linkButtonText}>View All</Text>
+            </Pressable>
+          </View>
+
+          {loading ? <Text style={styles.stateText}>Loading dashboard...</Text> : null}
+
+          {!loading && recentTransactions.length === 0 ? (
+            <Text style={styles.emptyState}>No transactions have been recorded yet.</Text>
+          ) : null}
+
+          <View style={styles.transactionList}>
+            {recentTransactions.map((row) => (
+              <View key={row.id_sale} style={styles.transactionRow}>
+                <View style={styles.transactionLeft}>
+                  <Text style={styles.transactionTitle}>{row.sale_number || "-"}</Text>
+                  <Text style={styles.transactionMeta}>
+                    {formatShortDateTime(row.sale_date)} • {row.payment_method || "-"} • {String(row.item_count || 0)} item(s)
+                  </Text>
+                </View>
+                <Text style={styles.transactionAmount}>{formatRupiah(Number(row.total_amount || 0))}</Text>
+              </View>
+            ))}
+          </View>
         </View>
-      </View>
+      </ScrollView>
 
       <InventoryResultModal
         visible={resultModalOpen}
@@ -316,7 +318,7 @@ export default function MemberDashboardScreen() {
         message={resultMessage}
         onClose={() => setResultModalOpen(false)}
       />
-    </MemberShell>
+    </PageContainer>
   );
 }
 
@@ -359,9 +361,10 @@ function ChartPanel({
 }
 
 const styles = StyleSheet.create({
-  summaryRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  scrollContent: { gap: 16, paddingBottom: 8 },
+  summaryRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 4 },
   metricCard: {
-    flexBasis: "24%",
+    flexBasis: "31%",
     flexGrow: 1,
     minWidth: 160,
     borderRadius: 12,

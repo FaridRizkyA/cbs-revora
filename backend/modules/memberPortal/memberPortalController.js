@@ -7,7 +7,7 @@ const getMemberProfileByUserId = async (client, idUser) => {
     SELECT
       m.id_member,
       m.id_user,
-      m.id_profile,
+      p.id_profile,
       m.member_code,
       m.join_date,
       m.total_spending::float AS total_spending,
@@ -24,7 +24,7 @@ const getMemberProfileByUserId = async (client, idUser) => {
     LEFT JOIN tbl_users u
       ON u.id_user = m.id_user
     LEFT JOIN tbl_profiles p
-      ON p.id_profile = m.id_profile
+      ON p.id_user = m.id_user
     WHERE m.id_user = $1
       AND m.is_active = 'Y'
     LIMIT 1;
@@ -52,7 +52,7 @@ const getMemberAccess = async (req, res) => {
         COALESCE(NULLIF(TRIM(CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, ''))), ''), u.email, '-') AS member_name
       FROM tbl_members m
       LEFT JOIN tbl_profiles p
-        ON p.id_profile = m.id_profile
+        ON p.id_user = m.id_user
       LEFT JOIN tbl_users u
         ON u.id_user = m.id_user
       WHERE m.id_user = $1
@@ -113,22 +113,29 @@ const parseRange = (query) => {
     };
   }
 
-  const today = new Date();
-  const todayIso = today.toISOString().slice(0, 10);
+  const now = new Date();
+  // Get local ISO date (YYYY-MM-DD) by adjusting for timezone offset
+  const getLocalIsoDate = (date) => {
+    const tzOffset = date.getTimezoneOffset() * 60000; // offset in milliseconds
+    const localDate = new Date(date.getTime() - tzOffset);
+    return localDate.toISOString().slice(0, 10);
+  };
+
+  const todayIso = getLocalIsoDate(now);
 
   if (range === "DAILY") {
     return { startDate: todayIso, endDate: todayIso };
   }
 
   if (range === "WEEKLY") {
-    const start = new Date(today);
+    const start = new Date(now);
     start.setDate(start.getDate() - 6);
-    return { startDate: start.toISOString().slice(0, 10), endDate: todayIso };
+    return { startDate: getLocalIsoDate(start), endDate: todayIso };
   }
 
   if (range === "MONTHLY") {
-    const start = new Date(today.getFullYear(), today.getMonth(), 1);
-    return { startDate: start.toISOString().slice(0, 10), endDate: todayIso };
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { startDate: getLocalIsoDate(start), endDate: todayIso };
   }
 
   return { startDate: null, endDate: null };
@@ -379,7 +386,7 @@ const getMemberTransactionDetail = async (req, res) => {
         ) AS items
       FROM tbl_sales s
       JOIN tbl_members m ON m.id_member = s.id_member
-      LEFT JOIN tbl_profiles p ON p.id_profile = m.id_profile
+      LEFT JOIN tbl_profiles p ON p.id_user = m.id_user
       LEFT JOIN tbl_users u ON u.id_user = m.id_user
       LEFT JOIN tbl_users cu ON cu.id_user = s.id_cashier
       LEFT JOIN tbl_profiles up ON up.id_user = cu.id_user

@@ -199,7 +199,7 @@ const recentTransaction = async (req, res) => {
       LEFT JOIN tbl_members m
         ON m.id_member = s.id_member
       LEFT JOIN tbl_profiles p
-        ON p.id_profile = m.id_profile
+        ON p.id_user = m.id_user
       LEFT JOIN (
         SELECT
           si.id_sale,

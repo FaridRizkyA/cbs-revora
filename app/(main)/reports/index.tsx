@@ -1,6 +1,5 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
-import * as Print from "expo-print";
-import { useEffect, useMemo, useState } from "react";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import DatePickerField from "../../../components/inventory/DatePickerField";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
@@ -9,15 +8,25 @@ import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu
 import { InventoryResultModal } from "../../../components/inventory/ActionModals";
 import SendEmailModal from "../../../components/modals/SendEmailModal";
 import {
+  canViewExternalFinancial,
+  canViewInventory,
+  canViewPeople,
+  getAuthSession,
+  normalizeRole,
+} from "../../../utils/authSession";
+import { fetchWithAuth } from "../../../utils/fetchWithAuth";
+import { withEmailPdfAttachment } from "../../../utils/reportEmail";
+import { printReportHtml } from "../../../utils/printUtils";
+import {
+  buildColumns,
   buildGenericReportPrintHtml,
   downloadGenericReportExcel,
   GenericReportColumn,
   GenericReportRow,
 } from "../../../components/reports/generic/GenericReportPrintTemplate";
-import { API_BASE_URL } from "../../../utils/api";
-import { logClientActivity } from "../../../utils/activityLog";
-import { getAuthSession } from "../../../utils/authSession";
-import { withEmailPdfAttachment } from "../../../utils/reportEmail";
+import { buildReportPdfFileName } from "../../../components/reports/shared/ReportPrintTemplate";
+import PageContainer from "../../../components/layout/PageContainer";
+import InventoryPageHeader from "../../../components/inventory/InventoryPageHeader";
 
 type ReportSource = {
   key: string;
@@ -85,27 +94,9 @@ const formatDateRangeLabel = (from?: string | null, to?: string | null) => {
   return `up to ${formatDateOnly(to)}`;
 };
 
-const printReportHtml = async (html: string) => {
-  if (Platform.OS !== "web") {
-    await Print.printAsync({ html });
-    return;
-  }
-
-  if (typeof window === "undefined") return;
-  const printWindow = window.open("", "_blank", "width=1024,height=720");
-  if (!printWindow) throw new Error("Please allow pop-ups to print this report.");
-
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.setTimeout(() => {
-    printWindow.print();
-  }, 250);
-};
-
 export default function ReportsScreen() {
-  const [sources, setSources] = useState<ReportSource[]>([]);
+  const [allSources, setAllSources] = useState<ReportSource[]>([]);
+  const [roleName, setRoleName] = useState("");
   const [sourceKey, setSourceKey] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -121,30 +112,32 @@ export default function ReportsScreen() {
   const [resultTitle, setResultTitle] = useState("");
   const [resultMessage, setResultMessage] = useState("");
 
-  const showResult = (status: "success" | "error", title: string, message: string) => {
+  const showResult = useCallback((status: "success" | "error", title: string, message: string) => {
     setResultStatus(status);
     setResultTitle(title);
     setResultMessage(message);
     setResultModalOpen(true);
-  };
+  }, []);
 
   useEffect(() => {
     getAuthSession()
-      .then((session) => setGeneratedBy(session?.user?.full_name || session?.user?.role_name || null))
+      .then((session) => {
+        setRoleName(normalizeRole(session?.user?.role_name));
+        setGeneratedBy(session?.user?.full_name || session?.user?.role_name || null);
+      })
       .catch(() => setGeneratedBy(null));
   }, []);
 
   useEffect(() => {
     let active = true;
     setLoadingSources(true);
-    fetch(`${API_BASE_URL}/api/reports/sources`)
+    fetchWithAuth("/api/reports/sources")
       .then((response) => response.json().then((payload) => ({ response, payload })))
       .then(({ response, payload }) => {
         if (!response.ok) throw new Error(payload?.message || "Failed to fetch report data sources.");
         const rows = Array.isArray(payload?.data) ? payload.data : [];
         if (!active) return;
-        setSources(rows);
-        setSourceKey((current) => current || rows[0]?.key || "");
+        setAllSources(rows);
       })
       .catch((error) => {
         if (active) setErrorMessage(error instanceof Error ? error.message : "Failed to fetch report data sources.");
@@ -152,62 +145,49 @@ export default function ReportsScreen() {
       .finally(() => {
         if (active) setLoadingSources(false);
       });
-
     return () => {
       active = false;
     };
   }, []);
+
+  const sources = useMemo(() => {
+    return allSources.filter((s) => {
+      if (s.key === "users" || s.key === "members" || s.key === "staffs") return canViewPeople(roleName);
+      if (s.key === "external_financial") return canViewExternalFinancial(roleName);
+      if (
+        s.key === "suppliers" ||
+        s.key === "products" ||
+        s.key === "batches" ||
+        s.key === "stock_in" ||
+        s.key === "stock_out" ||
+        s.key === "stock_adjustment"
+      ) {
+        return canViewInventory(roleName);
+      }
+      return true;
+    });
+  }, [allSources, roleName]);
+
+  useEffect(() => {
+    if (sources.length > 0 && !sourceKey) {
+      setSourceKey(sources[0].key);
+    }
+  }, [sources, sourceKey]);
 
   const sourceOptions = useMemo(
     () => sources.map((source) => ({ label: source.label, value: source.key })),
     [sources]
   );
 
-  const columns = useMemo<InventoryDataTableColumn<GenericReportRow>[]>(() => {
-    const sourceColumns = result?.columns || [];
-    return [
-      {
-        key: "row_number",
-        title: "No.",
-        width: 56,
-        align: "center",
-        render: (_row, meta) => <Text style={styles.rowCell}>{meta.rowIndex + 1}</Text>,
-      },
-      ...sourceColumns.map((column) => ({
-        key: column.key,
-        title: column.title,
-        align: column.align,
-        sortable: true,
-        sortValue: (row: GenericReportRow) => {
-          const value = row[column.key];
-          return typeof value === "number" ? value : String(value || "");
-        },
-        render: (row: GenericReportRow) => (
-          <Text style={[styles.rowCell, column.align === "right" ? styles.rowCellRight : null]}>
-            {formatCellValue(row[column.key])}
-          </Text>
-        ),
-      })),
-    ];
-  }, [result?.columns]);
-
   const handleGenerate = async () => {
-    if (!sourceKey) {
-      showResult("error", "Select Data Source", "Please select a report data source first.");
-      return;
-    }
-    if (startDate && endDate && startDate > endDate) {
-      showResult("error", "Invalid Date Range", "Start date cannot be later than end date.");
-      return;
-    }
-
+    if (!sourceKey) return;
     setGenerating(true);
     setErrorMessage(null);
     try {
       const params = new URLSearchParams({ source: sourceKey });
       if (startDate) params.set("start_date", startDate);
       if (endDate) params.set("end_date", endDate);
-      const response = await fetch(`${API_BASE_URL}/api/reports/run?${params.toString()}`);
+      const response = await fetchWithAuth(`/api/reports/run?${params.toString()}`);
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.message || "Failed to generate report.");
       setResult(payload.data || null);
@@ -219,14 +199,9 @@ export default function ReportsScreen() {
     }
   };
 
-  const handleExport = async () => {
+  const handlePrint = async () => {
     if (!result) return;
-
     try {
-      await logClientActivity({
-        activityType: "PRINT_REPORT",
-        description: `Printed generated ${result.source.label} report for ${formatDateRangeLabel(result.filters.created_date_from, result.filters.created_date_to)}.`,
-      });
       const html = buildGenericReportPrintHtml({
         reportKey: `reports-${result.source.key}`,
         title: `${result.source.label} Report`,
@@ -240,20 +215,28 @@ export default function ReportsScreen() {
           { label: "Date Range", value: formatDateRangeLabel(result.filters.created_date_from, result.filters.created_date_to) },
         ],
       });
-      await printReportHtml(html);
+      
+      await printReportHtml(html, {
+        tableName: "tbl_activity_logs",
+        description: `Printed ${result.source.label} report.`,
+        fileName: buildReportPdfFileName({
+          reportKey: result.source.key,
+          variant: "table",
+          date: new Date(),
+        }),
+      });
     } catch (error) {
-      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to export report.");
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print report.");
     }
   };
 
   const handleExportExcel = async () => {
     if (!result) return;
-
     try {
       await downloadGenericReportExcel({
-        reportKey: `reports-${result.source.key}`,
         title: `${result.source.label} Report`,
         subtitle: "Generated from selected data source and date range",
+        reportKey: `reports-${result.source.key}`,
         columns: result.columns,
         rows: result.rows,
         generatedAt: new Date(),
@@ -265,17 +248,23 @@ export default function ReportsScreen() {
       });
       await logClientActivity({
         activityType: "EXPORT_EXCEL",
-        description: `Exported generated ${result.source.label} report as Excel.`,
+        tableName: "tbl_activity_logs",
+        description: `Exported ${result.source.label} report as Excel.`,
       });
     } catch (error) {
-      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export report as Excel.");
+      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export Excel.");
     }
   };
 
-  const handleSendEmailReport = async (recipientEmail: string, message: string) => {
+  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string, includeExcel: boolean) => {
     if (!result) return;
     try {
       const generatedAt = new Date();
+      const meta = [
+        { label: "Data Source", value: result.source.label },
+        { label: "Date Range", value: formatDateRangeLabel(result.filters.created_date_from, result.filters.created_date_to) },
+      ];
+
       const printHtml = buildGenericReportPrintHtml({
         reportKey: `reports-${result.source.key}`,
         title: `${result.source.label} Report`,
@@ -284,29 +273,34 @@ export default function ReportsScreen() {
         rows: result.rows,
         generatedAt,
         generatedBy,
-        meta: [
-          { label: "Data Source", value: result.source.label },
-          { label: "Date Range", value: formatDateRangeLabel(result.filters.created_date_from, result.filters.created_date_to) },
-        ],
+        meta,
       });
+
+      const reportColumns = buildColumns(result.columns);
+
       const payload = {
         recipient_email: recipientEmail,
+        recipient_name: fullName,
         subject: `${result.source.label} Report Result`,
         message,
         format: "PDF",
+        include_excel: includeExcel,
         title: `${result.source.label} Report`,
+        subtitle: "Generated from selected data source and date range",
         generated_by: generatedBy,
         print_html: printHtml,
-        meta: [
-          { label: "Data Source", value: result.source.label },
-          { label: "Date Range", value: formatDateRangeLabel(result.filters.created_date_from, result.filters.created_date_to) },
-          { label: "Total Rows", value: String(result.total_rows) },
-        ],
-        columns: result.columns,
-        rows: result.rows,
+        meta,
+        columns: reportColumns.map((c) => ({ key: c.key, title: c.title, align: c.align })),
+        rows: result.rows.map((row, idx) => {
+          const rowData: any = {};
+          reportColumns.forEach((c) => {
+            rowData[c.key] = formatCellValue(c.getValue(row, idx));
+          });
+          return rowData;
+        }),
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/reports/send-email`, {
+      const response = await fetchWithAuth("/api/reports/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(await withEmailPdfAttachment(payload)),
@@ -320,103 +314,130 @@ export default function ReportsScreen() {
         description: `Sent ${result.source.label} report via email.`,
       });
 
-      showResult("success", "Email Sent", "Email sent successfully.");
+      showResult("success", "Email Sent", "Report has been sent successfully.");
     } catch (error) {
       showResult("error", "Email Failed", error instanceof Error ? error.message : "Failed to send email.");
     }
   };
 
+  const tableColumns = useMemo<InventoryDataTableColumn<GenericReportRow>[]>(() => {
+    if (!result) return [];
+    return result.columns.map((col) => ({
+      key: col.key,
+      title: col.title,
+      weight: 20,
+      align: col.align || "left",
+      render: (row) => (
+        <Text style={[styles.rowCell, col.align === "right" && styles.rowCellRight]}>
+          {formatCellValue(row[col.key])}
+        </Text>
+      ),
+    }));
+  }, [result]);
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Reports</Text>
-          <Text style={styles.subtitle}>Generate table reports from selected data sources and created date ranges.</Text>
-        </View>
-      </View>
+    <PageContainer>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <InventoryPageHeader
+          title="Custom Reports"
+          subtitle="Generate and export system-wide operational reports."
+        />
 
-      {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Report Builder</Text>
-        <View style={styles.formGrid}>
-          <View style={styles.formFieldWide}>
-            <FilterSelectField
-              label="Data Source"
-              value={sourceKey}
-              options={sourceOptions}
-              onChange={setSourceKey}
-            />
+        <View style={styles.filterCard}>
+          <View style={styles.formGrid}>
+            <View style={styles.formFieldWide}>
+              <FilterSelectField
+                label="Data Source"
+                value={sourceKey}
+                options={sourceOptions}
+                onChange={setSourceKey}
+                loading={loadingSources}
+              />
+            </View>
+            <View style={styles.formField}>
+              <DatePickerField
+                label="Date From"
+                value={startDate}
+                placeholder="YYYY-MM-DD"
+                onChange={setStartDate}
+                maximumDate={parseDateBound(endDate)}
+              />
+            </View>
+            <View style={styles.formField}>
+              <DatePickerField
+                label="Date To"
+                value={endDate}
+                placeholder="YYYY-MM-DD"
+                onChange={setEndDate}
+                minimumDate={parseDateBound(startDate)}
+              />
+            </View>
+            <Pressable
+              style={[styles.generateButton, (generating || !sourceKey) && styles.buttonDisabled]}
+              onPress={handleGenerate}
+              disabled={generating || !sourceKey}
+            >
+              {generating ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Feather name="play" size={16} color="#fff" />
+                  <Text style={styles.generateButtonText}>Run Report</Text>
+                </>
+              )}
+            </Pressable>
           </View>
-          <View style={styles.formField}>
-            <DatePickerField
-              label="Date From"
-              value={startDate}
-              placeholder="YYYY-MM-DD"
-              onChange={setStartDate}
-              maximumDate={parseDateBound(endDate)}
-            />
-          </View>
-          <View style={styles.formField}>
-            <DatePickerField
-              label="Date To"
-              value={endDate}
-              placeholder="YYYY-MM-DD"
-              onChange={setEndDate}
-              minimumDate={parseDateBound(startDate)}
-            />
-          </View>
-          <Pressable
-            style={[styles.generateButton, (!sourceKey || generating || loadingSources) ? styles.buttonDisabled : null]}
-            onPress={handleGenerate}
-            disabled={!sourceKey || generating || loadingSources}
-          >
-            <MaterialCommunityIcons name="table-search" size={18} color="#ffffff" />
-            <Text style={styles.generateButtonText}>{generating ? "Generating..." : "Generate"}</Text>
-          </Pressable>
         </View>
-      </View>
 
-      <View style={styles.card}>
-        <View style={styles.resultHeader}>
-          <View>
-            <Text style={styles.cardTitle}>{result ? `${result.source.label} Report Result` : "Report Result"}</Text>
-            <Text style={styles.resultMeta}>
-              {result
-                ? `${result.total_rows} row(s), ${formatDateRangeLabel(result.filters.created_date_from, result.filters.created_date_to)}`
-                : "Generate a report to show table data."}
-            </Text>
+        {errorMessage ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.errorText}>{errorMessage}</Text>
           </View>
-          <ExportDropdownMenu
-            onExportPdf={handleExport}
-            onExportExcel={handleExportExcel}
-            onSendEmail={() => setEmailModalOpen(true)}
-          />
-        </View>
+        ) : null}
 
         {result ? (
-          <InventoryDataTable
-            columns={columns}
-            rows={result.rows}
-            rowKey={(row) => String(row.id || JSON.stringify(row))}
-            emptyText="No report rows found."
-            initialPageSize={10}
-            pageSizeOptions={[10, 25, 50]}
-            minWidth={900}
-          />
-        ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No generated report yet.</Text>
+          <View style={styles.resultBlock}>
+            <View style={styles.resultHeader}>
+              <View>
+                <Text style={styles.sectionTitle}>{result.source.label} Report</Text>
+                <Text style={styles.resultMeta}>
+                  {result.total_rows} record(s) found • {formatDateRangeLabel(startDate, endDate)}
+                </Text>
+              </View>
+              <ExportDropdownMenu
+                onExportPdf={handlePrint}
+                onExportExcel={handleExportExcel}
+                onSendEmail={() => setEmailModalOpen(true)}
+              />
+            </View>
+
+            <View style={styles.card}>
+              <InventoryDataTable
+                columns={tableColumns}
+                rows={result.rows}
+                rowKey={(row, idx) => `row-${idx}`}
+                emptyText="No data matches the selected filters."
+              />
+            </View>
           </View>
+        ) : (
+          !generating &&
+          !errorMessage && (
+            <View style={styles.emptyState}>
+              <Feather name="database" size={40} color="#cbd5e1" />
+              <Text style={styles.emptyText}>Select a source and click Run Report to view data.</Text>
+            </View>
+          )
         )}
-      </View>
+      </ScrollView>
 
       <SendEmailModal
         visible={emailModalOpen}
         onClose={() => setEmailModalOpen(false)}
-        reportTitle={result ? `${result.source.label} Report` : "Report"}
         onSend={handleSendEmailReport}
+        reportTitle={result?.source.label || "Report"}
       />
+
       <InventoryResultModal
         visible={resultModalOpen}
         status={resultStatus}
@@ -424,43 +445,36 @@ export default function ReportsScreen() {
         message={resultMessage}
         onClose={() => setResultModalOpen(false)}
       />
-    </ScrollView>
+    </PageContainer>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
   },
   content: {
-    padding: 24,
+    paddingBottom: 28,
     gap: 16,
   },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  title: {
-    color: "#0f172a",
-    fontSize: 26,
-    fontWeight: "800",
-  },
-  subtitle: {
-    color: "#64748b",
-    fontSize: 13,
-    marginTop: 4,
-  },
-  card: {
+  filterCard: {
+    padding: 16,
+    borderRadius: 14,
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#dbe3ee",
-    borderRadius: 12,
-    padding: 14,
+  },
+  resultBlock: {
     gap: 12,
   },
-  cardTitle: {
+  card: {
+    borderRadius: 14,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#dbe3ee",
+    overflow: "hidden",
+  },
+  sectionTitle: {
     color: "#0f172a",
     fontSize: 16,
     fontWeight: "800",

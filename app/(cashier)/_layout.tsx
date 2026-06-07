@@ -1,7 +1,14 @@
 import { Stack, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { canAccessCashierModeWithGrade, getAuthSession, getRouteByRole, isAuthSessionExpired, logoutAuthSession } from "../../utils/authSession";
+import { fetchWithAuth } from "../../utils/fetchWithAuth";
+import {
+  canAccessCashierModeWithGrade,
+  getAuthSession,
+  getRouteByRole,
+  isAuthSessionExpired,
+  logoutAuthSession,
+} from "../../utils/authSession";
 
 export default function CashierLayout() {
   const router = useRouter();
@@ -42,6 +49,24 @@ export default function CashierLayout() {
         return;
       }
 
+      // Backend check to verify JTI displacement
+      try {
+        const response = await fetchWithAuth("/api/auth/verify-session", { requireToken: true });
+        if (response.status === 401 || response.status === 403) {
+          const payload = await response.json().catch(() => ({}));
+          await logoutAuthSession();
+          
+          if (payload.code === "SESSION_DISPLACED") {
+            router.replace("/login?displaced=1");
+          } else {
+            router.replace("/login?expired=1");
+          }
+          return;
+        }
+      } catch {
+        // Network errors handled by allowing ready for now, will fail on next action
+      }
+
       if (active) {
         scheduleExpiryLogout(session.expires_at);
         setReady(true);
@@ -49,7 +74,7 @@ export default function CashierLayout() {
     };
 
     checkAuth().catch(() => {
-      router.replace("/login");
+      if (active) router.replace("/login");
     });
 
     return () => {

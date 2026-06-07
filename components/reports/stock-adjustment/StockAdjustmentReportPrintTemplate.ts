@@ -74,7 +74,7 @@ const normalizeReason = (row: Pick<StockAdjustmentReportRow, "adjustment_reason"
       .replace("ADJUSTMENT:", "")
   );
 
-const stockAdjustmentTableColumns: ReportTableColumn<StockAdjustmentReportRow>[] = [
+export const stockAdjustmentTableColumns: ReportTableColumn<StockAdjustmentReportRow>[] = [
   {
     key: "row_number",
     title: "No.",

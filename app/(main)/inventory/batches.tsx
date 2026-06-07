@@ -13,12 +13,16 @@ import { InventoryResultModal } from "../../../components/inventory/ActionModals
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import SendEmailModal from "../../../components/modals/SendEmailModal";
 import {
+  batchTableColumns,
   buildBatchDetailReportPrintHtml,
   buildBatchTableReportPrintHtml,
   downloadBatchTableReportExcel,
 } from "../../../components/reports/batches/BatchReportPrintTemplate";
+import { buildReportPdfFileName } from "../../../components/reports/shared/ReportPrintTemplate";
+import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import { API_BASE_URL } from "../../../utils/api";
 import { logClientActivity } from "../../../utils/activityLog";
+import { printReportHtml } from "../../../utils/printUtils";
 import { getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
 
@@ -32,33 +36,6 @@ type BatchRow = {
   qty_in: number;
   current_qty?: number | null;
   purchase_price?: number | null;
-};
-
-const printReportHtml = async (html: string) => {
-  await logClientActivity({
-    activityType: "PRINT_REPORT",
-    tableName: "tbl_product_batches",
-    description: "Printed product batch report.",
-  });
-  if (Platform.OS !== "web") {
-    await Print.printAsync({ html });
-    return;
-  }
-
-  if (typeof window === "undefined") return;
-
-  const printWindow = window.open("", "_blank", "width=1024,height=720");
-  if (!printWindow) {
-    throw new Error("Please allow pop-ups to print this report.");
-  }
-
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.setTimeout(() => {
-    printWindow.print();
-  }, 250);
 };
 
 const getBatchStockStatus = (qty: number) => {
@@ -114,7 +91,7 @@ export default function BatchesScreen() {
   }, []);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/batches`)
+    fetchWithAuth("/api/batches")
       .then((response) => response.json())
       .then((payload) => {
         const safeRows = Array.isArray(payload?.data) ? payload.data : [];
@@ -222,7 +199,7 @@ export default function BatchesScreen() {
     return items;
   };
 
-  const handleSendEmailReport = async (recipientEmail: string, message: string) => {
+  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string, includeExcel: boolean) => {
     try {
       const isTable = emailTarget === "table";
       const generatedAt = new Date();
@@ -242,10 +219,13 @@ export default function BatchesScreen() {
           : "";
       const payload = {
         recipient_email: recipientEmail,
+        recipient_name: fullName,
         subject: isTable ? "Product Batch List Report" : `Batch Detail - ${selectedBatch?.batch_code}`,
         message,
         format: "PDF",
-        title: isTable ? "Product Batch List" : "Batch Detail",
+        include_excel: includeExcel,
+        title: isTable ? "Batch Report" : "Batch Detail",
+        subtitle: isTable ? "Inventory batch ledger" : "",
         generated_by: roleName,
         print_html: printHtml,
         meta: isTable ? buildCurrentBatchReportMeta() : [
@@ -253,24 +233,25 @@ export default function BatchesScreen() {
           { label: "Product", value: selectedBatch?.product_name },
           { label: "Supplier", value: selectedBatch?.supplier_name },
         ],
-        columns: isTable ? [
-          { key: "batch_code", title: "Batch" },
-          { key: "product_name", title: "Product" },
-          { key: "qty_in", title: "Qty In" },
-          { key: "current_qty", title: "Current Qty" },
-          { key: "stock_in_time", title: "Date In" },
-          { key: "expired_date", title: "Expired" },
-        ] : [
-          { key: "batch_code", title: "Batch" },
-          { key: "product_name", title: "Product" },
-          { key: "qty_in", title: "Qty In" },
-          { key: "current_qty", title: "Current Qty" },
-          { key: "purchase_price", title: "Buy Price" },
-        ],
-        rows: isTable ? sortedBatches : [selectedBatch],
+        columns: isTable 
+          ? batchTableColumns.map(c => ({ key: c.key, title: c.title, align: c.align }))
+          : [
+            { key: "batch_code", title: "Batch" },
+            { key: "product_name", title: "Product" },
+            { key: "qty_in", title: "Qty In" },
+            { key: "current_qty", title: "Current Qty" },
+            { key: "purchase_price", title: "Buy Price" },
+          ],
+        rows: isTable 
+          ? sortedBatches.map((row, idx) => {
+              const rowData: any = {};
+              batchTableColumns.forEach(c => { rowData[c.key] = c.getValue(row, idx); });
+              return rowData;
+            })
+          : [selectedBatch],
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/reports/send-email`, {
+      const response = await fetchWithAuth("/api/reports/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(await withEmailPdfAttachment(payload)),
@@ -304,7 +285,11 @@ export default function BatchesScreen() {
         generatedBy: roleName,
         meta: buildCurrentBatchReportMeta(),
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_product_batches",
+        description: "Printed product batch report.",
+        fileName: buildReportPdfFileName({ reportKey: "batches", variant: "table" }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print batch report.");    
     }
@@ -337,7 +322,15 @@ export default function BatchesScreen() {
         generatedAt: new Date(),
         generatedBy: roleName,
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_product_batches",
+        description: `Printed batch detail: ${selectedBatch.batch_code}`,
+        fileName: buildReportPdfFileName({
+          reportKey: "batches",
+          variant: "detail",
+          documentNumber: selectedBatch.batch_code,
+        }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print batch detail.");    
     }

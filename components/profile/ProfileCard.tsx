@@ -169,11 +169,13 @@ const styles = StyleSheet.create({
   },
   cardSurfaceCompact: {
     flexDirection: "column",
+    alignItems: "center",
     minHeight: "auto",
+    gap: 20,
   },
   cardPhotoWrap: {
-    width: 300,
-    height: 300,
+    width: 280,
+    height: 280,
     borderRadius: 28,
     overflow: "hidden",
     backgroundColor: "#e2e8f0",

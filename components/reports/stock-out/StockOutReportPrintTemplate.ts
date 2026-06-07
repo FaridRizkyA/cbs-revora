@@ -111,7 +111,7 @@ const calculateProfit = (document: StockOutDetailReportRow) =>
 const getActorName = (row: Pick<StockOutReportRow, "cashier_name" | "operator_name" | "stock_out_type">) =>
   isSaleType(row.stock_out_type) ? row.cashier_name : row.operator_name;
 
-const stockOutTableColumns: ReportTableColumn<StockOutReportRow>[] = [
+export const stockOutTableColumns: ReportTableColumn<StockOutReportRow>[] = [
   {
     key: "row_number",
     title: "No.",

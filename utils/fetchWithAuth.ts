@@ -8,7 +8,10 @@ type FetchWithAuthInit = RequestInit & {
 export const fetchWithAuth = async (path: string, init: FetchWithAuthInit = {}) => {
   const session = await getAuthSession();
   const headers = new Headers(init.headers || {});
-  headers.set("Content-Type", headers.get("Content-Type") || "application/json");
+  
+  if (!(init.body instanceof FormData)) {
+    headers.set("Content-Type", headers.get("Content-Type") || "application/json");
+  }
 
   if (session?.token) {
     headers.set("Authorization", `Bearer ${session.token}`);

@@ -14,13 +14,16 @@ import InventoryDataTable, { InventoryDataTableColumn } from "../../../component
 import { InventoryConfirmModal, InventoryResultModal } from "../../../components/inventory/ActionModals";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import SendEmailModal from "../../../components/modals/SendEmailModal";
+import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import {
   buildStockInDetailReportPrintHtml,
   buildStockInTableReportPrintHtml,
   downloadStockInTableReportExcel,
+  stockInTableColumns,
 } from "../../../components/reports/stock-in/StockInReportPrintTemplate";
-import { API_BASE_URL } from "../../../utils/api";
+import { buildReportPdfFileName } from "../../../components/reports/shared/ReportPrintTemplate";
 import { logClientActivity } from "../../../utils/activityLog";
+import { printReportHtml } from "../../../utils/printUtils";
 import { canInsertStockMovement, getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
 
@@ -76,32 +79,7 @@ type DraftItem = {
   purchase_price: string;
 };
 
-const printReportHtml = async (html: string) => {
-  await logClientActivity({
-    activityType: "PRINT_REPORT",
-    tableName: "tbl_stock_in_headers",
-    description: "Printed stock in report.",
-  });
-  if (Platform.OS !== "web") {
-    await Print.printAsync({ html });
-    return;
-  }
-
-  if (typeof window === "undefined") return;
-
-  const printWindow = window.open("", "_blank", "width=1024,height=720");
-  if (!printWindow) {
-    throw new Error("Please allow pop-ups to print this report.");
-  }
-
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.setTimeout(() => {
-    printWindow.print();
-  }, 250);
-};
+import { downloadReportPdf } from "../../../utils/pdfExport";
 
 export default function StockInScreen() {
   const [rows, setRows] = useState<StockInDocument[]>([]);
@@ -162,7 +140,7 @@ export default function StockInScreen() {
   }, []);
 
   const loadRows = () => {
-    fetch(`${API_BASE_URL}/api/stock-in-documents`)
+    fetchWithAuth("/api/stock-in-documents")
       .then((response) => response.json())
       .then((payload) => {
         const safeRows = Array.isArray(payload?.data) ? payload.data : [];
@@ -172,7 +150,7 @@ export default function StockInScreen() {
   };
 
   const loadSuppliers = async () => {
-    const response = await fetch(`${API_BASE_URL}/api/suppliers`);
+    const response = await fetchWithAuth("/api/suppliers");
     const payload = await response.json();
     const safeRows = Array.isArray(payload?.data) ? payload.data : [];
     setSuppliers(safeRows.filter((item) => item?.is_active === "Y"));
@@ -184,7 +162,7 @@ export default function StockInScreen() {
       return;
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/suppliers/${idSupplier}/products`);
+    const response = await fetchWithAuth(`/api/suppliers/${idSupplier}/products`);
     const payload = await response.json();
     const safeRows = Array.isArray(payload?.data) ? payload.data : [];
     setProducts(safeRows.filter((item) => item?.is_active === "Y"));
@@ -192,7 +170,7 @@ export default function StockInScreen() {
 
   const openDetail = useCallback(async (idStockIn: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stock-in-documents/${idStockIn}`);
+      const response = await fetchWithAuth(`/api/stock-in-documents/${idStockIn}`);
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload?.error || payload?.message || "Failed to fetch stock in detail.");
@@ -313,7 +291,7 @@ export default function StockInScreen() {
     return items;
   };
 
-  const handleSendEmailReport = async (recipientEmail: string, message: string) => {
+  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string, includeExcel: boolean) => {
     try {
       const isTable = emailTarget === "table";
       const generatedAt = new Date();
@@ -331,34 +309,45 @@ export default function StockInScreen() {
               generatedBy: roleName,
             })
           : "";
+
       const payload = {
         recipient_email: recipientEmail,
+        recipient_name: fullName,
         subject: isTable ? "Stock In List Report" : `Stock In Detail - ${selectedDoc?.stock_in_code}`,
         message,
         format: "PDF",
-        title: isTable ? "Stock In List" : "Stock In Detail",
+        include_excel: includeExcel,
+        title: isTable ? "Stock In Report" : "Stock In Detail",
+        subtitle: isTable ? "Inventory stock in documents" : "",
         generated_by: roleName,
         print_html: printHtml,
-        meta: isTable ? buildCurrentStockInReportMeta() : [
-          { label: "Code", value: selectedDoc?.stock_in_code },
-          { label: "Date", value: formatDateTime(selectedDoc?.stock_in_date) },
-          { label: "Supplier", value: selectedDoc?.supplier_name },
-        ],
-        columns: isTable ? [
-          { key: "stock_in_code", title: "Code" },
-          { key: "supplier_name", title: "Supplier" },
-          { key: "total_qty", title: "Qty" },
-          { key: "stock_in_date", title: "Date" },
-        ] : [
-          { key: "product_name", title: "Product" },
-          { key: "batch_code", title: "Batch" },
-          { key: "quantity", title: "Qty" },
-          { key: "purchase_price", title: "Price" },
-        ],
-        rows: isTable ? filteredRows : selectedDoc?.items || [],
+        meta: isTable 
+          ? buildCurrentStockInReportMeta() 
+          : [
+            { label: "Code", value: selectedDoc?.stock_in_code },
+            { label: "Date", value: formatDateTime(selectedDoc?.stock_in_date) },
+            { label: "Supplier", value: selectedDoc?.supplier_name },
+          ],
+        columns: isTable 
+          ? stockInTableColumns.map(c => ({ key: c.key, title: c.title, align: c.align }))
+          : [
+            { key: "product_name", title: "Product" },
+            { key: "batch_code", title: "Batch" },
+            { key: "quantity", title: "Qty" },
+            { key: "purchase_price", title: "Price" },
+          ],
+        rows: isTable 
+          ? filteredRows.map((row, idx) => {
+              const rowData: any = {};
+              stockInTableColumns.forEach(c => {
+                rowData[c.key] = c.getValue(row, idx);
+              });
+              return rowData;
+            })
+          : selectedDoc?.items || [],
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/reports/send-email`, {
+      const response = await fetchWithAuth("/api/reports/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(await withEmailPdfAttachment(payload)),
@@ -392,7 +381,11 @@ export default function StockInScreen() {
         generatedBy: roleName,
         meta: buildCurrentStockInReportMeta(),
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_stock_in_headers",
+        description: "Printed stock in list report.",
+        fileName: buildReportPdfFileName({ reportKey: "inventory-stock-in", variant: "table", date: new Date() }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print stock in report."); 
     }
@@ -425,7 +418,11 @@ export default function StockInScreen() {
         generatedAt: new Date(),
         generatedBy: roleName,
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_stock_in_headers",
+        description: `Printed stock in detail ${selectedDoc.stock_in_code}`,
+        fileName: buildReportPdfFileName({ reportKey: "inventory-stock-in", variant: "detail", documentNumber: selectedDoc.stock_in_code, date: new Date() }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print stock in detail."); 
     }
@@ -571,7 +568,7 @@ export default function StockInScreen() {
 
     setSaving(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stock-in`, {
+      const response = await fetchWithAuth("/api/stock-in", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

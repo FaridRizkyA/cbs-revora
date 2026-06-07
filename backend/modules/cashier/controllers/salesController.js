@@ -2,7 +2,7 @@
 
 const { canAccessCashierModeRole, getActiveUserRole } = require("../shared/auth");
 const { logActivity } = require("../../../utils/activityLogger");
-const { enqueueReceiptEmailJob } = require("../../emailQueue/receiptEmailQueue");
+const { enqueueReceiptEmailJob } = require("../../emailQueue/emailQueue");
 const { toNumber, validatePositiveInteger } = require("../shared/validators");
 const { createSaleNumber } = require("../shared/numbering");
 
@@ -15,7 +15,7 @@ const getMembers = async (req, res) => {
       SELECT
         m.id_member,
         m.id_user,
-        m.id_profile,
+        p.id_profile,
         m.member_code,
         p.first_name,
         p.last_name,
@@ -27,7 +27,7 @@ const getMembers = async (req, res) => {
         u.email
       FROM tbl_members m
       LEFT JOIN tbl_profiles p
-        ON p.id_profile = m.id_profile
+        ON p.id_user = m.id_user
       LEFT JOIN tbl_users u
         ON u.id_user = m.id_user
       WHERE m.is_active = 'Y'
@@ -127,7 +127,6 @@ const getAvailableBatches = async (client, idProduct) => {
 
 const checkoutSale = async (req, res) => {
   const {
-    id_cashier,
     id_member,
     payment_method,
     amount_paid,
@@ -136,8 +135,10 @@ const checkoutSale = async (req, res) => {
     items,
   } = req.body;
 
+  const id_cashier = req.user?.id_user;
+
   if (!id_cashier) {
-    return res.status(400).json({ message: "id_cashier is required." });
+    return res.status(401).json({ message: "Authentication required." });
   }
 
   if (!["CASH", "QRIS"].includes(payment_method)) {
@@ -202,7 +203,7 @@ const checkoutSale = async (req, res) => {
           ) AS member_name
         FROM tbl_members m
         LEFT JOIN tbl_profiles p
-          ON p.id_profile = m.id_profile
+          ON p.id_user = m.id_user
         LEFT JOIN tbl_users u
           ON u.id_user = m.id_user
         WHERE m.id_member = $1

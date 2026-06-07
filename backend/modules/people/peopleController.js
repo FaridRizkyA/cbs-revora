@@ -158,6 +158,111 @@ const generateNextMemberCode = (client) => generateNextCode(client, "tbl_members
 const generateNextStaffCode = (client) => generateNextCode(client, "tbl_staff", "staff_code", "STF");
 const generateNextStaffGradeCode = (client) => generateNextCode(client, "tbl_staff_grades", "grade_code", "GRD");
 
+const syncStaffOfficerRole = async (client, idStaff, idStaffGrade, actorId) => {
+  if (!idStaffGrade) {
+    // If grade is removed, terminate any active officer role
+    await client.query(
+      `
+      UPDATE tbl_staff_officer_roles
+      SET is_active = 'N',
+          effective_end_date = CURRENT_DATE,
+          last_modify_date = NOW(),
+          last_modify_by = $2
+      WHERE id_staff = $1
+        AND is_active = 'Y'
+        AND effective_end_date IS NULL;
+      `,
+      [idStaff, actorId]
+    );
+    return;
+  }
+
+  // 1. Get the grade name to see if it's an officer role
+  const gradeResult = await client.query(
+    "SELECT grade_name FROM tbl_staff_grades WHERE id_staff_grade = $1",
+    [idStaffGrade]
+  );
+  if (gradeResult.rowCount === 0) return;
+
+  const rawGradeName = String(gradeResult.rows[0].grade_name).toUpperCase().trim();
+  let officerRoleCode = null;
+
+  if (rawGradeName.includes("CHAIRPERSON") && !rawGradeName.includes("VICE")) {
+    officerRoleCode = "CHAIRPERSON";
+  } else if (rawGradeName.includes("VICE CHAIRPERSON")) {
+    officerRoleCode = "VICE_CHAIRPERSON";
+  } else if (rawGradeName.includes("TREASURER")) {
+    officerRoleCode = "TREASURER";
+  } else if (rawGradeName.includes("SUPERVISOR")) {
+    officerRoleCode = "SUPERVISOR";
+  } else if (rawGradeName.includes("ADVISOR")) {
+    officerRoleCode = "ADVISOR";
+  }
+
+  // 2. Get current active officer role for this staff
+  const currentRoleResult = await client.query(
+    `
+    SELECT officer_role_code
+    FROM tbl_staff_officer_roles
+    WHERE id_staff = $1
+      AND is_active = 'Y'
+      AND effective_end_date IS NULL
+    LIMIT 1;
+    `,
+    [idStaff]
+  );
+  const currentRoleCode = currentRoleResult.rows[0]?.officer_role_code || null;
+
+  // 3. If the role changed, sync
+  if (officerRoleCode !== currentRoleCode) {
+    // a. Terminate any previous role for this staff
+    await client.query(
+      `
+      UPDATE tbl_staff_officer_roles
+      SET is_active = 'N',
+          effective_end_date = CURRENT_DATE,
+          last_modify_date = NOW(),
+          last_modify_by = $2
+      WHERE id_staff = $1
+        AND is_active = 'Y'
+        AND effective_end_date IS NULL;
+      `,
+      [idStaff, actorId]
+    );
+
+    // b. If the new grade is an officer role
+    if (officerRoleCode) {
+      // Terminate ANYONE ELSE who is currently holding this specific role
+      await client.query(
+        `
+        UPDATE tbl_staff_officer_roles
+        SET is_active = 'N',
+            effective_end_date = CURRENT_DATE,
+            last_modify_date = NOW(),
+            last_modify_by = $2
+        WHERE officer_role_code = $1
+          AND is_active = 'Y'
+          AND effective_end_date IS NULL
+          AND id_staff <> $3;
+        `,
+        [officerRoleCode, actorId, idStaff]
+      );
+
+      // Insert new role record
+      await client.query(
+        `
+        INSERT INTO tbl_staff_officer_roles (
+          id_staff, officer_role_code, effective_start_date, is_shu_eligible, is_active, created_by, last_modify_by
+        ) VALUES (
+          $1, $2, CURRENT_DATE, 'Y', 'Y', $3, $3
+        );
+        `,
+        [idStaff, officerRoleCode, actorId]
+      );
+    }
+  }
+};
+
 const ensureProfile = async (client, payload, idUser, actorId) => {
   const firstName = validatePersonName(payload.first_name, "first_name", true);
   const lastName = validatePersonName(payload.last_name, "last_name", false);
@@ -726,7 +831,7 @@ const listMembers = async (req, res) => {
       SELECT
         m.id_member,
         m.id_user,
-        m.id_profile,
+        p.id_profile,
         m.member_code,
         m.join_date,
         m.total_spending::float AS total_spending,
@@ -743,7 +848,7 @@ const listMembers = async (req, res) => {
       LEFT JOIN tbl_users u
         ON u.id_user = m.id_user
       LEFT JOIN tbl_profiles p
-        ON p.id_profile = m.id_profile
+        ON p.id_user = m.id_user
       ORDER BY m.member_code ASC, m.created_date DESC;
       `
     );
@@ -762,19 +867,19 @@ const createMember = async (req, res) => {
     if (!idUser) throw new Error("id_user is required.");
 
     await client.query("BEGIN");
-    const idProfile = await ensureProfile(client, req.body, idUser, actorId);
+    await ensureProfile(client, req.body, idUser, actorId);
     await acquireAdvisoryLock(client, MEMBER_CODE_LOCK_KEY);
     const nextMemberCode = await generateNextMemberCode(client);
     const result = await client.query(
       `
       INSERT INTO tbl_members (
-        id_user, id_profile, member_code, join_date, created_by, last_modify_by
+        id_user, member_code, join_date, created_by, last_modify_by
       ) VALUES (
-        $1, $2, $3, $4, $5, $5
+        $1, $2, $3, $4, $4
       )
       RETURNING id_member;
       `,
-      [idUser, idProfile, nextMemberCode, joinDate, actorId]
+      [idUser, nextMemberCode, joinDate, actorId]
     );
     await assignRoleByName(client, idUser, "MEMBER", actorId);
     await logActivity(client, req, {
@@ -811,7 +916,7 @@ const updateMember = async (req, res) => {
       [req.params.id]
     );
     if (current.rowCount === 0) throw new Error("Member not found.");
-    const idProfile = await ensureProfile(client, req.body, current.rows[0].id_user, actorId);
+    await ensureProfile(client, req.body, current.rows[0].id_user, actorId);
     if (!current.rows[0].member_code) {
       await acquireAdvisoryLock(client, MEMBER_CODE_LOCK_KEY);
     }
@@ -819,14 +924,13 @@ const updateMember = async (req, res) => {
     await client.query(
       `
       UPDATE tbl_members
-      SET id_profile = $2,
-          member_code = $3,
-          join_date = $4,
+      SET member_code = $2,
+          join_date = $3,
           last_modify_date = NOW(),
-          last_modify_by = $5
+          last_modify_by = $4
       WHERE id_member = $1;
       `,
-      [req.params.id, idProfile, nextMemberCode, joinDate, actorId]
+      [req.params.id, nextMemberCode, joinDate, actorId]
     );
     await logActivity(client, req, {
       idUser: actorId,
@@ -894,7 +998,7 @@ const listStaffs = async (req, res) => {
       SELECT
         s.id_staff,
         s.id_user,
-        s.id_profile,
+        p.id_profile,
         s.id_staff_grade,
         s.staff_code,
         s.join_date,
@@ -930,7 +1034,7 @@ const listStaffs = async (req, res) => {
       LEFT JOIN tbl_users u
         ON u.id_user = s.id_user
       LEFT JOIN tbl_profiles p
-        ON p.id_profile = s.id_profile
+        ON p.id_user = s.id_user
       LEFT JOIN tbl_staff_grades g
         ON g.id_staff_grade = s.id_staff_grade
       ORDER BY s.staff_code ASC, s.created_date DESC;
@@ -953,30 +1057,35 @@ const createStaff = async (req, res) => {
     if (!["ADMIN", "STAFF", "CASHIER"].includes(accessRole)) throw new Error("access_role must be ADMIN, STAFF, or CASHIER.");
 
     await client.query("BEGIN");
-    const idProfile = await ensureProfile(client, req.body, idUser, actorId);
+    await ensureProfile(client, req.body, idUser, actorId);
     await acquireAdvisoryLock(client, STAFF_CODE_LOCK_KEY);
     const nextStaffCode = await generateNextStaffCode(client);
     const result = await client.query(
       `
       INSERT INTO tbl_staff (
-        id_user, id_profile, id_staff_grade, staff_code, join_date, exit_date,
+        id_user, id_staff_grade, staff_code, join_date, exit_date,
         created_by, last_modify_by
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $7
+        $1, $2, $3, $4, $5, $6, $6
       )
       RETURNING id_staff;
       `,
       [idUser, idProfile, req.body.id_staff_grade || null, nextStaffCode, joinDate, null, actorId]
-    );
-    await deactivateRoleByNames(client, idUser, ["ADMIN", "STAFF", "CASHIER"], actorId);
-    await assignRoleByName(client, idUser, accessRole, actorId);
-    await logActivity(client, req, {
+      );
+      const idStaff = result.rows[0].id_staff;
+
+      // Sync officer role history automatically
+      await syncStaffOfficerRole(client, idStaff, req.body.id_staff_grade, actorId);
+
+      await deactivateRoleByNames(client, idUser, ["ADMIN", "STAFF", "CASHIER"], actorId);
+      await assignRoleByName(client, idUser, accessRole, actorId);
+      await logActivity(client, req, {
       idUser: actorId,
       activityType: "CREATE_STAFF",
       tableName: "tbl_staff",
-      recordId: result.rows[0].id_staff,
+      recordId: idStaff,
       description: `Created staff ${nextStaffCode}.`,
-    });
+      });
     await client.query("COMMIT");
     return res.status(201).json({ message: "Staff created successfully.", data: result.rows[0] });
   } catch (error) {
@@ -1006,7 +1115,7 @@ const updateStaff = async (req, res) => {
       [req.params.id]
     );
     if (current.rowCount === 0) throw new Error("Staff not found.");
-    const idProfile = await ensureProfile(client, req.body, current.rows[0].id_user, actorId);
+    await ensureProfile(client, req.body, current.rows[0].id_user, actorId);
     if (!current.rows[0].staff_code) {
       await acquireAdvisoryLock(client, STAFF_CODE_LOCK_KEY);
     }
@@ -1016,18 +1125,20 @@ const updateStaff = async (req, res) => {
     await client.query(
       `
       UPDATE tbl_staff
-      SET id_profile = $2,
-          id_staff_grade = $3,
-          staff_code = $4,
-          join_date = $5,
-          exit_date = $6,
-          is_active = $7,
+      SET id_staff_grade = $2,
+          staff_code = $3,
+          join_date = $4,
+          exit_date = $5,
+          is_active = $6,
           last_modify_date = NOW(),
-          last_modify_by = $8
+          last_modify_by = $7
       WHERE id_staff = $1;
       `,
-      [req.params.id, idProfile, req.body.id_staff_grade || null, nextStaffCode, joinDate, nextExitDate, nextIsActive, actorId]
+      [req.params.id, req.body.id_staff_grade || null, nextStaffCode, joinDate, nextExitDate, nextIsActive, actorId]
     );
+
+    // Sync officer role history automatically
+    await syncStaffOfficerRole(client, req.params.id, req.body.id_staff_grade, actorId);
     if (nextIsActive === "Y") {
       await deactivateRoleByNames(client, current.rows[0].id_user, ["ADMIN", "STAFF", "CASHIER"], actorId);
       await assignRoleByName(client, current.rows[0].id_user, accessRole, actorId);

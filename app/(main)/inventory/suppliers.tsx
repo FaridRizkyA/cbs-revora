@@ -13,14 +13,17 @@ import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu
 import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import SendEmailModal from "../../../components/modals/SendEmailModal";
+import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import {
   buildSupplierDetailReportPrintHtml,
   buildSupplierTableReportPrintHtml,
   downloadSupplierTableReportExcel,
+  supplierTableColumns,
 } from "../../../components/reports/suppliers/SupplierReportPrintTemplate";
+import { buildReportPdfFileName } from "../../../components/reports/shared/ReportPrintTemplate";
 import { canManageInventoryMaster, getAuthSession, normalizeRole } from "../../../utils/authSession";
-import { API_BASE_URL } from "../../../utils/api";
 import { logClientActivity } from "../../../utils/activityLog";
+import { printReportHtml } from "../../../utils/printUtils";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
 
 type Supplier = {
@@ -43,33 +46,6 @@ type SupplierProduct = {
 
 type PendingActionType = "create" | "edit" | "deactivate" | "activate";
 const PHONE_ALLOWED_PATTERN = /^[0-9+\-\s]{1,25}$/;
-
-const printReportHtml = async (html: string) => {
-  await logClientActivity({
-    activityType: "PRINT_REPORT",
-    tableName: "tbl_suppliers",
-    description: "Printed supplier report.",
-  });
-  if (Platform.OS !== "web") {
-    await Print.printAsync({ html });
-    return;
-  }
-
-  if (typeof window === "undefined") return;
-
-  const printWindow = window.open("", "_blank", "width=1024,height=720");
-  if (!printWindow) {
-    throw new Error("Please allow pop-ups to print this report.");
-  }
-
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.setTimeout(() => {
-    printWindow.print();
-  }, 250);
-};
 
 export default function SuppliersScreen() {
   const [roleName, setRoleName] = useState("CASHIER");
@@ -112,7 +88,7 @@ export default function SuppliersScreen() {
   const canManage = canManageInventoryMaster(roleName);
 
   const loadSuppliers = () => {
-    fetch(`${API_BASE_URL}/api/suppliers`)
+    fetchWithAuth("/api/suppliers")
       .then((response) => response.json())
       .then((payload) => {
         const safeRows = Array.isArray(payload?.data) ? payload.data : [];
@@ -206,9 +182,9 @@ export default function SuppliersScreen() {
 
     setSaving(true);
     try {
-      const url = isEdit
-        ? `${API_BASE_URL}/api/suppliers/${editingSupplierId}`
-        : `${API_BASE_URL}/api/suppliers`;
+      const endpoint = isEdit
+        ? `/api/suppliers/${editingSupplierId}`
+        : `/api/suppliers`;
       const method = isEdit ? "PUT" : "POST";
       const body = isEdit
         ? {
@@ -224,7 +200,7 @@ export default function SuppliersScreen() {
             phone_number: formPhone.trim() || null,
           };
 
-      const response = await fetch(url, {
+      const response = await fetchWithAuth(endpoint, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -268,7 +244,7 @@ export default function SuppliersScreen() {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/suppliers/${supplier.id_supplier}/status`, {
+      const response = await fetchWithAuth(`/api/suppliers/${supplier.id_supplier}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id_user: actorId, is_active: nextState }),
@@ -362,7 +338,7 @@ export default function SuppliersScreen() {
     return items;
   };
 
-  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string) => {
+  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string, includeExcel: boolean) => {
     try {
       const isTable = emailTarget === "table";
       const generatedAt = new Date();
@@ -388,27 +364,38 @@ export default function SuppliersScreen() {
         subject: isTable ? "Supplier List Report" : `Supplier Detail - ${selectedSupplier?.supplier_name}`,     
         message,
         format: "PDF",
-        title: isTable ? "Supplier List" : "Supplier Detail",
+        include_excel: includeExcel,
+        title: isTable ? "Supplier Report" : "Supplier Detail",
+        subtitle: isTable ? "Inventory supplier master data" : "",
         generated_by: roleName,
         print_html: printHtml,
         meta: isTable ? buildCurrentSupplierReportMeta() : [
-          { label: "Supplier", value: selectedSupplier?.supplier_name },
           { label: "Code", value: selectedSupplier?.supplier_code },
+          { label: "Supplier", value: selectedSupplier?.supplier_name },
+          { label: "City", value: selectedSupplier?.city },
+          { label: "Phone", value: selectedSupplier?.phone_number },
         ],
-        columns: isTable ? [
-          { key: "supplier_code", title: "Code" },
-          { key: "supplier_name", title: "Name" },
-          { key: "city", title: "City" },
-          { key: "phone_number", title: "Phone" },
-        ] : [
-          { key: "product_code", title: "Product Code" },
-          { key: "product_name", title: "Product Name" },
-          { key: "available_stock", title: "Stock" },
-        ],
-        rows: isTable ? activeRows : selectedSupplierProducts,
+        columns: isTable 
+          ? supplierTableColumns.map(c => ({ key: c.key, title: c.title, align: c.align }))
+          : [
+            { key: "product_code", title: "Product Code" },
+            { key: "product_name", title: "Product Name" },
+            { key: "barcode", title: "Barcode" },
+          ],
+        rows: isTable 
+          ? activeRows.map((row, idx) => {
+              const rowData: any = {};
+              supplierTableColumns.forEach(c => { rowData[c.key] = c.getValue(row, idx); });
+              return rowData;
+            })
+          : selectedSupplierProducts.map(p => ({
+              product_code: p.product_code,
+              product_name: p.product_name,
+              barcode: p.barcode || "-",
+            })),
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/reports/send-email`, {
+      const response = await fetchWithAuth("/api/reports/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(await withEmailPdfAttachment(payload)),
@@ -442,7 +429,11 @@ export default function SuppliersScreen() {
         generatedBy: roleName,
         meta: buildCurrentSupplierReportMeta(),
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_suppliers",
+        description: "Printed supplier report.",
+        fileName: buildReportPdfFileName({ reportKey: "suppliers", variant: "table" }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print supplier report."); 
     }
@@ -477,7 +468,15 @@ export default function SuppliersScreen() {
         generatedBy: roleName,
         meta: [{ label: "Linked Products", value: selectedSupplierProducts.length }],
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_suppliers",
+        description: `Printed supplier detail: ${selectedSupplier.supplier_name}`,
+        fileName: buildReportPdfFileName({
+          reportKey: "suppliers",
+          variant: "detail",
+          documentNumber: selectedSupplier.supplier_code,
+        }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print supplier detail."); 
     }
@@ -614,7 +613,7 @@ export default function SuppliersScreen() {
 
   const openProducts = async (supplier: Supplier) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/suppliers/${supplier.id_supplier}/products`);
+      const response = await fetchWithAuth(`/api/suppliers/${supplier.id_supplier}/products`);
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload?.message || "Failed to fetch supplier products.");

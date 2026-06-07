@@ -1,5 +1,4 @@
 const express = require("express");
-const { authenticateToken } = require("../middleware/authMiddleware");
 const {
   getMemberAccess,
   getMemberOverview,
@@ -10,8 +9,6 @@ const {
 } = require("../modules/memberPortal/memberPortalController");
 
 const router = express.Router();
-
-router.use(authenticateToken);
 
 router.get("/member/access", getMemberAccess);
 router.get("/member/overview", getMemberOverview);

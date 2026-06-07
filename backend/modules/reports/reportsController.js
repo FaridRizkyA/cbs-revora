@@ -51,7 +51,7 @@ const dataSources = {
         p.phone_number,
         m.created_date
       FROM tbl_members m
-      LEFT JOIN tbl_profiles p ON p.id_profile = m.id_profile
+      LEFT JOIN tbl_profiles p ON p.id_user = m.id_user
       LEFT JOIN tbl_users u ON u.id_user = m.id_user
       WHERE m.is_active = 'Y'
         AND ($1::date IS NULL OR m.created_date::date >= $1::date)
@@ -78,7 +78,7 @@ const dataSources = {
         g.grade_name,
         s.created_date
       FROM tbl_staff s
-      LEFT JOIN tbl_profiles p ON p.id_profile = s.id_profile
+      LEFT JOIN tbl_profiles p ON p.id_user = s.id_user
       LEFT JOIN tbl_users u ON u.id_user = s.id_user
       LEFT JOIN tbl_staff_grades g ON g.id_staff_grade = s.id_staff_grade
       WHERE s.is_active = 'Y'

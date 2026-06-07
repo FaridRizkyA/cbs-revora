@@ -71,7 +71,7 @@ const getStockStatusLabel = (product: Pick<ProductReportRow, "available_stock" |
   return "Safe Stock";
 };
 
-const productTableColumns: ReportTableColumn<ProductReportRow>[] = [
+export const productTableColumns: ReportTableColumn<ProductReportRow>[] = [
   {
     key: "row_number",
     title: "No.",

@@ -2,10 +2,15 @@ const jwt = require("jsonwebtoken");
 const pool = require("../config/db");
 
 const authenticateToken = async (req, res, next) => {
+  if (req.method === "OPTIONS") {
+    return next();
+  }
+
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1]; // Format: "Bearer <token>"
 
   if (!token) {
+    console.warn(`[Auth] Access denied for ${req.method} ${req.originalUrl}: No token provided.`);
     return res.status(401).json({ message: "Access denied. No token provided." });
   }
 
@@ -35,14 +40,21 @@ const authenticateToken = async (req, res, next) => {
       }
 
       const user = result.rows[0];
-      if (
-        decoded.jti &&
-        (!user.active_session_jti ||
-          user.active_session_jti !== decoded.jti ||
-          !user.active_session_expires_at ||
-          new Date(user.active_session_expires_at) <= new Date())
-      ) {
-        return res.status(403).json({ message: "Session expired. Please sign in again." });
+      
+      // 1. Check if session has been displaced by a newer login
+      if (decoded.jti && (!user.active_session_jti || user.active_session_jti !== decoded.jti)) {
+        return res.status(403).json({ 
+          message: "Account logged in on another device.",
+          code: "SESSION_DISPLACED"
+        });
+      }
+
+      // 2. Check if session has naturally expired
+      if (!user.active_session_expires_at || new Date(user.active_session_expires_at) <= new Date()) {
+        return res.status(403).json({ 
+          message: "Session expired. Please sign in again.",
+          code: "SESSION_EXPIRED"
+        });
       }
 
       req.user = decoded;

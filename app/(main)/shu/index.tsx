@@ -1,4 +1,3 @@
-import * as Print from "expo-print";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
@@ -12,20 +11,24 @@ import SendEmailModal from "../../../components/modals/SendEmailModal";
 import {
   buildShuDetailReportPrintHtml,
   buildShuYearlyReportPrintHtml,
+  distributionTableColumns,
   downloadShuDetailReportExcel,
   downloadShuYearlyReportExcel,
   ShuSignatureSlot,
+  shuYearlyColumns,
 } from "../../../components/reports/shu";
+import { buildReportPdfFileName } from "../../../components/reports/shared/ReportPrintTemplate";
 import { formatDate, formatDateTime, formatRupiah } from "../../../components/shu/formatters";
 import { ShuHeader } from "../../../components/shu/ShuHeader";
 import { ShuMemberCard } from "../../../components/shu/ShuMemberCard";
 import { ShuOfficerCard } from "../../../components/shu/ShuOfficerCard";
 import { styles } from "../../../components/shu/styles";
 import { MemberDistribution, OfficerDistribution, ShuPeriod } from "../../../components/shu/types";
-import { API_BASE_URL } from "../../../utils/api";
+import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import { logClientActivity } from "../../../utils/activityLog";
 import { canManageShu, getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
+import { printReportHtml } from "../../../utils/printUtils";
 
 type ShuYearRow = {
   id_shu_period: string;
@@ -77,33 +80,6 @@ type StaffSignatureRow = {
   grade_name?: string | null;
 };
 
-const printReportHtml = async (html: string) => {
-  await logClientActivity({
-    activityType: "PRINT_REPORT",
-    tableName: "tbl_shu_periods",
-    description: "Printed SHU report.",
-  });
-  if (Platform.OS !== "web") {
-    await Print.printAsync({ html });
-    return;
-  }
-
-  if (typeof window === "undefined") return;
-
-  const printWindow = window.open("", "_blank", "width=1024,height=720");
-  if (!printWindow) {
-    throw new Error("Please allow pop-ups to print this report.");
-  }
-
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.setTimeout(() => {
-    printWindow.print();
-  }, 250);
-};
-
 const getStaffFullName = (staff?: StaffSignatureRow | null) =>
   staff?.full_name ||
   [staff?.first_name, staff?.last_name].filter(Boolean).join(" ").trim() ||
@@ -124,7 +100,7 @@ const buildShuSignatureSlots = async (fallbackRoleName: string): Promise<ShuSign
   let staffs: StaffSignatureRow[] = [];
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/people/staffs`);
+    const response = await fetchWithAuth("/api/people/staffs");
     const payload = await response.json();
     staffs = Array.isArray(payload?.data) ? payload.data : [];
   } catch {
@@ -196,6 +172,26 @@ export default function ShuScreen() {
   const [canFinalizeShu, setCanFinalizeShu] = useState(false);
   const [finalizeHintOpen, setFinalizeHintOpen] = useState(false);
   const [pendingPeriodAction, setPendingPeriodAction] = useState<"calculate" | "finalize" | null>(null);
+  const [finalizeCountdown, setFinalizeCountdown] = useState(0);
+
+  useEffect(() => {
+    let timer: any = null;
+    if (pendingPeriodAction === "finalize") {
+      setFinalizeCountdown(10);
+      timer = setInterval(() => {
+        setFinalizeCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      setFinalizeCountdown(0);
+    }
+    return () => { if (timer) clearInterval(timer); };
+  }, [pendingPeriodAction]);
 
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [emailTarget, setEmailTarget] = useState<"table" | "detail">("table");
@@ -217,7 +213,7 @@ export default function ShuScreen() {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/shu/yearly-summary`);
+      const res = await fetchWithAuth("/api/shu/yearly-summary");
       const payload = await res.json();
       if (!res.ok) throw new Error(payload.message || "Failed to fetch SHU yearly summary.");
       setRows(Array.isArray(payload.data) ? payload.data : []);
@@ -233,9 +229,9 @@ export default function ShuScreen() {
     setDetailError(null);
     try {
       const detailUrl = row.id_shu_period.startsWith("virtual-")
-        ? `${API_BASE_URL}/api/shu/current-detail?date=${encodeURIComponent(row.start_date)}`
-        : `${API_BASE_URL}/api/shu/current-detail?id_shu_period=${encodeURIComponent(row.id_shu_period)}`;      
-      const res = await fetch(detailUrl);
+        ? `/api/shu/current-detail?date=${encodeURIComponent(row.start_date)}`
+        : `/api/shu/current-detail?id_shu_period=${encodeURIComponent(row.id_shu_period)}`;      
+      const res = await fetchWithAuth(detailUrl);
       const payload = await res.json();
       if (!res.ok) throw new Error(payload.message || "Failed to fetch SHU detail.");
       setDetailData(payload.data || null);
@@ -295,7 +291,7 @@ export default function ShuScreen() {
           return;
         }
 
-        const res = await fetch(`${API_BASE_URL}/api/people/staffs`);
+        const res = await fetchWithAuth("/api/people/staffs");
         const payload = await res.json();
         if (!res.ok) throw new Error(payload.message || "Failed to fetch staff access.");
         const staff = (Array.isArray(payload.data) ? payload.data : []).find((item) => item.id_user === idUser);
@@ -319,7 +315,7 @@ export default function ShuScreen() {
         const session = await getAuthSession();
         const idUser = session?.user?.id_user;
         const endpoint = mode === "calculate" ? "calculate-current" : "finalize-current";
-        const res = await fetch(`${API_BASE_URL}/api/shu/${endpoint}`, {
+        const res = await fetchWithAuth(`/api/shu/${endpoint}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -372,6 +368,12 @@ export default function ShuScreen() {
     const action = pendingPeriodAction;
     setPendingPeriodAction(null);
     if (!action) return;
+
+    if (action === "finalize") {
+      // Automatically recalculate before finalizing to ensure data consistency
+      await runPeriodAction("calculate");
+    }
+    
     await runPeriodAction(action);
   };
 
@@ -490,7 +492,7 @@ export default function ShuScreen() {
     return items;
   };
 
-  const handleSendEmailReport = async (recipientEmail: string, message: string) => {
+  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string, includeExcel: boolean) => {
     try {
       const isTable = emailTarget === "table";
       const generatedAt = new Date();
@@ -510,34 +512,39 @@ export default function ShuScreen() {
               generatedBy: roleName,
             })
           : "";
+
       const payload = {
         recipient_email: recipientEmail,
-        subject: isTable ? "SHU Yearly Summary Report" : `SHU Period Detail - ${detailData?.period.period_name}`,
+        recipient_name: fullName,
+        subject: isTable ? "SHU Yearly Summary Report" : `SHU Detail Report - ${detailData?.period.period_name}`,
         message,
         format: "PDF",
-        title: isTable ? "SHU Yearly Summary" : "SHU Period Detail",
+        include_excel: includeExcel,
+        title: isTable ? "SHU Yearly Summary Report" : "SHU Detail Report",
+        subtitle: isTable ? "Patronage refund yearly summary" : "Patronage refund calculation detail",
         generated_by: roleName,
         print_html: printHtml,
         meta: isTable ? buildCurrentShuReportMeta() : [
           { label: "Period", value: detailData?.period.period_name },
           { label: "Date Range", value: `${formatDate(detailData?.period.start_date || "")} - ${formatDate(detailData?.period.end_date || "")}` },
-          { label: "Net Profit", value: formatRupiah(detailData?.remaining_shu.gross_profit_amount || 0) },
         ],
-        columns: isTable ? [
-          { key: "period_name", title: "Period" },
-          { key: "display_status", title: "Status" },
-          { key: "gross_profit_display", title: "Net Profit" },
-          { key: "total_shu_distributed_amount", title: "Member SHU" },
-        ] : [
-          { key: "month", title: "Month" },
-          { key: "sales_turnover_amount", title: "Sales" },
-          { key: "external_income_amount", title: "External" },
-          { key: "total_income_amount", title: "Total" },
-        ],
-        rows: isTable ? filteredRows : detailData?.monthly_income || [],
+        columns: isTable 
+          ? shuYearlyColumns.map(c => ({ key: c.key, title: c.title, align: c.align }))
+          : distributionTableColumns.map(c => ({ key: c.key, title: c.title, align: c.align })),
+        rows: isTable 
+          ? filteredRows.map((row, idx) => {
+              const rowData: any = {};
+              shuYearlyColumns.forEach(c => { rowData[c.key] = c.getValue(row, idx); });
+              return rowData;
+            })
+          : (detailData?.member_distributions || []).map((row, idx) => {
+              const rowData: any = {};
+              distributionTableColumns.forEach(c => { rowData[c.key] = c.getValue(row, idx); });
+              return rowData;
+            }),
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/reports/send-email`, {
+      const response = await fetchWithAuth("/api/reports/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(await withEmailPdfAttachment(payload)),
@@ -548,12 +555,12 @@ export default function ShuScreen() {
       await logClientActivity({
         activityType: "SEND_REPORT_EMAIL",
         tableName: "tbl_shu_periods",
-        description: "Sent SHU report via email.",
+        description: `Sent SHU report via email to ${recipientEmail}.`,
       });
 
-      showResult("success", "Email Sent", "Email sent successfully.");
+      showResult("success", "Email Sent", "Report has been sent successfully.");
     } catch (error) {
-      showResult("error", "Email Failed", error instanceof Error ? error.message : "Failed to send email.");
+      showResult("error", "Send Failed", error instanceof Error ? error.message : "An error occurred.");
     }
   };
 
@@ -565,7 +572,11 @@ export default function ShuScreen() {
         generatedBy: roleName,
         meta: buildCurrentShuReportMeta(),
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_shu_periods",
+        description: "Printed SHU yearly summary report.",
+        fileName: buildReportPdfFileName({ reportKey: "shu-yearly-summary", variant: "table", date: new Date() }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print SHU yearly summary.");
     }
@@ -600,7 +611,16 @@ export default function ShuScreen() {
         generatedAt: new Date(),
         generatedBy: roleName,
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_shu_periods",
+        description: `Printed SHU detail report for period ${detailData.period.period_name}.`,
+        fileName: buildReportPdfFileName({ 
+          reportKey: "shu-detail", 
+          variant: "detail", 
+          documentNumber: detailData.period.period_name,
+          date: new Date() 
+        }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print SHU detail.");      
     }
@@ -952,9 +972,14 @@ export default function ShuScreen() {
             ? "Finalize this SHU period? This will lock the current calculation snapshot and it cannot be recalculated again."
             : "Recalculate this SHU period using the latest transaction and financial data?"
         }
-        confirmLabel={pendingPeriodAction === "finalize" ? "Finalize" : "Recalculate"}
+        confirmLabel={
+          pendingPeriodAction === "finalize" 
+            ? (finalizeCountdown > 0 ? `Finalize (${finalizeCountdown}s)` : "Finalize Now") 
+            : "Recalculate"
+        }
         tone={pendingPeriodAction === "finalize" ? "danger" : "primary"}
         loading={!!runningAction}
+        confirmDisabled={pendingPeriodAction === "finalize" && finalizeCountdown > 0}
         onCancel={() => (runningAction ? null : setPendingPeriodAction(null))}
         onConfirm={executePendingPeriodAction}
       />

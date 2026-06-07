@@ -66,7 +66,7 @@ const formatDateTime = (value?: string | Date | null) => {
   }).format(date);
 };
 
-const batchTableColumns: ReportTableColumn<BatchReportRow>[] = [
+export const batchTableColumns: ReportTableColumn<BatchReportRow>[] = [
   {
     key: "row_number",
     title: "No.",

@@ -35,7 +35,7 @@ export const buildGenericReportPdfFileName = (reportKey: string, date?: string |
     date,
   });
 
-const buildColumns = (columns: GenericReportColumn[]): ReportTableColumn<GenericReportRow>[] => [
+export const buildColumns = (columns: GenericReportColumn[]): ReportTableColumn<GenericReportRow>[] => [
   {
     key: "row_number",
     title: "No.",

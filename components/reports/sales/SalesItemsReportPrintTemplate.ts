@@ -50,7 +50,7 @@ const formatDateTime = (value?: string | Date | null) => {
   }).format(date);
 };
 
-const salesItemsTableColumns: ReportTableColumn<SalesItemReportRow>[] = [
+export const salesItemsTableColumns: ReportTableColumn<SalesItemReportRow>[] = [
   {
     key: "row_number",
     title: "No.",
@@ -104,7 +104,7 @@ const salesItemsTableColumns: ReportTableColumn<SalesItemReportRow>[] = [
   },
 ];
 
-const salesItemsExcelColumns: ExcelColumn<SalesItemReportRow>[] = [
+export const salesItemsExcelColumns: ExcelColumn<SalesItemReportRow>[] = [
   {
     key: "row_number",
     title: "No.",

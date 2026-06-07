@@ -21,8 +21,12 @@ export type AuthSession = {
   expires_at?: string | null;
 };
 
+export type AppMode = "STAFF" | "MEMBER";
+
 const AUTH_SESSION_KEY = "cbs_revora_auth_session";
+const APP_MODE_KEY = "cbs_revora_app_mode";
 const sessionListeners = new Set<(session: AuthSession | null) => void>();
+const modeListeners = new Set<(mode: AppMode) => void>();
 
 const canUseWebStorage = () => Platform.OS === "web" && typeof localStorage !== "undefined";
 
@@ -31,7 +35,6 @@ const setSessionRaw = async (value: string) => {
     localStorage.setItem(AUTH_SESSION_KEY, value);
     return;
   }
-
   await SecureStore.setItemAsync(AUTH_SESSION_KEY, value);
 };
 
@@ -39,7 +42,6 @@ const getSessionRaw = async () => {
   if (canUseWebStorage()) {
     return localStorage.getItem(AUTH_SESSION_KEY);
   }
-
   return SecureStore.getItemAsync(AUTH_SESSION_KEY);
 };
 
@@ -48,7 +50,6 @@ const clearSessionRaw = async () => {
     localStorage.removeItem(AUTH_SESSION_KEY);
     return;
   }
-
   await SecureStore.deleteItemAsync(AUTH_SESSION_KEY);
 };
 
@@ -59,11 +60,7 @@ export const saveAuthSession = async (session: AuthSession) => {
 
 export const getAuthSession = async (): Promise<AuthSession | null> => {
   const raw = await getSessionRaw();
-
-  if (!raw) {
-    return null;
-  }
-
+  if (!raw) return null;
   try {
     return JSON.parse(raw) as AuthSession;
   } catch {
@@ -90,6 +87,13 @@ export const logoutAuthSession = async () => {
       },
     }).catch(() => null);
   }
+  
+  if (canUseWebStorage()) {
+    localStorage.removeItem(APP_MODE_KEY);
+  } else {
+    await SecureStore.deleteItemAsync(APP_MODE_KEY);
+  }
+
   await clearAuthSession();
 };
 
@@ -106,22 +110,38 @@ export const subscribeAuthSession = (listener: (session: AuthSession | null) => 
   };
 };
 
-export const getRouteByRole = (roleNameRaw: string | null | undefined) => {
-  const roleName = String(roleNameRaw || "").trim().toUpperCase();
-
-  if (roleName === "CASHIER") {
-    return "/(cashier)";
+export const getAppMode = async (): Promise<AppMode> => {
+  if (canUseWebStorage()) {
+    return (localStorage.getItem(APP_MODE_KEY) as AppMode) || "STAFF";
   }
+  return ((await SecureStore.getItemAsync(APP_MODE_KEY)) as AppMode) || "STAFF";
+};
 
-  if (roleName === "MEMBER") {
-    return "/(member)/dashboard";
+export const setAppMode = async (mode: AppMode) => {
+  if (canUseWebStorage()) {
+    localStorage.setItem(APP_MODE_KEY, mode);
+  } else {
+    await SecureStore.setItemAsync(APP_MODE_KEY, mode);
   }
+  modeListeners.forEach((l) => l(mode));
+};
 
-  return "/(main)/dashboard";
+export const subscribeAppMode = (listener: (mode: AppMode) => void) => {
+  modeListeners.add(listener);
+  return () => {
+    modeListeners.delete(listener);
+  };
 };
 
 export const normalizeRole = (roleNameRaw: string | null | undefined) =>
   String(roleNameRaw || "").trim().toUpperCase();
+
+export const getRouteByRole = (roleNameRaw: string | null | undefined) => {
+  const roleName = normalizeRole(roleNameRaw);
+  if (roleName === "CASHIER") return "/(cashier)";
+  if (roleName === "MEMBER") return "/(main)/portal/dashboard";
+  return "/(main)/dashboard";
+};
 
 export const canAccessCashierMode = (roleNameRaw: string | null | undefined) => {
   const roleName = normalizeRole(roleNameRaw);
@@ -133,17 +153,14 @@ export const canAccessCashierModeWithGrade = (
   staffGradeNameRaw: string | null | undefined
 ) => {
   const roleName = normalizeRole(roleNameRaw);
-  if (roleName === "CASHIER") {
-    return true;
-  }
-
+  if (roleName === "CASHIER") return true;
   const gradeName = String(staffGradeNameRaw || "").trim().toUpperCase();
   return gradeName.includes("OPERATIONAL STAFF");
 };
 
 export const canAccessMainApp = (roleNameRaw: string | null | undefined) => {
   const roleName = normalizeRole(roleNameRaw);
-  return roleName === "CASHIER" || roleName === "STAFF" || roleName === "ADMIN";
+  return roleName === "CASHIER" || roleName === "STAFF" || roleName === "ADMIN" || roleName === "MEMBER";
 };
 
 export const canManageInventoryMaster = (roleNameRaw: string | null | undefined) => {
@@ -231,34 +248,30 @@ const CASHIER_MAIN_ALLOWED_PATHS = new Set([
   "/stock-movements/stock-adjustment",
   "/(main)/reports",
   "/reports",
+  "/(main)/profile",
   "/profile",
 ]);
 
 export const canCashierAccessMainPath = (pathname: string) => {
-  if (pathname === "/(main)" || pathname === "/main" || pathname === "/") {
-    return false;
-  }
-
+  if (pathname === "/(main)" || pathname === "/main" || pathname === "/") return false;
   return CASHIER_MAIN_ALLOWED_PATHS.has(pathname);
 };
 
 const MEMBER_ALLOWED_PATHS = new Set([
-  "/(member)/dashboard",
-  "/dashboard",
-  "/(member)/transactions",
-  "/transactions",
-  "/(member)/shu",
-  "/shu",
-  "/(member)/profile",
+  "/(main)/portal/dashboard",
+  "/portal/dashboard",
+  "/(main)/portal/transactions",
+  "/portal/transactions",
+  "/(main)/portal/shu",
+  "/portal/shu",
+  "/(main)/portal/profile",
+  "/portal/profile",
+  "/(main)/profile",
   "/profile",
 ]);
 
 export const canAccessMemberPath = (pathname: string) => {
-  if (pathname === "/(member)" || pathname === "/member" || pathname === "/") {
-    return false;
-  }
-
-  // Handle nested or dynamic paths if any, otherwise exact match
+  if (pathname === "/(main)/portal" || pathname === "/portal" || pathname === "/") return false;
   return MEMBER_ALLOWED_PATHS.has(pathname);
 };
 
@@ -267,10 +280,11 @@ export const canAccessMainPath = (roleNameRaw: string | null | undefined, pathna
   if (!canAccessMainApp(roleName)) return false;
 
   if (pathname === "/(main)" || pathname === "/main" || pathname === "/") {
-    return roleName !== "CASHIER";
+    return roleName !== "CASHIER" && roleName !== "MEMBER";
   }
 
   if (roleName === "CASHIER") return canCashierAccessMainPath(pathname);
+  if (roleName === "MEMBER") return canAccessMemberPath(pathname);
 
   if (pathname.startsWith("/(main)/users") || pathname.startsWith("/(main)/members") || pathname.startsWith("/(main)/staffs")) {
     return canViewPeople(roleName);
@@ -282,4 +296,3 @@ export const canAccessMainPath = (roleNameRaw: string | null | undefined, pathna
 
   return true;
 };
-

@@ -52,7 +52,7 @@ const formatDateTime = (value?: string | Date | null) => {
   }).format(date);
 };
 
-const salesCostTableColumns: ReportTableColumn<SalesCostReportRow>[] = [
+export const salesCostTableColumns: ReportTableColumn<SalesCostReportRow>[] = [
   {
     key: "row_number",
     title: "No.",

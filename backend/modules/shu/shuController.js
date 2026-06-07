@@ -166,7 +166,7 @@ const calculateShuData = async (client, period) => {
         COALESCE(SUM(s.total_amount), 0)::float AS member_total_spending
       FROM tbl_members m
       LEFT JOIN tbl_profiles p
-        ON p.id_profile = m.id_profile
+        ON p.id_user = m.id_user
       LEFT JOIN tbl_sales s
         ON s.id_member = m.id_member
        AND s.is_active = 'Y'
@@ -712,7 +712,7 @@ const getCurrentShuResult = async (req, res) => {
         JOIN tbl_members m
           ON m.id_member = d.id_member
         LEFT JOIN tbl_profiles p
-          ON p.id_profile = m.id_profile
+          ON p.id_user = m.id_user
         WHERE d.id_shu_period = $1
           AND d.is_active = 'Y'
           AND m.is_active = 'Y'
@@ -871,7 +871,7 @@ const getCurrentShuDetail = async (req, res) => {
         JOIN tbl_members m
           ON m.id_member = d.id_member
         LEFT JOIN tbl_profiles p
-          ON p.id_profile = m.id_profile
+          ON p.id_user = m.id_user
         WHERE d.id_shu_period = $1
           AND d.is_active = 'Y'
           AND m.is_active = 'Y'

@@ -42,7 +42,7 @@ const REPORT_KEY = "inventory-suppliers";
 
 const getSupplierStatusLabel = (value?: string | null) => (value === "Y" ? "Active" : "Inactive");
 
-const supplierTableColumns: ReportTableColumn<SupplierReportRow>[] = [
+export const supplierTableColumns: ReportTableColumn<SupplierReportRow>[] = [
   {
     key: "row_number",
     title: "No.",
@@ -129,6 +129,13 @@ export const downloadSupplierTableReportExcel = ({
     emptyText: "No supplier data found.",
   });
 
+export const supplierDetailProductsColumns: ReportTableColumn<SupplierReportProductRow>[] = [
+  { key: "row_number", title: "No.", align: "center", width: "48px", getValue: (_row, index) => index + 1 },
+  { key: "product_code", title: "Product Code", width: "22%", getValue: (row) => row.product_code },
+  { key: "product_name", title: "Product Name", getValue: (row) => row.product_name },
+  { key: "barcode", title: "Barcode", width: "24%", getValue: (row) => row.barcode },
+];
+
 export const buildSupplierDetailReportPrintHtml = ({
   supplier,
   products = [],
@@ -160,18 +167,12 @@ export const buildSupplierDetailReportPrintHtml = ({
       {
         title: "Linked Products",
         emptyText: "No linked products.",
-        columns: [
-          { key: "row_number", title: "No.", align: "center", width: "48px" },
-          { key: "product_code", title: "Product Code", width: "22%" },
-          { key: "product_name", title: "Product Name" },
-          { key: "barcode", title: "Barcode", width: "24%" },
-        ],
-        rows: products.map((product, index) => ({
-          row_number: index + 1,
-          product_code: product.product_code,
-          product_name: product.product_name,
-          barcode: product.barcode,
-        })),
+        columns: supplierDetailProductsColumns,
+        rows: products.map((product, index) => {
+          const rowData: any = {};
+          supplierDetailProductsColumns.forEach(c => { rowData[c.key] = c.getValue(product, index); });
+          return rowData;
+        }),
       },
     ],
   });

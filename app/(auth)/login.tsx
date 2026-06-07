@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { InventoryConfirmModal, InventoryResultModal } from "../../components/inventory/ActionModals";
 import AppButton from "../../components/forms/AppButton";
 import AppInput from "../../components/forms/AppInput";
 import { API_BASE_URL } from "../../utils/api";
@@ -24,7 +25,7 @@ type AuthView = "login" | "forgot-email" | "forgot-otp" | "forgot-reset";
 
 export default function LoginScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ expired?: string }>();
+  const params = useLocalSearchParams<{ expired?: string; displaced?: string }>();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const shortSide = Math.min(width, height);
@@ -40,6 +41,7 @@ export default function LoginScreen() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [displacedModalOpen, setDisplacedModalOpen] = useState(false);
   const isTabletLike = shortSide >= 768;
   const baseWidth = isTabletLike ? 560 : 420;
   const baseHeight = isTabletLike ? 700 : 740;
@@ -61,7 +63,10 @@ export default function LoginScreen() {
     if (params.expired === "1") {
       setLoginError("Your session has expired. Please sign in again.");
     }
-  }, [params.expired]);
+    if (params.displaced === "1") {
+      setDisplacedModalOpen(true);
+    }
+  }, [params.expired, params.displaced]);
 
   const handleLogin = async () => {
     const identifier = email.trim();
@@ -349,6 +354,16 @@ export default function LoginScreen() {
           </View>
         </View>
       </SafeAreaView>
+      <InventoryResultModal
+        visible={displacedModalOpen}
+        status="info"
+        title="Account Displaced"
+        message="Your account has been logged in on a new device. This session has been automatically deactivated."
+        onClose={() => {
+          setDisplacedModalOpen(false);
+          router.setParams({ displaced: undefined });
+        }}
+      />
     </ImageBackground>
   );
 }

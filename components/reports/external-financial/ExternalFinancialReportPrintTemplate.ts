@@ -67,7 +67,7 @@ const calculateSummary = (rows: ExternalFinancialReportRow[]) => {
   };
 };
 
-const externalFinancialTableColumns: ReportTableColumn<ExternalFinancialReportRow>[] = [
+export const externalFinancialTableColumns: ReportTableColumn<ExternalFinancialReportRow>[] = [
   {
     key: "row_number",
     title: "No.",

@@ -7,7 +7,7 @@ import IconFilterButton from "../../../components/inventory/IconFilterButton";
 import PrimaryActionButton from "../../../components/inventory/PrimaryActionButton";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import { InventoryConfirmModal, InventoryResultModal } from "../../../components/inventory/ActionModals";
-import { API_BASE_URL } from "../../../utils/api";
+import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import { canInsertStockMovement, getAuthSession, normalizeRole } from "../../../utils/authSession";
 
 type StockOutManualDocument = {
@@ -91,7 +91,7 @@ export default function StockOutManualScreen() {
   const canInsert = canInsertStockMovement(roleName);
 
   const loadRows = () => {
-    fetch(`${API_BASE_URL}/api/stock-out-manual-documents`)
+    fetchWithAuth("/api/stock-out-manual-documents")
       .then((response) => response.json())
       .then((payload) => {
         const safeRows = Array.isArray(payload?.data) ? payload.data : [];
@@ -101,7 +101,7 @@ export default function StockOutManualScreen() {
   };
 
   const loadProducts = async () => {
-    const response = await fetch(`${API_BASE_URL}/api/products`);
+    const response = await fetchWithAuth("/api/products");
     const payload = await response.json();
     const safeRows = Array.isArray(payload?.data) ? payload.data : [];
     setProducts(safeRows.filter((item) => item?.is_active !== "N"));
@@ -154,7 +154,7 @@ export default function StockOutManualScreen() {
 
   const openDetail = async (idStockOutManual: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stock-out-manual-documents/${idStockOutManual}`);
+      const response = await fetchWithAuth(`/api/stock-out-manual-documents/${idStockOutManual}`);
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error || payload?.message || "Failed to fetch detail.");
       setSelectedDoc(payload?.data || null);
@@ -182,7 +182,7 @@ export default function StockOutManualScreen() {
 
     setSaving(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stock-out-manual`, {
+      const response = await fetchWithAuth("/api/stock-out-manual", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

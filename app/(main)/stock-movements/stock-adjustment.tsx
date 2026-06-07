@@ -17,9 +17,12 @@ import {
   buildStockAdjustmentDetailReportPrintHtml,
   buildStockAdjustmentTableReportPrintHtml,
   downloadStockAdjustmentTableReportExcel,
+  stockAdjustmentTableColumns,
 } from "../../../components/reports/stock-adjustment/StockAdjustmentReportPrintTemplate";
-import { API_BASE_URL } from "../../../utils/api";
+import { buildReportPdfFileName } from "../../../components/reports/shared/ReportPrintTemplate";
+import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import { logClientActivity } from "../../../utils/activityLog";
+import { printReportHtml } from "../../../utils/printUtils";
 import { canInsertStockMovement, getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
 
@@ -60,33 +63,6 @@ type ProductBatch = {
 
 const displayText = (value?: string | null) => String(value || "-").replaceAll("_", " ");
 const formatCurrency = (value: number) => `Rp ${Math.round(value || 0).toLocaleString("id-ID")}`;
-
-const printReportHtml = async (html: string) => {
-  await logClientActivity({
-    activityType: "PRINT_REPORT",
-    tableName: "tbl_stock_movements",
-    description: "Printed stock adjustment report.",
-  });
-  if (Platform.OS !== "web") {
-    await Print.printAsync({ html });
-    return;
-  }
-
-  if (typeof window === "undefined") return;
-
-  const printWindow = window.open("", "_blank", "width=1024,height=720");
-  if (!printWindow) {
-    throw new Error("Please allow pop-ups to print this report.");
-  }
-
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.setTimeout(() => {
-    printWindow.print();
-  }, 250);
-};
 
 export default function StockAdjustmentScreen() {
   const [rows, setRows] = useState<Movement[]>([]);
@@ -138,7 +114,7 @@ export default function StockAdjustmentScreen() {
   const canInsert = canInsertStockMovement(roleName);
 
   const loadRows = () => {
-    fetch(`${API_BASE_URL}/api/stock-adjustments`)
+    fetchWithAuth("/api/stock-adjustments")
       .then((response) => response.json())
       .then((payload) => {
         const safeRows = Array.isArray(payload?.data) ? payload.data : [];
@@ -148,7 +124,7 @@ export default function StockAdjustmentScreen() {
   };
 
   const loadProducts = async () => {
-    const response = await fetch(`${API_BASE_URL}/api/products`);
+    const response = await fetchWithAuth("/api/products");
     const payload = await response.json();
     const safeRows = Array.isArray(payload?.data) ? payload.data : [];
     setProducts(safeRows.filter((item) => item?.is_active !== "N"));
@@ -200,7 +176,7 @@ export default function StockAdjustmentScreen() {
       setSelectedBatchId("");
       return;
     }
-    fetch(`${API_BASE_URL}/api/products/${selectedProductId}/batches`)
+    fetchWithAuth(`/api/products/${selectedProductId}/batches`)
       .then((response) => response.json())
       .then((payload) => {
         const safeRows = Array.isArray(payload?.data) ? payload.data : [];
@@ -269,7 +245,7 @@ export default function StockAdjustmentScreen() {
     return items;
   };
 
-  const handleSendEmailReport = async (recipientEmail: string, message: string) => {
+  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string, includeExcel: boolean) => {
     try {
       const isTable = emailTarget === "table";
       const generatedAt = new Date();
@@ -289,10 +265,13 @@ export default function StockAdjustmentScreen() {
           : "";
       const payload = {
         recipient_email: recipientEmail,
+        recipient_name: fullName,
         subject: isTable ? "Stock Adjustment List Report" : `Adjustment Detail - ${selectedRow?.adjustment_code}`,
         message,
         format: "PDF",
-        title: isTable ? "Stock Adjustment List" : "Adjustment Detail",
+        include_excel: includeExcel,
+        title: isTable ? "Stock Adjustment Report" : "Stock Adjustment Detail",
+        subtitle: isTable ? "Inventory stock correction journal" : "Inventory stock correction journal entry",
         generated_by: roleName,
         print_html: printHtml,
         meta: isTable ? buildCurrentStockAdjustmentReportMeta() : [
@@ -301,23 +280,27 @@ export default function StockAdjustmentScreen() {
           { label: "Type", value: selectedRow?.adjustment_type },
           { label: "Qty", value: String(selectedRow?.quantity || 0) },
         ],
-        columns: isTable ? [
-          { key: "adjustment_code", title: "Code" },
-          { key: "product_name", title: "Product" },
-          { key: "adjustment_type", title: "Type" },
-          { key: "quantity", title: "Qty" },
-          { key: "operator_name", title: "Operator" },
-        ] : [
-          { key: "adjustment_code", title: "Code" },
-          { key: "product_name", title: "Product" },
-          { key: "batch_code", title: "Batch" },
-          { key: "adjustment_type", title: "Type" },
-          { key: "quantity", title: "Qty" },
-        ],
-        rows: isTable ? filteredRows : [selectedRow],
+        columns: isTable
+          ? stockAdjustmentTableColumns.map((c) => ({ key: c.key, title: c.title, align: c.align }))
+          : [
+              { key: "adjustment_code", title: "Code" },
+              { key: "product_name", title: "Product" },
+              { key: "batch_code", title: "Batch" },
+              { key: "adjustment_type", title: "Type" },
+              { key: "quantity", title: "Qty" },
+            ],
+        rows: isTable
+          ? filteredRows.map((row, idx) => {
+              const rowData: any = {};
+              stockAdjustmentTableColumns.forEach((c) => {
+                rowData[c.key] = c.getValue(row, idx);
+              });
+              return rowData;
+            })
+          : [selectedRow],
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/reports/send-email`, {
+      const response = await fetchWithAuth("/api/reports/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(await withEmailPdfAttachment(payload)),
@@ -351,7 +334,11 @@ export default function StockAdjustmentScreen() {
         generatedBy: roleName,
         meta: buildCurrentStockAdjustmentReportMeta(),
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_stock_movements",
+        description: "Printed stock adjustment list report.",
+        fileName: buildReportPdfFileName({ reportKey: "inventory-stock-adjustment", variant: "table", date: new Date() }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print stock adjustment report.");
     }
@@ -384,7 +371,11 @@ export default function StockAdjustmentScreen() {
         generatedAt: new Date(),
         generatedBy: roleName,
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_stock_movements",
+        description: `Printed stock adjustment detail ${selectedRow.adjustment_code}`,
+        fileName: buildReportPdfFileName({ reportKey: "inventory-stock-adjustment", variant: "detail", documentNumber: selectedRow.adjustment_code, date: new Date() }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print stock adjustment detail.");
     }
@@ -492,7 +483,7 @@ export default function StockAdjustmentScreen() {
 
     setSaving(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stock-adjustments`, {
+      const response = await fetchWithAuth("/api/stock-adjustments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

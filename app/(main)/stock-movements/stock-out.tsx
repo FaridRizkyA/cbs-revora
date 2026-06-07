@@ -1,6 +1,5 @@
-import * as Print from "expo-print";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import DatePickerField from "../../../components/inventory/DatePickerField";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
@@ -13,13 +12,16 @@ import InventoryDataTable, { InventoryDataTableColumn } from "../../../component
 import { InventoryConfirmModal, InventoryResultModal } from "../../../components/inventory/ActionModals";       
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import SendEmailModal from "../../../components/modals/SendEmailModal";
+import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import {
   buildStockOutDetailReportPrintHtml,
   buildStockOutTableReportPrintHtml,
   downloadStockOutTableReportExcel,
+  stockOutTableColumns,
 } from "../../../components/reports/stock-out/StockOutReportPrintTemplate";
-import { API_BASE_URL } from "../../../utils/api";
+import { buildReportPdfFileName } from "../../../components/reports/shared/ReportPrintTemplate";
 import { logClientActivity } from "../../../utils/activityLog";
+import { printReportHtml } from "../../../utils/printUtils";
 import { canInsertStockMovement, getAuthSession, normalizeRole } from "../../../utils/authSession";
 
 type StockOutDocument = {
@@ -89,33 +91,6 @@ const MANUAL_REASONS = ["DAMAGED", "EXPIRED", "RETURN_TO_SUPPLIER", "LOST", "DON
 const formatCurrency = (value: number) => `Rp ${Math.round(value || 0).toLocaleString("id-ID")}`;
 const displayText = (value?: string | null) => String(value || "-").replaceAll("_", " ");
 const isRefundStockOutType = (value?: string | null) => String(value || "").toUpperCase() === "RETURN_TO_SUPPLIER_REFUND";
-
-const printReportHtml = async (html: string) => {
-  await logClientActivity({
-    activityType: "PRINT_REPORT",
-    tableName: "tbl_stock_movements",
-    description: "Printed stock out report.",
-  });
-  if (Platform.OS !== "web") {
-    await Print.printAsync({ html });
-    return;
-  }
-
-  if (typeof window === "undefined") return;
-
-  const printWindow = window.open("", "_blank", "width=1024,height=720");
-  if (!printWindow) {
-    throw new Error("Please allow pop-ups to print this report.");
-  }
-
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.setTimeout(() => {
-    printWindow.print();
-  }, 250);
-};
 
 export default function StockOutScreen() {
   const [rows, setRows] = useState<StockOutDocument[]>([]);
@@ -212,8 +187,8 @@ export default function StockOutScreen() {
 
   const loadRows = () => {
     Promise.all([
-      fetch(`${API_BASE_URL}/api/stock-out-documents`).then((r) => r.json()),
-      fetch(`${API_BASE_URL}/api/stock-out-manual-documents`).then((r) => r.json()),
+      fetchWithAuth("/api/stock-out-documents").then((r) => r.json()),
+      fetchWithAuth("/api/stock-out-manual-documents").then((r) => r.json()),
     ])
       .then(([salePayload, manualPayload]) => {
         const saleRows = Array.isArray(salePayload?.data) ? salePayload.data : [];
@@ -233,7 +208,7 @@ export default function StockOutScreen() {
   };
 
   const loadProducts = async () => {
-    const response = await fetch(`${API_BASE_URL}/api/products`);
+    const response = await fetchWithAuth("/api/products");
     const payload = await response.json();
     const data = Array.isArray(payload?.data) ? payload.data : [];
     setProducts(data.filter((x: any) => x.is_active !== "N"));
@@ -260,7 +235,7 @@ export default function StockOutScreen() {
 
   const loadBatchesByProduct = (idProduct: string) => {
     if (batchesByProduct[idProduct]) return;
-    fetch(`${API_BASE_URL}/api/products/${idProduct}/batches`)
+    fetchWithAuth(`/api/products/${idProduct}/batches`)
       .then((r) => r.json())
       .then((p) => {
         setBatchesByProduct((prev) => ({ ...prev, [idProduct]: Array.isArray(p?.data) ? p.data : [] }));
@@ -338,7 +313,7 @@ export default function StockOutScreen() {
     return items;
   };
 
-  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string) => {
+  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string, includeExcel: boolean) => {
     try {
       const isTable = emailTarget === "table";
       const payload = {
@@ -347,28 +322,34 @@ export default function StockOutScreen() {
         subject: isTable ? "Stock Out List Report" : `Stock Out Detail - ${selectedDoc?.stock_out_code}`,       
         message,
         format: "PDF",
-        title: isTable ? "Stock Out List" : "Stock Out Detail",
+        include_excel: includeExcel,
+        title: isTable ? "Stock Out Report" : "Stock Out Detail",
+        subtitle: isTable ? "Inventory stock out documents" : "",
         generated_by: roleName,
         meta: isTable ? buildCurrentStockOutReportMeta() : [
           { label: "Code", value: selectedDoc?.stock_out_code },
           { label: "Type", value: displayText(selectedDoc?.stock_out_type) },
-          { label: "Date", value: new Date(selectedDoc?.stock_out_date || "").toLocaleString("id-ID") },        
+          { label: "Date", value: selectedDoc?.stock_out_date ? new Date(selectedDoc.stock_out_date).toLocaleString("id-ID") : "-" },        
         ],
-        columns: isTable ? [
-          { key: "stock_out_code", title: "Code" },
-          { key: "stock_out_type", title: "Type" },
-          { key: "item_count", title: "Items" },
-          { key: "total_qty", title: "Qty" },
-          { key: "stock_out_date", title: "Date" },
-        ] : [
-          { key: "product_name", title: "Product" },
-          { key: "batch_code", title: "Batch" },
-          { key: "quantity", title: "Qty" },
-        ],
-        rows: isTable ? filteredRows : selectedDoc?.items || [],
+        columns: isTable 
+          ? stockOutTableColumns.map(c => ({ key: c.key, title: c.title, align: c.align }))
+          : [
+            { key: "product_name", title: "Product" },
+            { key: "batch_code", title: "Batch" },
+            { key: "quantity", title: "Qty" },
+          ],
+        rows: isTable 
+          ? filteredRows.map((row, idx) => {
+              const rowData: any = {};
+              stockOutTableColumns.forEach(c => {
+                rowData[c.key] = c.getValue(row, idx);
+              });
+              return rowData;
+            })
+          : selectedDoc?.items || [],
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/reports/send-email`, {
+      const response = await fetchWithAuth("/api/reports/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -396,7 +377,11 @@ export default function StockOutScreen() {
         generatedBy: roleName,
         meta: buildCurrentStockOutReportMeta(),
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_stock_movements",
+        description: "Printed stock out list report.",
+        fileName: buildReportPdfFileName({ reportKey: "inventory-stock-out", variant: "table", date: new Date() }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print stock out report.");
     }
@@ -428,7 +413,11 @@ export default function StockOutScreen() {
         generatedAt: new Date(),
         generatedBy: roleName,
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        tableName: "tbl_stock_movements",
+        description: `Printed stock out detail ${selectedDoc.stock_out_code}`,
+        fileName: buildReportPdfFileName({ reportKey: "inventory-stock-out", variant: "detail", documentNumber: selectedDoc.stock_out_code, date: new Date() }),
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print stock out detail.");
     }
@@ -436,9 +425,9 @@ export default function StockOutScreen() {
 
   const openDetail = useCallback(async (row: StockOutDocument) => {
     const type = String(row.stock_out_type || "SALE").toUpperCase();
-    const endpoint = type === "SALE" ? `${API_BASE_URL}/api/stock-out-documents/${row.id_stock_out}` : `${API_BASE_URL}/api/stock-out-manual-documents/${row.id_stock_out}`;
+    const endpoint = type === "SALE" ? `/api/stock-out-documents/${row.id_stock_out}` : `/api/stock-out-manual-documents/${row.id_stock_out}`;
     try {
-      const response = await fetch(endpoint);
+      const response = await fetchWithAuth(endpoint);
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.message || payload?.error || "Failed to fetch stock out detail.");
       setSelectedDoc(payload?.data || null);
@@ -538,7 +527,7 @@ export default function StockOutScreen() {
 
     setSaving(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stock-out-manual`, {
+      const response = await fetchWithAuth("/api/stock-out-manual", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

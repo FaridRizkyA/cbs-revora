@@ -9,12 +9,16 @@ import {
   canAccessMainApp,
   canAccessMainPath,
   canAccessCashierModeWithGrade,
+  getAppMode,
   getAuthSession,
   getRouteByRole,
   isAuthSessionExpired,
   logoutAuthSession,
   normalizeRole,
+  setAppMode,
+  subscribeAppMode,
   subscribeAuthSession,
+  AppMode,
 } from "../../utils/authSession";
 
 const SIDEBAR_LOGO = require("../../assets/images/ui/logo_horizontal.png");
@@ -75,6 +79,12 @@ const MAIN_MENU_CASHIER: NavigationItem[] = [
   { key: "reports", label: "Reports", icon: "file-text" },
 ];
 
+const MAIN_MENU_MEMBER: NavigationItem[] = [
+  { key: "member-dashboard", label: "Dashboard", icon: "grid" },
+  { key: "member-transactions", label: "Transactions", icon: "list" },
+  { key: "member-shu", label: "SHU History", icon: "pie-chart" },
+];
+
 const routeBySubmenu = (child: string) => {
   if (child === "Products") return "/(main)/inventory/products";
   if (child === "Suppliers") return "/(main)/inventory/suppliers";
@@ -104,6 +114,7 @@ export default function MainLayout() {
   const usableHeight = Math.max(height - topPad - bottomPad, 320);
   const appScale = Math.min(1, Math.min(width / BASE_WIDTH, usableHeight / BASE_HEIGHT));
   const [ready, setReady] = useState(false);
+  const [appMode, setAppModeState] = useState<AppMode>("STAFF");
   const [roleName, setRoleName] = useState<string>("ADMIN");
   const [profileName, setProfileName] = useState<string>("User");
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -161,14 +172,32 @@ export default function MainLayout() {
       }
 
       if (!canAccessMainPath(nextRole, pathname)) {
-        router.replace(nextRole === "CASHIER" ? "/(main)/inventory/products" : "/(main)/dashboard");
+        router.replace(nextRole === "CASHIER" ? "/(main)/inventory/products" : (nextRole === "MEMBER" ? "/(main)/portal/dashboard" : "/(main)/dashboard"));
         return;
       }
 
-      if (!active) {
-        return;
+      if (!active) return;
+
+      // Backend check to verify JTI displacement
+      try {
+        const verifyRes = await fetchWithAuth("/api/auth/verify-session");
+        if (verifyRes.status === 401 || verifyRes.status === 403) {
+          const payload = await verifyRes.json().catch(() => ({}));
+          await logoutAuthSession();
+          
+          if (payload.code === "SESSION_DISPLACED") {
+            router.replace("/login?displaced=1");
+          } else {
+            router.replace("/login?expired=1");
+          }
+          return;
+        }
+      } catch {
+        // Network errors handled by allowing ready for now
       }
 
+      const initialMode = await getAppMode();
+      setAppModeState(initialMode);
       applySessionUser(session);
       scheduleExpiryLogout(session.expires_at);
       setHasMemberAccess(false);
@@ -176,9 +205,27 @@ export default function MainLayout() {
 
       fetchWithAuth("/api/member/access")
         .then((response) => response.json().then((payload) => ({ response, payload })))
-        .then(({ response, payload }) => {
+        .then(async ({ response, payload }) => {
+          if (response.status === 401 || response.status === 403) {
+            await logoutAuthSession();
+            if (payload.code === "SESSION_DISPLACED") {
+              router.replace("/login?displaced=1");
+            } else {
+              router.replace("/login?expired=1");
+            }
+            return;
+          }
           if (!active || !response.ok) return;
-          setHasMemberAccess(Boolean(payload?.data?.is_member) && nextRole === "MEMBER");
+          const isMember = Boolean(payload?.data?.is_member);
+          setHasMemberAccess(isMember);
+
+          if (nextRole === "MEMBER") {
+            setAppModeState("MEMBER");
+          } else if (!isMember && initialMode === "MEMBER") {
+            // Force back to STAFF if mode is stuck but user is not a member
+            setAppMode("STAFF");
+            setAppModeState("STAFF");
+          }
         })
         .catch(() => setHasMemberAccess(false));
     };
@@ -187,29 +234,51 @@ export default function MainLayout() {
       router.replace("/login");
     });
 
-    const unsubscribe = subscribeAuthSession((session) => {
+    const unsubscribeAuth = subscribeAuthSession((session) => {
       if (!active || !session?.user) return;
       applySessionUser(session);
+    });
+
+    const unsubscribeMode = subscribeAppMode((mode) => {
+      if (!active) return;
+      setAppModeState(mode);
     });
 
     return () => {
       active = false;
       if (expiryTimer) clearTimeout(expiryTimer);
-      unsubscribe();
+      unsubscribeAuth();
+      unsubscribeMode();
     };
   }, [pathname, router]);
 
   const menuItems = useMemo(() => {
+    if (appMode === "MEMBER" || roleName === "MEMBER") {
+      return MAIN_MENU_MEMBER;
+    }
+
     if (roleName === "CASHIER") {
       return MAIN_MENU_CASHIER;
     }
 
-    if (roleName === "STAFF") {
-      return MAIN_MENU_ADMIN_STAFF.filter((item) => item.key !== "logs");
-    }
+    const baseMenu = roleName === "STAFF" 
+      ? MAIN_MENU_ADMIN_STAFF.filter((item) => item.key !== "logs")
+      : MAIN_MENU_ADMIN_STAFF;
 
-    return MAIN_MENU_ADMIN_STAFF;
-  }, [roleName]);
+    // Further refine the People menu based on role
+    return baseMenu.map(item => {
+      if (item.key === "people" && item.children) {
+        return {
+          ...item,
+          children: item.children.filter(child => {
+            if (child === "Users") return roleName === "ADMIN";
+            return true;
+          })
+        };
+      }
+      return item;
+    });
+  }, [appMode, roleName]);
 
   const activeSubmenuKey = useMemo(() => {
     if (pathname === "/(main)/inventory/products") return "inventory:Products";
@@ -226,9 +295,7 @@ export default function MainLayout() {
     return null;
   }, [pathname]);
 
-  if (!ready) {
-    return <View style={{ flex: 1 }} />;
-  }
+  if (!ready) return <View style={{ flex: 1 }} />;
 
   const handleLogout = async () => {
     setProfileMenuOpen(false);
@@ -236,35 +303,25 @@ export default function MainLayout() {
     router.replace("/login");
   };
 
-  const isInventoryPath =
-    pathname === "/(main)/inventory/products" ||
-    pathname === "/(main)/inventory/suppliers" ||
-    pathname === "/(main)/inventory/batches";
-  const isStockMovementPath =
-    pathname === "/(main)/stock-movements/stock-in" ||
-    pathname === "/(main)/stock-movements/stock-out" ||
-    pathname === "/(main)/stock-movements/stock-adjustment";
-  const isSalesPath =
-    pathname === "/(main)/sales/items" ||
-    pathname === "/(main)/sales/costs" ||
-    pathname === "/(main)/stock-movements/sales";
-  const isPeoplePath =
-    pathname.startsWith("/(main)/users") ||
-    pathname.startsWith("/(main)/members") ||
-    pathname.startsWith("/(main)/staffs");
+  const handleToggleMode = async () => {
+    const nextMode = appMode === "STAFF" ? "MEMBER" : "STAFF";
+    await setAppMode(nextMode);
+    setProfileMenuOpen(false);
+    if (nextMode === "MEMBER") {
+      router.replace("/(main)/portal/dashboard");
+    } else {
+      router.replace("/(main)/dashboard");
+    }
+  };
+
+  const isInventoryPath = pathname.includes("/inventory/");
+  const isStockMovementPath = pathname.includes("/stock-movements/");
+  const isSalesPath = pathname.includes("/sales/");
+  const isPeoplePath = pathname.includes("/users") || pathname.includes("/members") || pathname.includes("/staffs");
+  const isMemberDashboard = pathname === "/(main)/portal/dashboard" || (appMode === "MEMBER" && pathname === "/(main)/dashboard");
 
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: "#f8fafc",
-        alignItems: "center",
-        justifyContent: "center",
-        overflow: "hidden",
-        paddingTop: topPad,
-        paddingBottom: bottomPad,
-      }}
-    >
+    <View style={{ flex: 1, backgroundColor: "#f8fafc", alignItems: "center", justifyContent: "center", overflow: "hidden", paddingTop: topPad, paddingBottom: bottomPad }}>
       <View style={{ width: BASE_WIDTH, height: BASE_HEIGHT, transform: [{ scale: appScale }] }}>
         <View style={{ flex: 1, flexDirection: "row", backgroundColor: "#f8fafc" }}>
           <AppNavigationSidebar
@@ -273,6 +330,9 @@ export default function MainLayout() {
               ...item,
               active:
                 (item.key === "dashboard" && pathname === "/(main)/dashboard") ||
+                (item.key === "member-dashboard" && isMemberDashboard) ||
+                (item.key === "member-transactions" && pathname.startsWith("/(main)/portal/transactions")) ||
+                (item.key === "member-shu" && pathname.startsWith("/(main)/portal/shu")) ||
                 (item.key === "inventory" && isInventoryPath) ||
                 (item.key === "stock-movements" && isStockMovementPath) ||
                 (item.key === "sales" && isSalesPath) ||
@@ -285,52 +345,27 @@ export default function MainLayout() {
             expandedMenus={expandedMenus}
             onMenuPress={(item) => {
               if (item.key === "inventory" || item.key === "stock-movements" || item.key === "sales" || item.key === "people") {
-                setExpandedMenus((current) => ({
-                  ...current,
-                  [item.key]: !current[item.key],
-                }));
+                setExpandedMenus((current) => ({ ...current, [item.key]: !current[item.key] }));
                 return;
               }
-              if (item.key === "dashboard") {
-                router.push("/(main)/dashboard");
-                return;
-              }
-              if (item.key === "reports") {
-                router.push("/(main)/reports");
-                return;
-              }
-              if (item.key === "shu") {
-                router.push("/(main)/shu");
-                return;
-              }
-              if (item.key === "external-financial") {
-                router.push("/(main)/external-financial");
-                return;
-              }
-              if (item.key === "logs") {
-                router.push("/(main)/logs");
-              }
+              if (item.key === "dashboard") { router.push("/(main)/dashboard"); return; }
+              if (item.key === "member-dashboard") { router.push("/(main)/portal/dashboard"); return; }
+              if (item.key === "member-transactions") { router.push("/(main)/portal/transactions"); return; }
+              if (item.key === "member-shu") { router.push("/(main)/portal/shu"); return; }
+              if (item.key === "reports") { router.push("/(main)/reports"); return; }
+              if (item.key === "shu") { router.push("/(main)/shu"); return; }
+              if (item.key === "external-financial") { router.push("/(main)/external-financial"); return; }
+              if (item.key === "logs") { router.push("/(main)/logs"); }
             }}
-            onSubmenuPress={(_, child) => {
-              router.push(routeBySubmenu(child) as never);
-            }}
+            onSubmenuPress={(_, child) => router.push(routeBySubmenu(child) as never)}
             activeSubmenuKey={activeSubmenuKey}
             renderNavIcon={(item) => {
-              if (item.icon === "package") {
-                return <MaterialCommunityIcons name="package-variant-closed" size={18} color={item.active ? "#2563eb" : "#475569"} />;
-              }
-              return <Feather name={item.icon as React.ComponentProps<typeof Feather>["name"]} size={18} color={item.active ? "#2563eb" : "#475569"} />;
+              if (item.icon === "package") return <MaterialCommunityIcons name="package-variant-closed" size={18} color={item.active ? "#2563eb" : "#475569"} />;
+              return <Feather name={item.icon as any} size={18} color={item.active ? "#2563eb" : "#475569"} />;
             }}
-            renderChevronIcon={(expanded) => (
-              <Feather
-                name="chevron-down"
-                size={14}
-                color="#64748b"
-                style={expanded ? { transform: [{ rotate: "180deg" }] } : undefined}
-              />
-            )}
+            renderChevronIcon={(expanded) => <Feather name="chevron-down" size={14} color="#64748b" style={expanded ? { transform: [{ rotate: "180deg" }] } : undefined} />}
             profileName={profileName}
-            profileRole={roleName}
+            profileRole={appMode === "MEMBER" ? "MEMBER" : roleName}
             profileImageSource={profileImage ? { uri: profileImage } : PROFILE_PLACEHOLDER}
             profileMenuOpen={profileMenuOpen}
             onToggleProfileMenu={() => setProfileMenuOpen((prev) => !prev)}
@@ -340,50 +375,18 @@ export default function MainLayout() {
                 label: "Profile",
                 icon: "user",
                 tone: "default",
-                onPress: () => {
-                  setProfileMenuOpen(false);
-                  router.push("/profile");
-                },
+                onPress: () => { setProfileMenuOpen(false); router.replace("/(main)/profile"); },
               },
-              ...(canAccessCashierModeWithGrade(roleName, staffGradeName)
-                ? [
-                    {
-                      key: "cashier",
-                      label: "Enter Cashier Mode",
-                      icon: "shopping-cart",
-                      tone: "blue" as const,
-                      onPress: () => {
-                        setProfileMenuOpen(false);
-                        router.replace("/(cashier)");
-                      },
-                    },
-                  ]
+              ...(canAccessCashierModeWithGrade(roleName, staffGradeName) && appMode === "STAFF"
+                ? [{ key: "cashier", label: "Enter Cashier Mode", icon: "shopping-cart", tone: "blue" as const, onPress: () => { setProfileMenuOpen(false); router.replace("/(cashier)"); } }]
                 : []),
-              ...(hasMemberAccess && roleName === "MEMBER"
-                ? [
-                    {
-                      key: "member",
-                      label: "Enter Member Portal",
-                      icon: "users",
-                      tone: "blue" as const,
-                      onPress: () => {
-                        setProfileMenuOpen(false);
-                        router.replace("/(member)/dashboard");
-                      },
-                    },
-                  ]
+              ...(hasMemberAccess && roleName !== "MEMBER"
+                ? [{ key: "mode-toggle", label: appMode === "STAFF" ? "Enter Member Portal" : "Enter Main App", icon: appMode === "STAFF" ? "users" : "monitor", tone: "blue" as const, onPress: handleToggleMode }]
                 : []),
-              {
-                key: "logout",
-                label: "Logout",
-                icon: "log-out",
-                tone: "danger",
-                onPress: handleLogout,
-              },
+              { key: "logout", label: "Logout", icon: "log-out", tone: "danger", onPress: handleLogout },
             ]}
-          onLogoutPress={handleLogout}
-        />
-
+            onLogoutPress={handleLogout}
+          />
           <View style={{ flex: 1 }}>
             <Stack screenOptions={{ headerShown: false }} />
           </View>
@@ -392,5 +395,3 @@ export default function MainLayout() {
     </View>
   );
 }
-
-
