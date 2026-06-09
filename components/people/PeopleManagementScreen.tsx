@@ -1,3 +1,4 @@
+import { printReportHtml } from "../../utils/printUtils";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -199,32 +200,6 @@ const isValidPhone = (value: string) => {
   if ((text.match(/\+/g) || []).length > 1 || (text.includes("+") && !text.startsWith("+"))) return false;
   const digitCount = countPhoneDigits(text);
   return digitCount >= 3 && digitCount <= 20;
-};
-
-const printReportHtml = async (html: string) => {
-  await logClientActivity({
-    activityType: "PRINT_REPORT",
-    description: "Printed people management report.",
-  });
-  if (Platform.OS !== "web") {
-    await Print.printAsync({ html });
-    return;
-  }
-
-  if (typeof window === "undefined") return;
-
-  const printWindow = window.open("", "_blank", "width=1024,height=720");
-  if (!printWindow) {
-    throw new Error("Please allow pop-ups to print this report.");
-  }
-
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.setTimeout(() => {
-    printWindow.print();
-  }, 250);
 };
 
 export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
@@ -690,7 +665,10 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
         generatedBy: roleName,
         meta: buildCurrentPeopleReportMeta(),
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        description: `Exported ${screenConfig.title.toLowerCase()} list as PDF.`,
+        fileName: `report_${type}_${Date.now()}.pdf`,
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : `Failed to print ${screenConfig.title.toLowerCase()} report.`);
     }
@@ -706,7 +684,10 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
         generatedAt: new Date(),
         generatedBy: roleName,
       });
-      await printReportHtml(html);
+      await printReportHtml(html, {
+        description: `Exported ${screenConfig.title.toLowerCase()} list as PDF.`,
+        fileName: `report_${type}_${Date.now()}.pdf`,
+      });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print profile detail.");
     }

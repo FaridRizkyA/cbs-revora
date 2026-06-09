@@ -24,19 +24,19 @@ export const printReportHtml = async (html: string, options: PrintOptions = {}) 
     description,
   });
 
-  if (Platform.OS === "web") {
-    try {
-      // Try direct download first for better user experience (automatic filename)
-      const success = await downloadReportPdf({
-        title: description,
-        print_html: html,
-        file_name: fileName,
-      });
-      if (success) return;
-    } catch (err) {
-      console.warn("Direct PDF download failed, falling back to print window:", err);
-    }
+  try {
+    // Try direct download/share first for all platforms (better for "Export as PDF" intent)
+    const success = await downloadReportPdf({
+      title: description,
+      print_html: html,
+      file_name: fileName,
+    });
+    if (success) return;
+  } catch (err) {
+    console.warn("Direct PDF export failed, falling back to print dialog:", err);
+  }
 
+  if (Platform.OS === "web") {
     if (typeof window === "undefined") return;
 
     const printWindow = window.open("", "_blank", "width=1024,height=720");
@@ -54,6 +54,6 @@ export const printReportHtml = async (html: string, options: PrintOptions = {}) 
     return;
   }
 
-  // Native mobile print dialog
+  // Native mobile print dialog (fallback)
   await Print.printAsync({ html });
 };

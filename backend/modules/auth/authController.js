@@ -247,6 +247,15 @@ const logout = async (req, res) => {
       `,
       [idUser, tokenId]
     );
+
+    await logActivitySafe(pool, req, {
+      idUser,
+      activityType: "LOGOUT",
+      tableName: "tbl_users",
+      recordId: idUser,
+      description: "User logged out successfully.",
+    });
+
     return res.json({ message: "Logout successful." });
   } catch (error) {
     return res.status(400).json({ message: "Logout failed.", error: error.message });
@@ -262,9 +271,14 @@ const requestPasswordResetOtp = async (req, res) => {
   try {
     const result = await pool.query(
       `
-      SELECT id_user, email, is_active
-      FROM tbl_users
-      WHERE LOWER(email) = LOWER($1)
+      SELECT 
+        u.id_user, 
+        u.email, 
+        u.is_active,
+        COALESCE(NULLIF(TRIM(CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, ''))), ''), u.email) AS full_name
+      FROM tbl_users u
+      LEFT JOIN tbl_profiles p ON p.id_user = u.id_user
+      WHERE LOWER(u.email) = LOWER($1)
       LIMIT 1;
       `,
       [email]
@@ -284,18 +298,25 @@ const requestPasswordResetOtp = async (req, res) => {
       [user.id_user, user.email, hashOtp(otp), OTP_DURATION_MINUTES]
     );
 
+    await logActivitySafe(pool, req, {
+      idUser: user.id_user,
+      activityType: "REQUEST_PASSWORD_RESET",
+      tableName: "tbl_users",
+      recordId: user.id_user,
+      description: `User requested password reset OTP for ${user.email}.`,
+    });
+
+    const { renderTemplate } = require("../../utils/templateRenderer");
+    const emailHtml = renderTemplate("OtpEmail", {
+      RECIPIENT_NAME: user.full_name,
+      OTP_CODE: otp,
+      EXPIRY_MINUTES: OTP_DURATION_MINUTES,
+    });
+
     await sendEmail({
       to: user.email,
       subject: "CBS Revora Password Reset OTP",
-      text: `Your password reset OTP is ${otp}. This code expires in ${OTP_DURATION_MINUTES} minutes.`,
-      html: `
-        <div style="font-family:Arial,sans-serif;color:#0f172a">
-          <h2>Password Reset OTP</h2>
-          <p>Use this OTP to reset your CBS Revora password.</p>
-          <p style="font-size:24px;font-weight:700;letter-spacing:4px">${otp}</p>
-          <p>This code expires in ${OTP_DURATION_MINUTES} minutes.</p>
-        </div>
-      `,
+      html: emailHtml,
     });
 
     return res.json({ message: "OTP has been sent to your email." });

@@ -526,7 +526,15 @@ const updateUserProfile = async (req, res) => {
     const idUser = req.params.id;
 
     await client.query("BEGIN");
-    await ensureProfile(client, req.body, idUser, actorId);
+    const profileId = await ensureProfile(client, req.body, idUser, actorId);
+
+    await logActivity(client, req, {
+      idUser: actorId,
+      activityType: "UPDATE_PROFILE",
+      tableName: "tbl_profiles",
+      recordId: profileId,
+      description: `Updated profile for user ID: ${idUser}.`,
+    });
 
     await client.query("COMMIT");
     return res.json({ message: "Profile updated successfully." });

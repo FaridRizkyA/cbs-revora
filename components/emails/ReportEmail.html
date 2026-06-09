@@ -1,14 +1,31 @@
-<h1 class="title">{{TITLE}}</h1>
+<div class="title">{{TITLE}}</div>
 
-<p class="text">
+<div class="text">
     Hello <strong>{{RECIPIENT_NAME}}</strong>,<br><br>
-    The report <strong>{{REPORT_NAME}}</strong> has been generated and is attached to this email.
-</p>
+    The requested report <strong>{{REPORT_NAME}}</strong> has been successfully generated and is attached to this email.
+</div>
 
-<p class="text">
+<div class="text" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;">
+    <div style="font-weight: 700; color: #1e293b; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">Report Summary</div>
+    
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="padding: 6px 0; color: #64748b;">Report Name</td>
+            <td style="padding: 6px 0; text-align: right; font-weight: 700; color: #0f172a;">{{REPORT_NAME}}</td>
+        </tr>
+    </table>
+</div>
+
+<div class="text" style="margin-top: 25px;">
     {{MESSAGE}}
-</p>
+</div>
 
-<p class="text" style="font-size: 13px; font-style: italic; color: #64748b; text-align: center; margin-top: 30px;">
-    Please find the attached file for the full report details.
-</p>
+<div class="text" style="font-size: 13px; font-style: italic; color: #64748b; text-align: center; margin-top: 30px; background-color: #f1f5f9; padding: 10px; border-radius: 6px;">
+    Please find the attached file(s) for the full report details.
+</div>
+
+<div class="text" style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+    Best regards,<br>
+    <strong>System Automated</strong><br>
+    Koperasi Cahaya Berkah Sejahtera
+</div>

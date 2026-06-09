@@ -19,6 +19,7 @@ const logActivity = async (
 ) => {
   if (!activityType) return;
 
+  const finalIdUser = idUser || req?.user?.id_user || null;
   const executor = db || pool;
   await executor.query(
     `
@@ -34,7 +35,7 @@ const logActivity = async (
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $1);
     `,
     [
-      idUser || null,
+      finalIdUser,
       activityType,
       tableName,
       recordId || null,

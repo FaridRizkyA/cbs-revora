@@ -101,6 +101,13 @@ const uploadProductImage = (req, res) => {
 
     const relativePath = `uploads/products/${req.file.filename}`.replace(/\\/g, "/");
     const imageUrl = `${req.protocol}://${req.get("host")}/${relativePath}`;
+
+    logActivity(pool, req, {
+      idUser: req.body?.id_user || null,
+      activityType: "UPLOAD_PRODUCT_IMAGE",
+      description: `Uploaded product image: ${req.file.filename}.`,
+    }).catch((err) => console.warn("Failed to log product image upload:", err.message));
+
     return res.status(201).json({
       message: "Product image uploaded successfully.",
       data: {
