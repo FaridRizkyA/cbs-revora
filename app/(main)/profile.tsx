@@ -76,10 +76,123 @@ export default function ProfileScreen() {
   const [cropViewportSize, setCropViewportSize] = useState(320);
   const [cropTransform, setCropTransform] = useState({ scale: 1, translateX: 0, translateY: 0 });
   const cropTransformRef = useRef(cropTransform);
+  const cropGestureRef = useRef({ startScale: 1, startTranslateX: 0, startTranslateY: 0, startClientX: 0, startClientY: 0 });
+  const cropDragRef = useRef({ active: false, lastX: 0, lastY: 0 });
+  const [isCropDragging, setIsCropDragging] = useState(false);
 
   const cropBoxRatio = 0.82;
   const cropBoxSize = Math.max(1, Math.floor(cropViewportSize * cropBoxRatio));
   const cropModalWidth = Math.min(440, Math.max(300, Math.floor(Math.min(vw - 32, vh - 300))));
+
+  const clampCropTransform = useCallback(
+    (nextScale: number, nextTranslateX: number, nextTranslateY: number, sourceWidth: number, sourceHeight: number) => {
+      const fitScale = Math.min(
+        cropViewportSize / Math.max(1, sourceWidth),
+        cropViewportSize / Math.max(1, sourceHeight)
+      );
+      const minCoverScale = Math.max(
+        cropBoxSize / Math.max(1, sourceWidth * fitScale),
+        cropBoxSize / Math.max(1, sourceHeight * fitScale)
+      );
+      const needsSlack = Math.abs(sourceWidth - sourceHeight) > 2;
+      const minInteractiveScale = needsSlack ? minCoverScale * 1.08 : minCoverScale;
+      const safeScale = Math.max(minInteractiveScale, nextScale);
+      const displayWidth = Math.max(1, sourceWidth * fitScale * safeScale);
+      const displayHeight = Math.max(1, sourceHeight * fitScale * safeScale);
+      const overflowX = Math.max(0, (displayWidth - cropBoxSize) / 2);
+      const overflowY = Math.max(0, (displayHeight - cropBoxSize) / 2);
+      return {
+        scale: safeScale,
+        translateX: Math.min(overflowX, Math.max(-overflowX, nextTranslateX)),
+        translateY: Math.min(overflowY, Math.max(-overflowY, nextTranslateY)),
+      };
+    },
+    [cropBoxSize, cropViewportSize]
+  );
+
+  const setCropScale = useCallback(
+    (nextScale: number) => {
+      if (!webCrop) return;
+      setCropTransform((current) =>
+        clampCropTransform(
+          nextScale,
+          current.translateX,
+          current.translateY,
+          webCrop.naturalWidth || cropViewportSize,
+          webCrop.naturalHeight || cropViewportSize
+        )
+      );
+    },
+    [clampCropTransform, cropViewportSize, webCrop]
+  );
+
+  const updateCropTranslation = useCallback(
+    (nextTranslateX: number, nextTranslateY: number) => {
+      if (!webCrop) return;
+      setCropTransform((current) =>
+        clampCropTransform(
+          current.scale,
+          nextTranslateX,
+          nextTranslateY,
+          webCrop.naturalWidth || cropViewportSize,
+          webCrop.naturalHeight || cropViewportSize
+        )
+      );
+    },
+    [clampCropTransform, cropViewportSize, webCrop]
+  );
+
+  const beginCropDrag = useCallback(
+    (clientX: number, clientY: number) => {
+      cropDragRef.current = {
+        active: true,
+        lastX: clientX,
+        lastY: clientY,
+      };
+      cropGestureRef.current = {
+        startScale: cropTransformRef.current.scale,
+        startTranslateX: cropTransformRef.current.translateX,
+        startTranslateY: cropTransformRef.current.translateY,
+        startClientX: clientX,
+        startClientY: clientY,
+      };
+      setIsCropDragging(true);
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || !isCropDragging || !webCrop) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!cropDragRef.current.active) return;
+      const nextX = event.clientX;
+      const nextY = event.clientY;
+      cropDragRef.current = {
+        active: true,
+        lastX: nextX,
+        lastY: nextY,
+      };
+      updateCropTranslation(
+        cropGestureRef.current.startTranslateX + (nextX - cropGestureRef.current.startClientX),
+        cropGestureRef.current.startTranslateY + (nextY - cropGestureRef.current.startClientY)
+      );
+      event.preventDefault();
+    };
+
+    const handleMouseUp = () => {
+      cropDragRef.current.active = false;
+      setIsCropDragging(false);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isCropDragging, updateCropTranslation, webCrop]);
 
   const showResult = useCallback((status: "success" | "error", title: string, message: string) => {
     setResultStatus(status); setResultTitle(title); setResultMessage(message); setResultModalOpen(true);
@@ -348,7 +461,46 @@ export default function ProfileScreen() {
           {(() => {
             const fitScale = Math.min(cropViewportSize / (webCrop.naturalWidth || 1), cropViewportSize / (webCrop.naturalHeight || 1)); const dw = Math.max(1, (webCrop.naturalWidth || 1) * fitScale * cropTransform.scale); const dh = Math.max(1, (webCrop.naturalHeight || 1) * fitScale * cropTransform.scale); const edge = Math.max(0, (cropViewportSize - cropBoxSize) / 2);
             return (
-              <View style={styles.cropCanvas}><Image source={{ uri: webCrop.sourceUri }} style={[styles.cropImage, { width: dw, height: dh, left: (cropViewportSize - dw) / 2 + cropTransform.translateX, top: (cropViewportSize - dh) / 2 + cropTransform.translateY }]} contentFit="contain" pointerEvents="none" /><View pointerEvents="none" style={[styles.cropShadeTop, { height: edge }]} /><View pointerEvents="none" style={[styles.cropShadeBottom, { height: edge }]} /><View pointerEvents="none" style={[styles.cropShadeLeft, { width: edge, top: edge, height: cropBoxSize }]} /><View pointerEvents="none" style={[styles.cropShadeRight, { width: edge, top: edge, height: cropBoxSize }]} /><View pointerEvents="none" style={[styles.cropBoxFrame, { width: cropBoxSize, height: cropBoxSize, left: edge, top: edge }]} /></View>
+              <View
+                style={styles.cropCanvas}
+                // @ts-expect-error - web specific
+                onMouseDown={(event: any) => {
+                  if (Platform.OS !== "web") return;
+                  event.preventDefault?.();
+                  beginCropDrag(event.nativeEvent.clientX, event.nativeEvent.clientY);
+                }}
+                onTouchStart={(event) => {
+                  const touch = event.nativeEvent.touches?.[0] as any;
+                  if (!touch) return;
+                  beginCropDrag(touch.clientX, touch.clientY);
+                }}
+                onTouchMove={(event) => {
+                  const touch = event.nativeEvent.touches?.[0] as any;
+                  if (!touch || !cropDragRef.current.active) return;
+                  cropDragRef.current = {
+                    active: true,
+                    lastX: touch.clientX,
+                    lastY: touch.clientY,
+                  };
+                  updateCropTranslation(
+                    cropGestureRef.current.startTranslateX + (touch.clientX - cropGestureRef.current.startClientX),
+                    cropGestureRef.current.startTranslateY + (touch.clientY - cropGestureRef.current.startClientY)
+                  );
+                }}
+                onTouchEnd={() => {
+                  cropDragRef.current.active = false;
+                  setIsCropDragging(false);
+                }}
+                onWheel={(event: any) => {
+                  if (!webCrop) return;
+                  event.preventDefault?.();
+                  const delta = event.nativeEvent?.deltaY ?? event.deltaY ?? 0;
+                  const nextScale = delta > 0
+                    ? Math.max(0.2, Number((cropTransformRef.current.scale - 0.08).toFixed(2)))
+                    : Math.min(3, Number((cropTransformRef.current.scale + 0.08).toFixed(2)));
+                  setCropScale(nextScale);
+                }}
+              ><Image source={{ uri: webCrop.sourceUri }} style={[styles.cropImage, { width: dw, height: dh, left: (cropViewportSize - dw) / 2 + cropTransform.translateX, top: (cropViewportSize - dh) / 2 + cropTransform.translateY }]} contentFit="contain" pointerEvents="none" /><View pointerEvents="none" style={[styles.cropShadeTop, { height: edge }]} /><View pointerEvents="none" style={[styles.cropShadeBottom, { height: edge }]} /><View pointerEvents="none" style={[styles.cropShadeLeft, { width: edge, top: edge, height: cropBoxSize }]} /><View pointerEvents="none" style={[styles.cropShadeRight, { width: edge, top: edge, height: cropBoxSize }]} /><View pointerEvents="none" style={[styles.cropBoxFrame, { width: cropBoxSize, height: cropBoxSize, left: edge, top: edge }]} /></View>
             );
           })()}</View><View style={styles.modalFooter}><Pressable style={styles.cancelButton} onPress={() => setWebCrop(null)}><Text style={styles.cancelButtonText}>Cancel</Text></Pressable><Pressable style={[styles.saveButton, saving && styles.saveButtonDisabled]} onPress={applyWebCrop} disabled={saving}><Text style={styles.saveButtonText}>Use Crop</Text></Pressable></View></View></View>
       ) : null}

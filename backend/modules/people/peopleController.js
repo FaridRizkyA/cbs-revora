@@ -34,6 +34,43 @@ const profileImageUpload = multer({
   },
 }).single("image");
 
+const parseProfileUploadFilePath = (profileImageValue) => {
+  const raw = String(profileImageValue || "").trim();
+  if (!raw) return null;
+
+  let pathname = raw;
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const parsed = new URL(raw);
+      pathname = parsed.pathname || "";
+    } catch {
+      pathname = raw;
+    }
+  }
+
+  const normalized = pathname.replace(/\\/g, "/");
+  const marker = "/uploads/profiles/";
+  const index = normalized.toLowerCase().indexOf(marker);
+  if (index < 0) return null;
+
+  const fileName = normalized.slice(index + marker.length).split("/")[0];
+  if (!fileName) return null;
+
+  const safeFileName = path.basename(fileName);
+  const resolved = path.resolve(profileUploadsDir, safeFileName);
+  const rootResolved = path.resolve(profileUploadsDir);
+  if (!resolved.startsWith(rootResolved)) return null;
+  return resolved;
+};
+
+const removeUploadedProfileImageIfAny = (profileImageValue) => {
+  const targetPath = parseProfileUploadFilePath(profileImageValue);
+  if (!targetPath) return;
+  if (fs.existsSync(targetPath)) {
+    fs.unlinkSync(targetPath);
+  }
+};
+
 const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
 const normalizeText = (value) => {
   const text = String(value ?? "").trim();
@@ -273,6 +310,17 @@ const ensureProfile = async (client, payload, idUser, actorId) => {
   const profileImageValue = hasProfileImage ? normalizeText(payload.profile_image) : null;
   const profileImageUpdateSql = hasProfileImage ? "EXCLUDED.profile_image" : "tbl_profiles.profile_image";
 
+  let oldImage = null;
+  if (hasProfileImage) {
+    const oldProfileResult = await client.query(
+      `SELECT profile_image FROM tbl_profiles WHERE id_user = $1 LIMIT 1;`,
+      [idUser]
+    );
+    if (oldProfileResult.rowCount > 0) {
+      oldImage = oldProfileResult.rows[0].profile_image;
+    }
+  }
+
   const result = await client.query(
     `
     INSERT INTO tbl_profiles (
@@ -302,6 +350,10 @@ const ensureProfile = async (client, payload, idUser, actorId) => {
       actorId || null,
     ]
   );
+
+  if (hasProfileImage && oldImage && oldImage !== profileImageValue) {
+    removeUploadedProfileImageIfAny(oldImage);
+  }
 
   return result.rows[0].id_profile;
 };

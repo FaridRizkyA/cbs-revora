@@ -1373,9 +1373,22 @@ export default function ProductsScreen() {
               </View>
               <View style={styles.formField}>
                 <Text style={styles.formLabel}>Product Image</Text>
-                <Pressable style={styles.filePickerBtn} onPress={pickProductImage}>
-                  <Text style={styles.filePickerBtnText}>{selectedProductImage ? "Change Image File" : "Select Image File"}</Text>
-                </Pressable>
+                <View style={styles.filePickerContainer}>
+                  <Pressable style={[styles.filePickerBtn, (isEdit && productForm.product_image || selectedProductImage) ? styles.filePickerBtnHasImage : undefined]} onPress={pickProductImage}>
+                    <Text style={styles.filePickerBtnText}>{selectedProductImage ? "Change Image File" : "Select Image File"}</Text>
+                  </Pressable>
+                  {(isEdit && productForm.product_image) || selectedProductImage ? (
+                    <Pressable
+                      style={styles.filePickerRemoveBtn}
+                      onPress={() => {
+                        setSelectedProductImage(null);
+                        setProductForm((prev) => ({ ...prev, product_image: "" }));
+                      }}
+                    >
+                      <Feather name="trash-2" size={16} color="#dc2626" />
+                    </Pressable>
+                  ) : null}
+                </View>
                 <Text style={styles.filePickerHint}>
                   {selectedProductImage?.name || "No file selected."}
                 </Text>
@@ -1812,6 +1825,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   filePickerBtn: {
+    flex: 1,
     minHeight: 40,
     borderRadius: 10,
     borderWidth: 1,
@@ -1829,6 +1843,20 @@ const styles = StyleSheet.create({
   filePickerHint: {
     color: "#475569",
     fontSize: 12,
+  },
+  filePickerContainer: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  filePickerRemoveBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    backgroundColor: "#fef2f2",
+    alignItems: "center",
+    justifyContent: "center",
   },
   formInput: {
     minHeight: 40,
@@ -1902,7 +1930,7 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   notesCard: { borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#f8fafc", padding: 10, gap: 4 },
-  metaGrid: { flexDirection: "row", gap: 12, alignItems: "stretch", justifyContent: "space-between", width: "100%" },
+  metaGrid: { flexDirection: "row", gap: 12, alignItems: "flex-start", width: "100%" },
   metaGridCompact: { flexDirection: "column", alignItems: "stretch" },
   metaStack: { flex: 1, gap: DETAIL_ROW_GAP, width: "100%" },
   metaStackCompact: { flex: 0 },
@@ -1914,8 +1942,8 @@ const styles = StyleSheet.create({
     borderColor: "#dbe3ee",
     flexShrink: 0,
   },
-  productImageWrapDesktop: { width: "36%", aspectRatio: 4 / 3, alignSelf: "flex-start" },
-  productImageWrapCompact: { width: "100%", aspectRatio: 16 / 9, alignSelf: "center" },
+  productImageWrapDesktop: { width: "32%", aspectRatio: 1 },
+  productImageWrapCompact: { width: "100%", aspectRatio: 1, alignSelf: "center" },
   productImage: { width: "100%", height: "100%", borderRadius: 10 },
   metaCard: { borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#f8fafc", padding: 8, gap: 2, height: DETAIL_ROW_HEIGHT, justifyContent: "center" },
   metaCardCompact: { minHeight: 40, height: "auto" },
