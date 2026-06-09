@@ -1,7 +1,7 @@
-import { API_BASE_URL } from "./api";
+import { fetchWithAuth } from "./fetchWithAuth";
 import { getAuthSession } from "./authSession";
 
-type ClientActivityType = "PRINT_REPORT" | "PRINT_RECEIPT" | "EXPORT_REPORT" | "SEND_REPORT_EMAIL";
+type ClientActivityType = "PRINT_REPORT" | "PRINT_RECEIPT" | "EXPORT_REPORT" | "EXPORT_EXCEL" | "SEND_REPORT_EMAIL";
 
 type LogClientActivityOptions = {
   activityType: ClientActivityType;
@@ -18,7 +18,7 @@ export const logClientActivity = async ({
 }: LogClientActivityOptions) => {
   try {
     const session = await getAuthSession();
-    await fetch(`${API_BASE_URL}/api/activity-logs/client`, {
+    await fetchWithAuth("/api/activity-logs/client", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

@@ -1,25 +1,32 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import * as Print from "expo-print";
 import { InventoryResultModal } from "../../../components/inventory/ActionModals";
 import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
+import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu";
+import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import { formatRupiah } from "../../../components/shu/formatters";
 import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import PageContainer from "../../../components/layout/PageContainer";
-import InventoryPageHeader from "../../../components/inventory/InventoryPageHeader";
-
-type ShuHistoryRow = {
-  id_shu_distribution: string;
-  period_name: string;
-  start_date: string;
-  end_date: string;
-  sales_shu_amount: number;
-  business_shu_amount: number;
-  shu_amount: number;
-  distribution_status: string;
-};
+import {
+  buildMemberShuHistoryReportPrintHtml,
+  buildMemberShuDetailReportPrintHtml,
+  downloadMemberShuHistoryReportExcel,
+  downloadMemberShuDetailReportExcel,
+  MemberShuHistoryRow
+} from "../../../components/reports/member/MemberShuReportPrintTemplate";
+import { buildReportPdfFileName } from "../../../components/reports/shared/ReportPrintTemplate";
+import { logClientActivity } from "../../../utils/activityLog";
+import { printReportHtml } from "../../../utils/printUtils";
+import { getAuthSession, AuthSession } from "../../../utils/authSession";
 
 type OverviewResponse = {
+  member: {
+    member_code?: string | null;
+    full_name?: string | null;
+    email?: string | null;
+  };
   metrics: {
     total_spending: number;
     current_shu_amount: number;
@@ -35,12 +42,20 @@ type OverviewResponse = {
 export default function MemberShuScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [roleName, setRoleName] = useState("MEMBER");
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
-  const [history, setHistory] = useState<ShuHistoryRow[]>([]);
+  const [history, setHistory] = useState<MemberShuHistoryRow[]>([]);
+  const [selectedRow, setSelectedRow] = useState<MemberShuHistoryRow | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [resultStatus, setResultStatus] = useState<"success" | "error">("success");
+  const [resultTitle, setResultTitle] = useState("");
   const [resultMessage, setResultMessage] = useState("");
 
-  const showError = (message: string) => {
+  const showResult = (status: "success" | "error", title: string, message: string) => {
+    setResultStatus(status);
+    setResultTitle(title);
     setResultMessage(message);
     setResultModalOpen(true);
   };
@@ -71,12 +86,97 @@ export default function MemberShuScreen() {
   }, []);
 
   useEffect(() => {
+    getAuthSession().then(s => {
+      setSession(s);
+      if (s?.user?.role_name) setRoleName(s.user.role_name);
+    });
     loadData().catch((error) => {
-      showError(error instanceof Error ? error.message : "Failed to load SHU.");
+      showResult("error", "Error", error instanceof Error ? error.message : "Failed to load SHU.");
     });
   }, [loadData]);
 
-  const columns = useMemo<InventoryDataTableColumn<ShuHistoryRow>[]>(() => [
+  const handlePrintShuHistoryTable = async () => {
+    try {
+      const html = buildMemberShuHistoryReportPrintHtml({
+        rows: history,
+        memberName: overview?.member.full_name || session?.user?.full_name || "Member",
+        generatedAt: new Date(),
+        generatedBy: roleName,
+      });
+      await printReportHtml(html, {
+        tableName: "tbl_shu_distributions",
+        description: "Printed member SHU history report.",
+        fileName: buildReportPdfFileName({ reportKey: "member-shu-history", variant: "table", date: new Date() }),
+      });
+    } catch (error) {
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print SHU history.");
+    }
+  };
+
+  const handleExportShuHistoryExcel = async () => {
+    try {
+      await downloadMemberShuHistoryReportExcel({
+        rows: history,
+        memberName: overview?.member.full_name || session?.user?.full_name || "Member",
+        generatedAt: new Date(),
+        generatedBy: roleName,
+      });
+      await logClientActivity({
+        activityType: "EXPORT_EXCEL",
+        tableName: "tbl_shu_distributions",
+        description: "Exported member SHU history as Excel.",
+      });
+    } catch (error) {
+      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export SHU history.");
+    }
+  };
+
+  const handlePrintShuDetail = async () => {
+    if (!selectedRow) return;
+    try {
+      const html = buildMemberShuDetailReportPrintHtml({
+        row: selectedRow,
+        memberName: overview?.member.full_name || session?.user?.full_name || "Member",
+        memberCode: overview?.member.member_code,
+        generatedAt: new Date(),
+        generatedBy: roleName,
+      });
+      await printReportHtml(html, {
+        tableName: "tbl_shu_distributions",
+        description: `Printed member SHU detail for period ${selectedRow.period_name}.`,
+        fileName: buildReportPdfFileName({ 
+          reportKey: "member-shu-slip", 
+          variant: "detail", 
+          documentNumber: selectedRow.period_name,
+          date: new Date() 
+        }),
+      });
+    } catch (error) {
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print SHU detail.");
+    }
+  };
+
+  const handleExportShuDetailExcel = async () => {
+    if (!selectedRow) return;
+    try {
+      await downloadMemberShuDetailReportExcel({
+        row: selectedRow,
+        memberName: overview?.member.full_name || session?.user?.full_name || "Member",
+        memberCode: overview?.member.member_code,
+        generatedAt: new Date(),
+        generatedBy: roleName,
+      });
+      await logClientActivity({
+        activityType: "EXPORT_EXCEL",
+        tableName: "tbl_shu_distributions",
+        description: `Exported member SHU detail as Excel for period ${selectedRow.period_name}.`,
+      });
+    } catch (error) {
+      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export SHU detail.");
+    }
+  };
+
+  const columns = useMemo<InventoryDataTableColumn<MemberShuHistoryRow>[]>(() => [
     {
       key: "period_name",
       title: "Period",
@@ -128,15 +228,40 @@ export default function MemberShuScreen() {
         </View>
       ),
     },
+    {
+      key: "action",
+      title: "Action",
+      weight: 12,
+      align: "center",
+      render: (row) => (
+        <Pressable
+          style={styles.detailButton}
+          onPress={() => {
+            setSelectedRow(row);
+            setDetailOpen(true);
+          }}
+        >
+          <Text style={styles.detailButtonText}>Detail</Text>
+        </Pressable>
+      ),
+    },
   ], []);
 
   return (
     <PageContainer>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        <InventoryPageHeader
-          title="SHU History"
-          subtitle="Track your patronage refund (SHU) distributions over time."
-        />
+        <View style={styles.pageHeader}>
+          <View style={styles.headerInfo}>
+            <Text style={styles.pageTitle}>SHU History</Text>
+            <Text style={styles.pageSubtitle}>Track your patronage refund (SHU) distributions over time.</Text>
+          </View>
+          <View style={styles.headerActions}>
+            <ExportDropdownMenu
+              onExportPdf={handlePrintShuHistoryTable}
+              onExportExcel={handleExportShuHistoryExcel}
+            />
+          </View>
+        </View>
 
         <View style={styles.summaryRow}>
           <Metric label="Current SHU" value={formatRupiah(overview?.metrics.current_shu_amount || 0)} />
@@ -161,10 +286,52 @@ export default function MemberShuScreen() {
         </View>
       </ScrollView>
 
+      <ResponsiveModal
+        visible={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        maxWidthDesktop={1024}
+        maxWidthPhoneRatio={0.96}
+        maxHeightDesktopRatio={0.92}
+        maxHeightPhoneRatio={0.92}
+        cardStyle={styles.modalCard}
+      >
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>SHU Distribution Slip</Text>
+          <View style={styles.modalActionRow}>
+            <ExportDropdownMenu
+              variant="detail"
+              onExportPdf={handlePrintShuDetail}
+              onExportExcel={handleExportShuDetailExcel}
+            />
+          </View>
+        </View>
+
+        {selectedRow ? (
+          <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.detailGrid}>
+              <Detail label="Period" value={selectedRow.period_name} />
+              <Detail label="Date Range" value={`${new Date(selectedRow.start_date).toLocaleDateString("id-ID")} - ${new Date(selectedRow.end_date).toLocaleDateString("id-ID")}`} />
+              <Detail label="Status" value={selectedRow.distribution_status} />
+              <Detail label="Total Spending" value={formatRupiah(Number(selectedRow.member_total_spending || 0))} />
+              <Detail label="Spending Percentage" value={`${(Number(selectedRow.spending_percentage || 0) * 100).toFixed(2)}%`} />
+              <Detail label="Sales SHU" value={formatRupiah(selectedRow.sales_shu_amount)} />
+              <Detail label="Business SHU" value={formatRupiah(selectedRow.business_shu_amount)} />
+              <Detail label="Total SHU" value={formatRupiah(selectedRow.shu_amount)} />
+            </View>
+          </ScrollView>
+        ) : null}
+
+        <View style={styles.modalFooter}>
+          <Pressable style={styles.modalGhostButton} onPress={() => setDetailOpen(false)}>
+            <Text style={styles.modalGhostButtonText}>Close</Text>
+          </Pressable>
+        </View>
+      </ResponsiveModal>
+
       <InventoryResultModal
         visible={resultModalOpen}
-        status="error"
-        title="Error"
+        status={resultStatus}
+        title={resultTitle}
         message={resultMessage}
         onClose={() => setResultModalOpen(false)}
       />
@@ -181,8 +348,28 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function Detail({ label, value, fullWidth = false }: { label: string; value: string | null; fullWidth?: boolean }) {
+  return (
+    <View style={[styles.detailCard, fullWidth && styles.detailCardFull]}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={styles.detailValue}>{value || "-"}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   scrollContent: { gap: 16, paddingBottom: 8 },
+  pageHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 4,
+  },
+  headerInfo: { flex: 1, gap: 2 },
+  pageTitle: { fontSize: 28, color: "#0f2852", fontWeight: "800" },
+  pageSubtitle: { color: "#64748b", fontSize: 13 },
+  headerActions: { alignItems: "flex-end" },
   summaryRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 4 },
   metricCard: {
     flexBasis: "31%",
@@ -214,4 +401,47 @@ const styles = StyleSheet.create({
   statusTextPending: { color: "#d97706" },
   stateText: { color: "#64748b", fontSize: 12, padding: 16 },
   cellText: { color: "#0f172a", fontSize: 12 },
+  detailButton: {
+    minHeight: 28,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  detailButtonText: { color: "#334155", fontSize: 11, fontWeight: "700" },
+  modalCard: { backgroundColor: "#fff", borderRadius: 16, padding: 20, gap: 16 },
+  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  modalTitle: { color: "#0f172a", fontSize: 18, fontWeight: "800" },
+  modalActionRow: { flexDirection: "row", gap: 8 },
+  modalContent: { gap: 14, paddingBottom: 4 },
+  detailGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  detailCard: {
+    flexBasis: "32%",
+    flexGrow: 1,
+    minWidth: 160,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+    padding: 12,
+    gap: 4,
+  },
+  detailCardFull: { flexBasis: "100%" },
+  detailLabel: { color: "#64748b", fontSize: 11, fontWeight: "700" },
+  detailValue: { color: "#0f172a", fontSize: 13, fontWeight: "800" },
+  modalFooter: { flexDirection: "row", justifyContent: "flex-end" },
+  modalGhostButton: {
+    minHeight: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalGhostButtonText: { color: "#334155", fontSize: 12, fontWeight: "800" },
 });

@@ -211,23 +211,13 @@
         <td class="meta-list-separator">:</td>
         <td class="meta-list-value">{{PAYMENT_METHOD}}</td>
       </tr>
-      <tr>
-        <td class="meta-list-label">Subtotal</td>
-        <td class="meta-list-separator">:</td>
-        <td class="meta-list-value">{{SUBTOTAL}}</td>
-      </tr>
-      <tr>
-        <td class="meta-list-label">Total</td>
-        <td class="meta-list-separator">:</td>
-        <td class="meta-list-value">{{TOTAL}}</td>
-      </tr>
     </table>
 
     <table class="items-table" cellspacing="0" cellpadding="0">
       <thead>
         <tr>
           <th>Items</th>
-          <th>Amount</th>
+          <th>Subtotal</th>
         </tr>
       </thead>
       <tbody>
@@ -236,6 +226,11 @@
     </table>
 
     <table class="meta-list-table" cellspacing="0" cellpadding="0" style="margin-top: 14px; margin-bottom: 0;">
+      <tr>
+        <td class="meta-list-label">Total</td>
+        <td class="meta-list-separator">:</td>
+        <td class="meta-list-value" style="color: #1d4ed8; font-size: 16px;">{{TOTAL}}</td>
+      </tr>
       <tr>
         <td class="meta-list-label">Paid</td>
         <td class="meta-list-separator">:</td>

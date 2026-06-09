@@ -14,9 +14,9 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { InventoryConfirmModal, InventoryResultModal } from "../../components/inventory/ActionModals";
 import AppButton from "../../components/forms/AppButton";
 import AppInput from "../../components/forms/AppInput";
+import { InventoryResultModal } from "../../components/inventory/ActionModals";
 import { API_BASE_URL } from "../../utils/api";
 import { getRouteByRole, saveAuthSession } from "../../utils/authSession";
 import { isValidPasswordPolicy, PASSWORD_POLICY_MESSAGE } from "../../utils/passwordPolicy";
@@ -245,7 +245,7 @@ export default function LoginScreen() {
                       resizeMode="contain"
                     />
                   </View>
-                  <Text style={[styles.title, { fontSize: titleSize }]}>Sign in to CBS REVORA</Text>
+                  <Text style={[styles.title, { fontSize: titleSize }]}>Sign in to REVORA</Text>
                   <Text style={[styles.subtitle, { fontSize: subtitleSize, maxWidth: subtitleWidth }]}>
                     Manage cooperative operations from one app.
                   </Text>

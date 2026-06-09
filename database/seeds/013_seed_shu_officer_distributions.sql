@@ -41,6 +41,39 @@ INSERT INTO tbl_shu_officer_distributions (
         'Y',
         '2026-02-01 10:10:00',
         '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'
+    ),
+    (
+        'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        '88888888-8888-4888-8888-888888888888',
+        '43d330fd-f67d-4272-880b-8b43221d6c53',
+        'CHAIRPERSON',
+        120000.00,
+        'CALCULATED',
+        'Y',
+        '2025-12-01 10:10:00',
+        '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'
+    ),
+    (
+        'ffffffff-ffff-4fff-8fff-ffffffffffff',
+        '88888888-8888-4888-8888-888888888888',
+        'a1c6da1c-6492-4499-937d-902ba3b62363',
+        'VICE_CHAIRPERSON',
+        120000.00,
+        'CALCULATED',
+        'Y',
+        '2025-12-01 10:10:00',
+        '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'
+    ),
+    (
+        '00000000-0000-4000-8000-000000000000',
+        '88888888-8888-4888-8888-888888888888',
+        '33641d3a-3949-403f-952c-083aacaf827d',
+        'TREASURER',
+        120000.00,
+        'CALCULATED',
+        'Y',
+        '2025-12-01 10:10:00',
+        '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'
     )
 ON CONFLICT (id_shu_period, id_staff) WHERE is_active = 'Y'
 DO UPDATE SET

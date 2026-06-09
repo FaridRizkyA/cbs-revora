@@ -115,7 +115,7 @@ const login = async (req, res) => {
         description: `Failed login attempt for ${identifier}: account not found.`,
       });
       return res.status(401).json({
-        message: "Invalid email or password.",
+        message: "User not found.",
       });
     }
 
@@ -158,7 +158,7 @@ const login = async (req, res) => {
         description: `Failed login attempt for ${user.email}: invalid password.`,
       });
       return res.status(401).json({
-        message: "Invalid email or password.",
+        message: "Invalid password.",
       });
     }
 

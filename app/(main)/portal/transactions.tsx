@@ -5,15 +5,26 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-n
 import { InventoryResultModal } from "../../../components/inventory/ActionModals";
 import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
+import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu";
 import { buildReceiptPrintHtml } from "../../../components/cashier/ReceiptPrintTemplate";
-import { buildMemberTransactionsReportPrintHtml, MemberTransactionReportRow } from "../../../components/reports/member/MemberTransactionsReportPrintTemplate";
+import InventoryFilterSection from "../../../components/inventory/InventoryFilterSection";
+import { 
+  buildMemberTransactionsReportPrintHtml, 
+  buildMemberTransactionsTableReportPrintHtml,
+  downloadMemberTransactionsTableReportExcel,
+  MemberTransactionItemFlatRow,
+  MemberTransactionReportRow,
+  memberTransactionTableColumns,
+  memberTransactionItemTableColumns,
+} from "../../../components/reports/member/MemberTransactionsReportPrintTemplate";
+import { buildReportPdfFileName } from "../../../components/reports/shared/ReportPrintTemplate";
 import { formatDateTime, formatRupiah } from "../../../components/shu/formatters";
 import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import { AuthSession, getAuthSession } from "../../../utils/authSession";
 import { logClientActivity } from "../../../utils/activityLog";
+import { printReportHtml } from "../../../utils/printUtils";
 import { useRouter } from "expo-router";
 import PageContainer from "../../../components/layout/PageContainer";
-import InventoryPageHeader from "../../../components/inventory/InventoryPageHeader";
 
 type MemberOverview = {
   member: {
@@ -76,17 +87,21 @@ export default function MemberTransactionsScreen() {
   const [printing, setPrinting] = useState(false);
   const [range, setRange] = useState<RangeKey>("MONTHLY");
   const [viewMode, setViewMode] = useState<ViewMode>("TRANSACTION");
+  const [search, setSearch] = useState("");
   const [overview, setOverview] = useState<MemberOverview | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [rows, setRows] = useState<MemberTransactionReportRow[]>([]);
   const [selectedRow, setSelectedRow] = useState<TransactionDetail | null>(null);
+  const [roleName, setRoleName] = useState("MEMBER");
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [resultStatus, setResultStatus] = useState<"success" | "error">("success");
   const [resultTitle, setResultTitle] = useState("");
   const [resultMessage, setResultMessage] = useState("");
 
-  const showError = (title: string, message: string) => {
+  const showResult = (status: "success" | "error", title: string, message: string) => {
+    setResultStatus(status);
     setResultTitle(title);
     setResultMessage(message);
     setResultModalOpen(true);
@@ -117,10 +132,50 @@ export default function MemberTransactionsScreen() {
     }
   }, []);
 
+  const filteredRows = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return rows;
+    return rows.filter((row) => 
+      (row.sale_number || "").toLowerCase().includes(query) ||
+      (row.cashier_name || "").toLowerCase().includes(query) ||
+      (row.notes || "").toLowerCase().includes(query)
+    );
+  }, [rows, search]);
+
+  const flattenedItems = useMemo(() => {
+    const items: MemberTransactionItemFlatRow[] = [];
+    rows.forEach((row) => {
+      if (Array.isArray(row.items)) {
+        row.items.forEach((item) => {
+          items.push({
+            ...item,
+            sale_date: row.sale_date,
+            sale_number: row.sale_number,
+            payment_method: row.payment_method,
+          });
+        });
+      }
+    });
+    return items;
+  }, [rows]);
+
+  const filteredFlattenedItems = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return flattenedItems;
+    return flattenedItems.filter((item) => 
+      (item.product_name || "").toLowerCase().includes(query) ||
+      (item.product_code || "").toLowerCase().includes(query) ||
+      (item.sale_number || "").toLowerCase().includes(query)
+    );
+  }, [flattenedItems, search]);
+
   useEffect(() => {
-    getAuthSession().then(s => setSession(s));
+    getAuthSession().then(s => {
+      setSession(s);
+      if (s?.user?.role_name) setRoleName(s.user.role_name);
+    });
     loadTransactions(range).catch((error) => {
-      showError("Error", error instanceof Error ? error.message : "Failed to load transactions.");
+      showResult("error", "Error", error instanceof Error ? error.message : "Failed to load transactions.");
     });
   }, [loadTransactions, range]);
 
@@ -135,28 +190,59 @@ export default function MemberTransactionsScreen() {
       setSelectedRow(payload?.data || null);
       setDetailOpen(true);
     } catch (error) {
-      showError("Error", error instanceof Error ? error.message : "Failed to load transaction detail.");
+      showResult("error", "Error", error instanceof Error ? error.message : "Failed to load transaction detail.");
     } finally {
       setDetailLoading(false);
     }
   }, []);
 
-  const printTransactionsReport = async () => {
+  const handlePrintTransactionsTable = async () => {
     if (!overview) return;
     try {
-      setPrinting(true);
-      const html = buildMemberTransactionsReportPrintHtml({
+      const rangeLabel = RANGE_OPTIONS.find((item) => item.key === range)?.label || "All Time";
+      const html = buildMemberTransactionsTableReportPrintHtml({
+        rows: viewMode === "TRANSACTION" ? filteredRows : filteredFlattenedItems,
+        viewMode,
         memberName: session?.user?.full_name || "Member",
-        memberCode: overview.member.member_code || "-",
-        rangeLabel: RANGE_OPTIONS.find((item) => item.key === range)?.label || "All Time",
+        rangeLabel,
         generatedAt: new Date(),
-        rows,
+        generatedBy: roleName,
+        meta: search ? [{ label: "Search Query", value: search }] : [],
       });
-      await printHtml(html, "PRINT_REPORT", "Printed member spending detail report.");
+      await printReportHtml(html, {
+        tableName: "tbl_sales",
+        description: `Printed member spending history (${viewMode}).`,
+        fileName: buildReportPdfFileName({ 
+          reportKey: `member-transactions-${viewMode.toLowerCase()}`, 
+          variant: "table", 
+          date: new Date() 
+        }),
+      });
     } catch (error) {
-      showError("Print Failed", error instanceof Error ? error.message : "Failed to print spending detail.");
-    } finally {
-      setPrinting(false);
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print report.");
+    }
+  };
+
+  const handleExportTransactionsExcel = async () => {
+    if (!overview) return;
+    try {
+      const rangeLabel = RANGE_OPTIONS.find((item) => item.key === range)?.label || "All Time";
+      await downloadMemberTransactionsTableReportExcel({
+        rows: viewMode === "TRANSACTION" ? filteredRows : filteredFlattenedItems,
+        viewMode,
+        memberName: session?.user?.full_name || "Member",
+        rangeLabel,
+        generatedAt: new Date(),
+        generatedBy: roleName,
+        meta: search ? [{ label: "Search Query", value: search }] : [],
+      });
+      await logClientActivity({
+        activityType: "EXPORT_EXCEL",
+        tableName: "tbl_sales",
+        description: `Exported member spending history as Excel (${viewMode}).`,
+      });
+    } catch (error) {
+      showResult("error", "Export Failed", error instanceof Error ? error.message : "Failed to export report.");
     }
   };
 
@@ -300,43 +386,36 @@ export default function MemberTransactionsScreen() {
     },
   ], []);
 
-  const flattenedItems = useMemo(() => {
-    const items: any[] = [];
-    rows.forEach((row) => {
-      if (Array.isArray(row.items)) {
-        row.items.forEach((item) => {
-          items.push({
-            ...item,
-            sale_date: row.sale_date,
-            sale_number: row.sale_number,
-            payment_method: row.payment_method,
-          });
-        });
-      }
-    });
-    return items;
-  }, [rows]);
-
-  const totalSpending = overview?.metrics?.total_spending || rows.reduce((sum, row) => sum + Number(row.total_amount || 0), 0);
 
   return (
     <PageContainer>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        <InventoryPageHeader
-          title="Spending Detail"
-          subtitle="Browse daily, weekly, monthly, or all-time spending history."
-          rightAction={
-            <Pressable style={styles.printButton} onPress={printTransactionsReport} disabled={printing || rows.length === 0}>
-              <Feather name="printer" size={14} color="#1d4ed8" />
-              <Text style={styles.printButtonText}>{printing ? "Printing..." : "Print Detail"}</Text>
-            </Pressable>
-          }
+        <View style={styles.pageHeader}>
+          <View style={styles.headerInfo}>
+            <Text style={styles.pageTitle}>Spending Detail</Text>
+            <Text style={styles.pageSubtitle}>Browse your spending history.</Text>
+          </View>
+          <View style={styles.headerActions}>
+            <ExportDropdownMenu
+              onExportPdf={handlePrintTransactionsTable}
+              onExportExcel={handleExportTransactionsExcel}
+            />
+          </View>
+        </View>
+
+        <InventoryFilterSection
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search transaction no, cashier, or items"
+          activeFilters={[]}
+          onClearAllFilters={() => {}}
+          onOpenFilter={() => {}}
         />
 
         <View style={styles.summaryRow}>
-          <Metric label="Total Transactions" value={String(rows.length)} />
-          <Metric label="Total Items" value={String(flattenedItems.length)} />
-          <Metric label="Total Spending" value={formatRupiah(totalSpending)} />
+          <Metric label="Total Transactions" value={String(filteredRows.length)} />
+          <Metric label="Total Items" value={String(filteredFlattenedItems.length)} />
+          <Metric label="Total Spending" value={formatRupiah(viewMode === "TRANSACTION" ? filteredRows.reduce((sum, r) => sum + Number(r.total_amount || 0), 0) : filteredFlattenedItems.reduce((sum, r) => sum + Number(r.subtotal || 0), 0))} />
         </View>
 
         <View style={styles.filterSection}>
@@ -369,15 +448,15 @@ export default function MemberTransactionsScreen() {
           ) : viewMode === "TRANSACTION" ? (
             <InventoryDataTable
               columns={columns}
-              rows={rows}
+              rows={filteredRows}
               rowKey={(row) => row.id_sale}
               emptyText="No spending history found for this period."
             />
           ) : (
             <InventoryDataTable
               columns={itemColumns}
-              rows={flattenedItems}
-              rowKey={(row, idx) => `${row.id_sale_item}-${idx}`}
+              rows={filteredFlattenedItems}
+              rowKey={(row) => `${row.sale_number}-${row.product_code}-${row.quantity}`}
               emptyText="No items found for this period."
             />
           )}
@@ -446,7 +525,7 @@ export default function MemberTransactionsScreen() {
       </ResponsiveModal>
       <InventoryResultModal
         visible={resultModalOpen}
-        status="error"
+        status={resultStatus}
         title={resultTitle}
         message={resultMessage}
         onClose={() => setResultModalOpen(false)}
@@ -475,6 +554,17 @@ function Detail({ label, value, full = false }: { label: string; value: string; 
 
 const styles = StyleSheet.create({
   scrollContent: { gap: 16, paddingBottom: 8 },
+  pageHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 4,
+  },
+  headerInfo: { flex: 1, gap: 2 },
+  pageTitle: { fontSize: 28, color: "#0f2852", fontWeight: "800" },
+  pageSubtitle: { color: "#64748b", fontSize: 13 },
+  headerActions: { alignItems: "flex-end" },
   summaryRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 4 },
   metricCard: {
     flexBasis: "32%",

@@ -1,6 +1,7 @@
 const pool = require("../../config/db");
 const { logActivity } = require("../../utils/activityLogger");
 const { getShuPeriodBounds } = require("./shuPeriodUtils");
+const { enqueueShuNotificationJobs } = require("../emailQueue/emailQueue");
 
 const OFFICER_ROLE_CODES = ["CHAIRPERSON", "VICE_CHAIRPERSON", "TREASURER"];
 const OFFICER_ROLE_ORDER_SQL = `
@@ -248,8 +249,25 @@ const calculateShuData = async (client, period) => {
     ? parsePositiveAmount(tagged.business_expense_amount)
     : parsePositiveAmount(extResult.rows[0]?.business_expense_amount);
 
-  const salesNet = Math.max(0, salesIncome - salesCost);
-  const businessNet = Math.max(0, businessIncome - businessExpense);
+  const salesNetRaw = salesIncome - salesCost;
+  const businessNetRaw = businessIncome - businessExpense;
+  const combinedNet = salesNetRaw + businessNetRaw;
+
+  let salesNet = 0;
+  let businessNet = 0;
+
+  if (combinedNet > 0) {
+    if (salesNetRaw >= 0 && businessNetRaw >= 0) {
+      salesNet = salesNetRaw;
+      businessNet = businessNetRaw;
+    } else if (salesNetRaw > 0 && businessNetRaw < 0) {
+      salesNet = combinedNet; 
+      businessNet = 0;
+    } else if (salesNetRaw < 0 && businessNetRaw > 0) {
+      salesNet = 0;
+      businessNet = combinedNet;
+    }
+  }
 
   const salesManagerCut = salesNet * 0.1;
   const businessManagerCut = businessNet * 0.1;
@@ -257,7 +275,7 @@ const calculateShuData = async (client, period) => {
   const salesShuPool = Math.max(0, salesNet - salesManagerCut);
   const businessShuPool = Math.max(0, businessNet - businessManagerCut);
 
-  const grossProfitDisplay = Math.max(0, salesIncome + businessIncome - salesCost - businessExpense);
+  const grossProfitDisplay = Math.max(0, combinedNet);
   const totalManagerFund = salesManagerCut + businessManagerCut;
 
   const memberRows = memberSpendResult.rows.map((row) => ({
@@ -649,12 +667,18 @@ const finalizeCurrentShu = async (req, res) => {
       [periodRow.id_shu_period, idUser]
     );
 
+    // Enqueue SHU notification emails for members
+    await enqueueShuNotificationJobs(client, {
+      idShuPeriod: periodRow.id_shu_period,
+      idUser,
+    });
+
     await logActivity(client, req, {
       idUser,
       activityType: "FINALIZE_SHU",
       tableName: "tbl_shu_periods",
       recordId: periodRow.id_shu_period,
-      description: `Finalized SHU period ${period.period_name}.`,
+      description: `Finalized SHU period ${period.period_name} and queued notifications.`,
     });
 
     await client.query("COMMIT");

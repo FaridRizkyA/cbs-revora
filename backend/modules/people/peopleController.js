@@ -1070,7 +1070,7 @@ const createStaff = async (req, res) => {
       )
       RETURNING id_staff;
       `,
-      [idUser, idProfile, req.body.id_staff_grade || null, nextStaffCode, joinDate, null, actorId]
+      [idUser, req.body.id_staff_grade || null, nextStaffCode, joinDate, null, actorId]
       );
       const idStaff = result.rows[0].id_staff;
 

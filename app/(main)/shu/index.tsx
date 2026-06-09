@@ -296,7 +296,11 @@ export default function ShuScreen() {
         if (!res.ok) throw new Error(payload.message || "Failed to fetch staff access.");
         const staff = (Array.isArray(payload.data) ? payload.data : []).find((item) => item.id_user === idUser);
         const gradeName = String(staff?.grade_name || "").trim().toUpperCase();
-        setCanFinalizeShu(gradeName.includes("TREASURER"));
+        const accessRole = String(staff?.access_role || "").trim().toUpperCase();
+        const officerRoles = Array.isArray(staff?.officer_roles) ? staff.officer_roles : [];
+        const hasTreasurerOfficerRole = officerRoles.some((role: any) => String(role.officer_role_code).toUpperCase() === "TREASURER");
+        
+        setCanFinalizeShu(gradeName.includes("TREASURER") || hasTreasurerOfficerRole || accessRole === "ADMIN");
       })
       .catch(() => {
         setRoleName("CASHIER");
@@ -866,28 +870,25 @@ export default function ShuScreen() {
               {isDetailFinalized ? (
                 <Text style={styles.finalizedNotice}>SHU data has been finalized. This period snapshot is locked and cannot be recalculated or finalized again.</Text>
               ) : null}
-              {(canManage || canFinalizeShu) && !isDetailFinalized ? (
+              {canFinalizeShu && !isDetailFinalized ? (
                 <View style={styles.actionRow}>
-                  {canManage ? (
-                    <Pressable style={[styles.button, styles.buttonPrimary]} onPress={() => setPendingPeriodAction("calculate")} disabled={!!runningAction}>
-                      <Text style={styles.buttonPrimaryText}>{runningAction === "calculate" ? "Recalculating..." : "Recalculate"}</Text>
-                    </Pressable>
-                  ) : null}
-                  {canFinalizeShu ? (
-                    <View
-                      style={styles.finalizeActionWrap}
-                      onPointerEnter={() => {
-                        if (!detailData.finalize_policy.finalize_allowed) setFinalizeHintOpen(true);
-                      }}
-                      onPointerLeave={() => setFinalizeHintOpen(false)}
-                    >
-                      <Pressable
-                        style={[
-                          styles.button,
-                          detailData.finalize_policy.finalize_allowed ? styles.buttonSuccess : styles.buttonMuted,
-                          runningAction === "finalize" && styles.buttonDisabled,
-                        ]}
-                        onPress={() => setPendingPeriodAction("finalize")}
+                  <Pressable style={[styles.button, styles.buttonPrimary]} onPress={() => setPendingPeriodAction("calculate")} disabled={!!runningAction}>
+                    <Text style={styles.buttonPrimaryText}>{runningAction === "calculate" ? "Recalculating..." : "Recalculate"}</Text>
+                  </Pressable>
+                  <View
+                    style={styles.finalizeActionWrap}
+                    onPointerEnter={() => {
+                      if (!detailData.finalize_policy.finalize_allowed) setFinalizeHintOpen(true);
+                    }}
+                    onPointerLeave={() => setFinalizeHintOpen(false)}
+                  >
+                    <Pressable
+                      style={[
+                        styles.button,
+                        detailData.finalize_policy.finalize_allowed ? styles.buttonSuccess : styles.buttonMuted,
+                        runningAction === "finalize" && styles.buttonDisabled,
+                      ]}
+                      onPress={() => setPendingPeriodAction("finalize")}
                         disabled={!detailData.finalize_policy.finalize_allowed || !!runningAction}
                       >
                         <Text style={styles.buttonSuccessText}>
@@ -902,7 +903,6 @@ export default function ShuScreen() {
                         </View>
                       ) : null}
                     </View>
-                  ) : null}
                 </View>
               ) : null}
             </View>

@@ -41,6 +41,39 @@ INSERT INTO tbl_external_financial_entries (
         'Y',
         '2026-01-20 10:00:00',
         '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'
+    ),
+    (
+        '55555555-5555-4555-8555-555555555555',
+        'INCOME',
+        '2025-07-01',
+        'BUSINESS:KANTIN',
+        5000000.00,
+        'Pendapatan kantin bulan Juni',
+        'Y',
+        '2025-07-01 10:00:00',
+        '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'
+    ),
+    (
+        '66666666-6666-4666-8666-666666666666',
+        'OUTCOME',
+        '2025-07-15',
+        'BUSINESS:BIAYA_KANTIN',
+        1500000.00,
+        'Biaya operasional kantin bulan Juni',
+        'Y',
+        '2025-07-15 10:00:00',
+        '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'
+    ),
+    (
+        '77777777-7777-4777-8777-777777777777',
+        'INCOME',
+        '2026-02-15',
+        'BUSINESS:SPONSOR',
+        3000000.00,
+        'Sponsorship event tahunan',
+        'Y',
+        '2026-02-15 10:00:00',
+        '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'
     )
 ON CONFLICT (id_external_entry) DO UPDATE SET
     entry_type = EXCLUDED.entry_type,

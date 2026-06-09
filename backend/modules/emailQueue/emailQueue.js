@@ -14,6 +14,7 @@ const path = require("path");
 const EMAIL_TYPES = {
   RECEIPT: "SALE_RECEIPT",
   REPORT: "DATA_REPORT",
+  SHU: "SHU_NOTIFICATION",
 };
 
 const MAX_ATTEMPTS = 3;
@@ -22,6 +23,15 @@ const POLL_INTERVAL_MS = 2500;
 let workerTimer = null;
 let workerRunning = false;
 let schemaEnsured = false;
+
+const formatRupiah = (value) =>
+  new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  })
+    .format(Number(value || 0))
+    .replace(/\s/g, " ");
 
 const enqueueReceiptEmailJob = async ({ idUser, saleId, recipientEmail, subject }) => {
   await pool.query(
@@ -87,6 +97,66 @@ const enqueueReportEmailJob = async ({ idUser, payload }) => {
       payload
     ]
   );
+};
+
+const enqueueShuNotificationJobs = async (client, { idShuPeriod, idUser }) => {
+  const membersResult = await client.query(
+    `
+    SELECT 
+      d.id_shu_distribution,
+      u.email,
+      p.period_name
+    FROM tbl_shu_distributions d
+    JOIN tbl_members m ON m.id_member = d.id_member
+    JOIN tbl_users u ON u.id_user = m.id_user
+    JOIN tbl_shu_periods p ON p.id_shu_period = d.id_shu_period
+    WHERE d.id_shu_period = $1
+      AND d.is_active = 'Y'
+      AND m.is_active = 'Y'
+      AND u.is_active = 'Y'
+      AND u.email IS NOT NULL
+      AND u.email != '';
+    `,
+    [idShuPeriod]
+  );
+
+  for (const row of membersResult.rows) {
+    await client.query(
+      `
+      INSERT INTO tbl_email_logs (
+        id_user,
+        email_to,
+        email_subject,
+        email_type,
+        email_status,
+        reference_table,
+        reference_id,
+        is_active,
+        created_by,
+        last_modify_by
+      )
+      VALUES (
+        (SELECT id_user FROM tbl_users WHERE email = $1 LIMIT 1),
+        $1,
+        $2,
+        $3,
+        'PENDING',
+        'tbl_shu_distributions',
+        $4,
+        'Y',
+        $5,
+        $5
+      );
+      `,
+      [
+        row.email,
+        `SHU Distribution Notification - ${row.period_name}`,
+        EMAIL_TYPES.SHU,
+        row.id_shu_distribution,
+        idUser
+      ]
+    );
+  }
 };
 
 const ensureEmailQueueSchema = async () => {
@@ -295,6 +365,83 @@ const processReportJob = async (job) => {
   });
 };
 
+const processShuNotificationJob = async (job) => {
+  const distributionResult = await pool.query(
+    `
+    SELECT 
+      d.id_shu_distribution,
+      d.member_total_spending,
+      d.spending_percentage,
+      d.sales_shu_amount,
+      d.business_shu_amount,
+      d.shu_amount,
+      m.member_code,
+      p.period_name,
+      p.start_date,
+      p.end_date,
+      COALESCE(NULLIF(TRIM(CONCAT(COALESCE(pr.first_name, ''), ' ', COALESCE(pr.last_name, ''))), ''), u.email, '-') AS full_name
+    FROM tbl_shu_distributions d
+    JOIN tbl_members m ON m.id_member = d.id_member
+    JOIN tbl_users u ON u.id_user = m.id_user
+    JOIN tbl_profiles pr ON pr.id_user = u.id_user
+    JOIN tbl_shu_periods p ON p.id_shu_period = d.id_shu_period
+    WHERE d.id_shu_distribution = $1
+    LIMIT 1;
+    `,
+    [job.reference_id]
+  );
+
+  const row = distributionResult.rows[0];
+  if (!row) throw new Error("SHU distribution data not found.");
+
+  const emailHtml = renderTemplate("ShuNotificationEmail", {
+    RECIPIENT_NAME: row.full_name,
+    PERIOD_NAME: row.period_name,
+    MEMBER_CODE: row.member_code,
+    TOTAL_SPENDING: formatRupiah(row.member_total_spending),
+    SHU_AMOUNT: formatRupiah(row.shu_amount),
+  });
+
+  const pdfHtml = buildEmailPdfHtml({
+    title: "SHU Distribution Slip",
+    subtitle: row.period_name,
+    generatedAt: new Date().toISOString(),
+    generatedBy: "System Automated",
+    meta: [
+      { label: "Member Name", value: row.full_name },
+      { label: "Member Code", value: row.member_code },
+      { label: "Period", value: row.period_name },
+    ],
+    columns: [
+      { key: "label", title: "Description" },
+      { key: "value", title: "Amount", align: "right" },
+    ],
+    rows: [
+      { label: "Total Spending", value: formatRupiah(row.member_total_spending) },
+      { label: "Spending Percentage", value: `${(Number(row.spending_percentage) * 100).toFixed(4)}%` },
+      { label: "Sales SHU Amount", value: formatRupiah(row.sales_shu_amount) },
+      { label: "Business SHU Amount", value: formatRupiah(row.business_shu_amount) },
+      { label: "Total SHU Received", value: formatRupiah(row.shu_amount) },
+    ],
+  });
+
+  const pdfBuffer = await buildReportPdfFromHtml(pdfHtml);
+  const attachmentName = sanitizeAttachmentFileName(`SHU_Slip_${row.member_code}_${row.period_name}.pdf`);
+  const logoPath = path.join(__dirname, "..", "..", "..", "assets", "images", "ui", "logo_horizontal.png");
+  const cbsLogoPath = path.join(__dirname, "..", "..", "..", "assets", "images", "ui", "logo_koperasi_cbs.png");
+
+  await sendEmail({
+    to: job.email_to,
+    subject: job.email_subject,
+    html: emailHtml,
+    attachments: [
+      { filename: attachmentName, content: pdfBuffer, contentType: "application/pdf" },
+      { filename: "logo_cbs.png", path: cbsLogoPath, cid: "cbs-logo" },
+      { filename: "logo.png", path: logoPath, cid: "revora-logo" },
+    ],
+  });
+};
+
 const processOneEmailJob = async () => {
   let job = null;
 
@@ -337,6 +484,8 @@ const processOneEmailJob = async () => {
       await processReceiptJob(job);
     } else if (job.email_type === EMAIL_TYPES.REPORT) {
       await processReportJob(job);
+    } else if (job.email_type === EMAIL_TYPES.SHU) {
+      await processShuNotificationJob(job);
     } else {
       throw new Error(`Unknown email type: ${job.email_type}`);
     }
@@ -409,6 +558,7 @@ const startEmailWorker = () => {
 module.exports = {
   enqueueReceiptEmailJob,
   enqueueReportEmailJob,
+  enqueueShuNotificationJobs,
   startEmailWorker,
   EMAIL_TYPES,
 };

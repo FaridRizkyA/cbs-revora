@@ -161,7 +161,7 @@ export default function StockAdjustmentScreen() {
         .filter((item) => Number(item.batch_qty || 0) > 0)
         .map((item) => ({
           value: item.id_product_batch,
-          label: `${item.batch_code} â€¢ Qty ${item.batch_qty}${item.expired_date ? ` â€¢ Exp ${new Date(item.expired_date).toLocaleDateString("id-ID")}` : ""}`,
+          label: `${item.batch_code} - Qty ${item.batch_qty}${item.expired_date ? ` - Exp ${new Date(item.expired_date).toLocaleDateString("id-ID")}` : ""}`,
         })),
     [productBatches]
   );
