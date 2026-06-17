@@ -163,9 +163,11 @@ export const canAccessMainApp = (roleNameRaw: string | null | undefined) => {
   return roleName === "CASHIER" || roleName === "STAFF" || roleName === "ADMIN" || roleName === "MEMBER";
 };
 
-export const canManageInventoryMaster = (roleNameRaw: string | null | undefined) => {
+export const canManageInventoryMaster = (roleNameRaw: string | null | undefined, staffGradeNameRaw?: string | null | undefined) => {
   const roleName = normalizeRole(roleNameRaw);
-  return roleName === "STAFF" || roleName === "ADMIN";
+  if (roleName === "ADMIN") return true;
+  const gradeName = String(staffGradeNameRaw || "").trim().toUpperCase();
+  return roleName === "STAFF" && gradeName.includes("OPERATIONAL STAFF");
 };
 
 export const canViewInventory = (roleNameRaw: string | null | undefined) => {
@@ -183,9 +185,11 @@ export const canViewPeople = (roleNameRaw: string | null | undefined) => {
   return roleName === "STAFF" || roleName === "ADMIN";
 };
 
-export const canManageExternalFinancial = (roleNameRaw: string | null | undefined) => {
+export const canManageExternalFinancial = (roleNameRaw: string | null | undefined, staffGradeNameRaw?: string | null | undefined) => {
   const roleName = normalizeRole(roleNameRaw);
-  return roleName === "ADMIN";
+  if (roleName === "ADMIN") return true;
+  const gradeName = String(staffGradeNameRaw || "").trim().toUpperCase();
+  return roleName === "STAFF" && (gradeName.includes("BENDAHARA") || gradeName.includes("TREASURER"));
 };
 
 export const canViewExternalFinancial = (roleNameRaw: string | null | undefined) => {
@@ -213,9 +217,11 @@ export const canAccessLogs = (roleNameRaw: string | null | undefined) => {
   return roleName === "ADMIN";
 };
 
-export const canInsertStockMovement = (roleNameRaw: string | null | undefined) => {
+export const canInsertStockMovement = (roleNameRaw: string | null | undefined, staffGradeNameRaw?: string | null | undefined) => {
   const roleName = normalizeRole(roleNameRaw);
-  return roleName === "CASHIER" || roleName === "STAFF" || roleName === "ADMIN";
+  if (roleName === "ADMIN" || roleName === "CASHIER") return true;
+  const gradeName = String(staffGradeNameRaw || "").trim().toUpperCase();
+  return roleName === "STAFF" && gradeName.includes("OPERATIONAL STAFF");
 };
 
 export const canManageStockMovementRecord = (roleNameRaw: string | null | undefined) => {

@@ -1,6 +1,6 @@
 import { Platform } from "react-native";
 import { Asset } from "expo-asset";
-import { API_BASE_URL } from "./api";
+import { fetchWithAuth } from "./fetchWithAuth";
 import { buildExportFileName, sanitizeFileNamePart } from "./exportFileName";
 
 export type ExcelValue = string | number | boolean | Date | null | undefined;
@@ -392,7 +392,7 @@ const downloadBackendExcel = async ({
   if (Platform.OS === "web") return false;
 
   const targetFileName = fileName || buildExcelFileName(reportKey, generatedAt);
-  const response = await fetch(`${API_BASE_URL}/api/reports/export-excel`, {
+  const response = await fetchWithAuth(`/api/reports/export-excel`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -612,15 +612,16 @@ const addWorkbookHeader = async (
   return rowIndex + 1;
 };
 
-export const downloadExcelSectionWorkbook = async (options: ExcelSectionWorkbookOptions) => {
+export const flattenExcelSections = (sections: ExcelSection[]) => {
   const flattenedRows: Record<string, ExcelValue>[] = [];
-  const maxColumns = Math.max(1, ...options.sections.map((section) => section.columns.length));
+  const maxColumns = Math.max(1, ...sections.map((section) => section.columns.length));
   const sectionColumns = Array.from({ length: maxColumns }, (_item, index) => ({
     key: `col_${index + 1}`,
     title: index === 0 ? "Section / Data" : "",
     width: 22,
   }));
-  options.sections.forEach((section) => {
+  
+  sections.forEach((section) => {
     flattenedRows.push({ col_1: section.title });
     flattenedRows.push(Object.fromEntries(section.columns.map((column, index) => [`col_${index + 1}`, column.title])));
     if (section.rows.length === 0) {
@@ -632,6 +633,12 @@ export const downloadExcelSectionWorkbook = async (options: ExcelSectionWorkbook
     }
     flattenedRows.push({});
   });
+  
+  return { columns: sectionColumns, rows: flattenedRows };
+};
+
+export const downloadExcelSectionWorkbook = async (options: ExcelSectionWorkbookOptions) => {
+  const { columns: sectionColumns, rows: flattenedRows } = flattenExcelSections(options.sections);
   const handledByBackend = await downloadBackendExcel({
     title: options.title,
     reportKey: options.reportKey,

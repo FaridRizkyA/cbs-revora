@@ -14,7 +14,8 @@
     "db:fresh": "node database/scripts/fresh.js",
     "db:reset": "npm run db:fresh && npm run db:migrate",
     "db:setup": "npm run db:fresh && npm run db:migrate && npm run db:seed",
-    "db:backfill:stockin": "node database/scripts/backfill_stock_in_documents.js"
+    "db:backfill:stockin": "node database/scripts/backfill_stock_in_documents.js",
+    "queue:clear": "node backend/scripts/clearQueue.js"
   },
   "dependencies": {
     "@react-native-community/datetimepicker": "^8.6.0",

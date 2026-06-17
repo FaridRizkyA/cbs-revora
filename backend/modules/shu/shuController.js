@@ -107,147 +107,119 @@ const ensurePeriod = async (client, period) => {
 const calculateShuData = async (client, period) => {
   const { start_date, end_date } = period;
 
-  const [salesProfitResult, extResult, taggedPathResult, memberSpendResult, expenseResult, officersResult] = await Promise.all([
-    client.query(
-      `
+  const salesProfitResult = await client.query(
+    `
+    SELECT
+      COALESCE(
+        SUM(
+          (COALESCE(si.unit_price, 0) - COALESCE(pb.purchase_price, 0)) * si.quantity
+        ),
+        0
+      )::float AS amount
+    FROM tbl_sale_items si
+    JOIN tbl_sales s
+      ON s.id_sale = si.id_sale
+     AND s.is_active = 'Y'
+    LEFT JOIN tbl_product_batches pb
+      ON pb.id_product_batch = si.id_product_batch
+    WHERE si.is_active = 'Y'
+      AND s.sale_date::date BETWEEN $1::date AND $2::date;
+    `,
+    [start_date, end_date]
+  );
+
+  const extResult = await client.query(
+    `
+    SELECT
+      COALESCE(SUM(CASE WHEN entry_type = 'INCOME' THEN amount ELSE 0 END), 0)::float AS business_income_amount,
+      COALESCE(SUM(CASE WHEN entry_type = 'OUTCOME' THEN amount ELSE 0 END), 0)::float AS business_expense_amount
+    FROM tbl_external_financial_entries
+    WHERE is_active = 'Y'
+      AND entry_date BETWEEN $1::date AND $2::date;
+    `,
+    [start_date, end_date]
+  );
+
+  const memberSpendResult = await client.query(
+    `
+    SELECT
+      m.id_member,
+      TRIM(CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, ''))) AS full_name,
+      m.is_active,
+      COALESCE(SUM(s.total_amount), 0)::float AS member_total_spending
+    FROM tbl_members m
+    LEFT JOIN tbl_profiles p
+      ON p.id_user = m.id_user
+    LEFT JOIN tbl_sales s
+      ON s.id_member = m.id_member
+     AND s.is_active = 'Y'
+     AND s.sale_date::date BETWEEN $1::date AND $2::date
+    GROUP BY m.id_member, p.first_name, p.last_name, m.is_active
+    ORDER BY TRIM(CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, ''))) ASC;
+    `,
+    [start_date, end_date]
+  );
+
+  const expenseResult = await client.query(
+    `
+    WITH movement_loss AS (
       SELECT
-        COALESCE(
-          SUM(
-            (COALESCE(si.unit_price, 0) - COALESCE(pb.purchase_price, 0)) * si.quantity
-          ),
-          0
-        )::float AS amount
-      FROM tbl_sale_items si
-      JOIN tbl_sales s
-        ON s.id_sale = si.id_sale
-       AND s.is_active = 'Y'
+        sm.id_stock_movement,
+        CASE
+          WHEN sm.movement_type = 'OUT'
+           AND sm.source_type = 'NON_SALE_OUT'
+           AND sm.reason NOT IN (
+             'NON_SALE_OUT:RETURN_TO_SUPPLIER_REFUND'
+           )
+            THEN (COALESCE(pb.purchase_price, 0) * sm.quantity)
+          WHEN sm.movement_type = 'OUT'
+           AND sm.reason LIKE 'ADJUSTMENT_DECREASE:%'
+            THEN (COALESCE(pb.purchase_price, 0) * sm.quantity)
+          ELSE 0
+        END AS expense_amount
+      FROM tbl_stock_movements sm
       LEFT JOIN tbl_product_batches pb
-        ON pb.id_product_batch = si.id_product_batch
-      WHERE si.is_active = 'Y'
-        AND s.sale_date::date BETWEEN $1::date AND $2::date;
-      `,
-      [start_date, end_date]
-    ),
-    client.query(
-      `
-      SELECT
-        COALESCE(SUM(CASE WHEN entry_type = 'INCOME' THEN amount ELSE 0 END), 0)::float AS business_income_amount,
-        COALESCE(SUM(CASE WHEN entry_type = 'OUTCOME' THEN amount ELSE 0 END), 0)::float AS business_expense_amount
-      FROM tbl_external_financial_entries
-      WHERE is_active = 'Y'
-        AND entry_date BETWEEN $1::date AND $2::date;
-      `,
-      [start_date, end_date]
-    ),
-    client.query(
-      `
-      SELECT
-        COALESCE(SUM(CASE WHEN entry_type = 'INCOME'  AND (entry_source ILIKE 'SALES:%' OR entry_source ILIKE 'BELANJA:%') THEN amount ELSE 0 END), 0)::float AS sales_income_amount,
-        COALESCE(SUM(CASE WHEN entry_type = 'OUTCOME' AND (entry_source ILIKE 'SALES:%' OR entry_source ILIKE 'BELANJA:%') THEN amount ELSE 0 END), 0)::float AS sales_cost_amount,
-        COALESCE(SUM(CASE WHEN entry_type = 'INCOME'  AND (entry_source ILIKE 'BUSINESS:%' OR entry_source ILIKE 'USAHA:%') THEN amount ELSE 0 END), 0)::float AS business_income_amount,
-        COALESCE(SUM(CASE WHEN entry_type = 'OUTCOME' AND (entry_source ILIKE 'BUSINESS:%' OR entry_source ILIKE 'USAHA:%') THEN amount ELSE 0 END), 0)::float AS business_expense_amount,
-        COUNT(*) FILTER (
-          WHERE entry_source ILIKE 'SALES:%'
-             OR entry_source ILIKE 'BELANJA:%'
-             OR entry_source ILIKE 'BUSINESS:%'
-             OR entry_source ILIKE 'USAHA:%'
-        )::int AS tagged_rows
-      FROM tbl_external_financial_entries
-      WHERE is_active = 'Y'
-        AND entry_date BETWEEN $1::date AND $2::date;
-      `,
-      [start_date, end_date]
-    ),
-    client.query(
-      `
-      SELECT
-        m.id_member,
-        TRIM(CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, ''))) AS full_name,
-        m.is_active,
-        COALESCE(SUM(s.total_amount), 0)::float AS member_total_spending
-      FROM tbl_members m
-      LEFT JOIN tbl_profiles p
-        ON p.id_user = m.id_user
-      LEFT JOIN tbl_sales s
-        ON s.id_member = m.id_member
-       AND s.is_active = 'Y'
-       AND s.sale_date::date BETWEEN $1::date AND $2::date
-      GROUP BY m.id_member, p.first_name, p.last_name, m.is_active
-      ORDER BY TRIM(CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, ''))) ASC;
-      `,
-      [start_date, end_date]
-    ),
-    client.query(
-      `
-      WITH movement_loss AS (
-        SELECT
-          sm.id_stock_movement,
-          CASE
-            WHEN sm.movement_type = 'OUT'
-             AND sm.source_type = 'NON_SALE_OUT'
-             AND sm.reason NOT IN (
-               'NON_SALE_OUT:RETURN_TO_SUPPLIER_REFUND'
-             )
-              THEN (COALESCE(pb.purchase_price, 0) * sm.quantity)
-            WHEN sm.movement_type = 'OUT'
-             AND sm.reason LIKE 'ADJUSTMENT_DECREASE:%'
-              THEN (COALESCE(pb.purchase_price, 0) * sm.quantity)
-            ELSE 0
-          END AS expense_amount
-        FROM tbl_stock_movements sm
-        LEFT JOIN tbl_product_batches pb
-          ON pb.id_product_batch = sm.id_product_batch
-        WHERE sm.is_active = 'Y'
-          AND sm.movement_date::date BETWEEN $1::date AND $2::date
-      )
-      SELECT COALESCE(SUM(expense_amount), 0)::float AS sales_cost_amount
-      FROM movement_loss;
-      `,
-      [start_date, end_date]
-    ),
-    client.query(
-      `
-      SELECT
-        s.id_staff,
-        sor.officer_role_code
-      FROM tbl_staff_officer_roles sor
-      JOIN tbl_staff s
-        ON s.id_staff = sor.id_staff
-      WHERE sor.is_active = 'Y'
-        AND sor.is_shu_eligible = 'Y'
-        AND s.is_active = 'Y'
-        AND sor.officer_role_code = ANY($1::text[])
-        AND sor.effective_start_date <= $3::date
-        AND (sor.effective_end_date IS NULL OR sor.effective_end_date >= $2::date)
-      ORDER BY
-        CASE sor.officer_role_code
-          WHEN 'CHAIRPERSON' THEN 1
-          WHEN 'VICE_CHAIRPERSON' THEN 2
-          WHEN 'TREASURER' THEN 3
-          ELSE 99
-        END ASC,
-        sor.created_date ASC;
-      `,
-      [OFFICER_ROLE_CODES, start_date, end_date]
-    ),
-  ]);
+        ON pb.id_product_batch = sm.id_product_batch
+      WHERE sm.is_active = 'Y'
+        AND sm.movement_date::date BETWEEN $1::date AND $2::date
+    )
+    SELECT COALESCE(SUM(expense_amount), 0)::float AS sales_cost_amount
+    FROM movement_loss;
+    `,
+    [start_date, end_date]
+  );
 
-  const tagged = taggedPathResult.rows[0] || {};
-  const useTaggedSheet2Path = Number(tagged.tagged_rows || 0) > 0;
+  const officersResult = await client.query(
+    `
+    SELECT
+      s.id_staff,
+      sor.officer_role_code
+    FROM tbl_staff_officer_roles sor
+    JOIN tbl_staff s
+      ON s.id_staff = sor.id_staff
+    WHERE sor.is_active = 'Y'
+      AND sor.is_shu_eligible = 'Y'
+      AND s.is_active = 'Y'
+      AND sor.officer_role_code = ANY($1::text[])
+      AND sor.effective_start_date <= $3::date
+      AND (sor.effective_end_date IS NULL OR sor.effective_end_date >= $2::date)
+    ORDER BY
+      CASE sor.officer_role_code
+        WHEN 'CHAIRPERSON' THEN 1
+        WHEN 'VICE_CHAIRPERSON' THEN 2
+        WHEN 'TREASURER' THEN 3
+        ELSE 99
+      END ASC,
+      sor.created_date ASC;
+    `,
+    [OFFICER_ROLE_CODES, start_date, end_date]
+  );
 
-  const salesIncome = useTaggedSheet2Path
-    ? parsePositiveAmount(tagged.sales_income_amount)
-    : parsePositiveAmount(salesProfitResult.rows[0]?.amount);
-  const salesCost = useTaggedSheet2Path
-    ? parsePositiveAmount(tagged.sales_cost_amount)
-    : parsePositiveAmount(expenseResult.rows[0]?.sales_cost_amount);
+  const salesIncome = parsePositiveAmount(salesProfitResult.rows[0]?.amount);
+  const salesCost = parsePositiveAmount(expenseResult.rows[0]?.sales_cost_amount);
 
-  const businessIncome = useTaggedSheet2Path
-    ? parsePositiveAmount(tagged.business_income_amount)
-    : parsePositiveAmount(extResult.rows[0]?.business_income_amount);
-  const businessExpense = useTaggedSheet2Path
-    ? parsePositiveAmount(tagged.business_expense_amount)
-    : parsePositiveAmount(extResult.rows[0]?.business_expense_amount);
+  const businessIncome = parsePositiveAmount(extResult.rows[0]?.business_income_amount);
+  const businessExpense = parsePositiveAmount(extResult.rows[0]?.business_expense_amount);
 
   const salesNetRaw = salesIncome - salesCost;
   const businessNetRaw = businessIncome - businessExpense;
@@ -286,20 +258,27 @@ const calculateShuData = async (client, period) => {
   }));
 
   const totalMemberSpending = memberRows.reduce((sum, row) => sum + row.member_total_spending, 0);
+
+  const totalSalesShuCalculated = memberRows.reduce((sum, row) => {
+    const rate = row.is_active === "Y" ? 0.20 : 0.05;
+    return sum + (row.member_total_spending * rate);
+  }, 0);
+
   const eligibleBusinessRows = memberRows.filter((row) => row.is_active === "Y");
   const eligibleBusinessCount = eligibleBusinessRows.length;
   const businessShuPerEligible = eligibleBusinessCount > 0 ? businessShuPool / eligibleBusinessCount : 0;
 
   const memberDistributions = memberRows.map((row) => {
-    const percentage = totalMemberSpending > 0 ? row.member_total_spending / totalMemberSpending : 0;
-    const salesShuAmount = percentage * salesShuPool;
+    const rate = row.is_active === "Y" ? 0.20 : 0.05;
+    const salesShuAmount = row.member_total_spending * rate;
+    const spendingPercentage = totalSalesShuCalculated > 0 ? salesShuAmount / totalSalesShuCalculated : 0;
     const eligible = row.is_active === "Y";
     const businessShuAmount = eligible ? businessShuPerEligible : 0;
     const shuAmount = salesShuAmount + businessShuAmount;
     return {
       ...row,
       eligible_business_shu: eligible,
-      spending_percentage: percentage,
+      spending_percentage: spendingPercentage,
       sales_shu_amount: salesShuAmount,
       business_shu_amount: businessShuAmount,
       shu_amount: shuAmount,
@@ -462,85 +441,84 @@ const persistShuResult = async (client, periodId, data, status, idUser) => {
 };
 
 const getPeriodDetailTables = async (client, startDate, endDate) => {
-  const [monthlyIncomeRows, yearlyExpenseRows] = await Promise.all([
-    client.query(
-      `
-      WITH month_key AS (
-        SELECT to_char(gs::date, 'YYYY-MM') AS month
-        FROM generate_series($1::date, $2::date, interval '1 month') gs
-      ),
-      sales AS (
-        SELECT
-          to_char(s.sale_date::date, 'YYYY-MM') AS month,
-          COALESCE(SUM(s.total_amount), 0)::float AS sales_turnover_amount
-        FROM tbl_sales s
-        WHERE s.is_active = 'Y'
-          AND s.sale_date::date BETWEEN $1::date AND $2::date
-        GROUP BY 1
-      ),
-      ext_inc AS (
-        SELECT
-          to_char(e.entry_date::date, 'YYYY-MM') AS month,
-          COALESCE(SUM(e.amount), 0)::float AS external_income_amount
-        FROM tbl_external_financial_entries e
-        WHERE e.is_active = 'Y'
-          AND e.entry_type = 'INCOME'
-          AND e.entry_date::date BETWEEN $1::date AND $2::date
-        GROUP BY 1
-      )
-      SELECT
-        mk.month,
-        COALESCE(s.sales_turnover_amount, 0)::float AS sales_turnover_amount,
-        COALESCE(e.external_income_amount, 0)::float AS external_income_amount,
-        (COALESCE(s.sales_turnover_amount, 0) + COALESCE(e.external_income_amount, 0))::float AS total_income_amount
-      FROM month_key mk
-      LEFT JOIN sales s ON s.month = mk.month
-      LEFT JOIN ext_inc e ON e.month = mk.month
-      ORDER BY mk.month ASC;
-      `,
-      [startDate, endDate]
+  const monthlyIncomeRows = await client.query(
+    `
+    WITH month_key AS (
+      SELECT to_char(gs::date, 'YYYY-MM') AS month
+      FROM generate_series($1::date, $2::date, interval '1 month') gs
     ),
-    client.query(
-      `
+    sales AS (
       SELECT
-        x.expense_date,
-        x.expense_type,
-        x.source,
-        x.notes,
-        x.amount::float AS amount
-      FROM (
-        SELECT
-          e.entry_date::date AS expense_date,
-          'EXTERNAL_OUTCOME'::text AS expense_type,
-          COALESCE(e.entry_source, 'EXTERNAL') AS source,
-          COALESCE(e.notes, '') AS notes,
-          e.amount
-        FROM tbl_external_financial_entries e
-        WHERE e.is_active = 'Y'
-          AND e.entry_type = 'OUTCOME'
-          AND e.entry_date::date BETWEEN $1::date AND $2::date
-
-        UNION ALL
-
-        SELECT
-          h.stock_in_date::date AS expense_date,
-          'STOCK_IN_PURCHASE'::text AS expense_type,
-          COALESCE(h.stock_in_code, 'STOCK_IN') AS source,
-          COALESCE(h.notes, '') AS notes,
-          COALESCE(SUM(i.quantity * COALESCE(pb.purchase_price, 0)), 0)::numeric AS amount
-        FROM tbl_stock_in_headers h
-        JOIN tbl_stock_in_items i
-          ON i.id_stock_in = h.id_stock_in
-        LEFT JOIN tbl_product_batches pb
-          ON pb.id_product_batch = i.id_product_batch
-        WHERE h.stock_in_date::date BETWEEN $1::date AND $2::date
-        GROUP BY h.stock_in_date::date, h.stock_in_code, h.notes
-      ) x
-      ORDER BY x.expense_date ASC, x.expense_type ASC, x.source ASC;
-      `,
-      [startDate, endDate]
+        to_char(s.sale_date::date, 'YYYY-MM') AS month,
+        COALESCE(SUM(s.total_amount), 0)::float AS sales_turnover_amount
+      FROM tbl_sales s
+      WHERE s.is_active = 'Y'
+        AND s.sale_date::date BETWEEN $1::date AND $2::date
+      GROUP BY 1
     ),
-  ]);
+    ext_inc AS (
+      SELECT
+        to_char(e.entry_date::date, 'YYYY-MM') AS month,
+        COALESCE(SUM(e.amount), 0)::float AS external_income_amount
+      FROM tbl_external_financial_entries e
+      WHERE e.is_active = 'Y'
+        AND e.entry_type = 'INCOME'
+        AND e.entry_date::date BETWEEN $1::date AND $2::date
+      GROUP BY 1
+    )
+    SELECT
+      mk.month,
+      COALESCE(s.sales_turnover_amount, 0)::float AS sales_turnover_amount,
+      COALESCE(e.external_income_amount, 0)::float AS external_income_amount,
+      (COALESCE(s.sales_turnover_amount, 0) + COALESCE(e.external_income_amount, 0))::float AS total_income_amount
+    FROM month_key mk
+    LEFT JOIN sales s ON s.month = mk.month
+    LEFT JOIN ext_inc e ON e.month = mk.month
+    ORDER BY mk.month ASC;
+    `,
+    [startDate, endDate]
+  );
+
+  const yearlyExpenseRows = await client.query(
+    `
+    SELECT
+      x.expense_date,
+      x.expense_type,
+      x.source,
+      x.notes,
+      x.amount::float AS amount
+    FROM (
+      SELECT
+        e.entry_date::date AS expense_date,
+        'EXTERNAL_OUTCOME'::text AS expense_type,
+        COALESCE(e.entry_source, 'EXTERNAL') AS source,
+        COALESCE(e.notes, '') AS notes,
+        e.amount
+      FROM tbl_external_financial_entries e
+      WHERE e.is_active = 'Y'
+        AND e.entry_type = 'OUTCOME'
+        AND e.entry_date::date BETWEEN $1::date AND $2::date
+
+      UNION ALL
+
+      SELECT
+        h.stock_in_date::date AS expense_date,
+        'STOCK_IN_PURCHASE'::text AS expense_type,
+        COALESCE(h.stock_in_code, 'STOCK_IN') AS source,
+        COALESCE(h.notes, '') AS notes,
+        COALESCE(SUM(i.quantity * COALESCE(pb.purchase_price, 0)), 0)::numeric AS amount
+      FROM tbl_stock_in_headers h
+      JOIN tbl_stock_in_items i
+        ON i.id_stock_in = h.id_stock_in
+      LEFT JOIN tbl_product_batches pb
+        ON pb.id_product_batch = i.id_product_batch
+      WHERE h.stock_in_date::date BETWEEN $1::date AND $2::date
+      GROUP BY h.stock_in_date::date, h.stock_in_code, h.notes
+    ) x
+    ORDER BY x.expense_date ASC, x.expense_type ASC, x.source ASC;
+    `,
+    [startDate, endDate]
+  );
 
   return {
     monthly_income: monthlyIncomeRows.rows,

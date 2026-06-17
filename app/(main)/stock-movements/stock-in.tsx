@@ -84,6 +84,7 @@ import { downloadReportPdf } from "../../../utils/pdfExport";
 export default function StockInScreen() {
   const [rows, setRows] = useState<StockInDocument[]>([]);
   const [roleName, setRoleName] = useState("CASHIER");
+  const [staffGradeName, setStaffGradeName] = useState("");
   const [userId, setUserId] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -131,7 +132,7 @@ export default function StockInScreen() {
   const tomorrowDate = useMemo(() => new Date(Date.now() + 24 * 60 * 60 * 1000), []);
   const todayDayNumber = useMemo(() => Number(new Date().toISOString().slice(0, 10).replaceAll("-", "")), []);  
 
-  const canInsert = canInsertStockMovement(roleName);
+  const canInsert = canInsertStockMovement(roleName, staffGradeName);
   const formatDateTime = useCallback((value?: string | null) => {
     if (!value) return "-";
     const date = new Date(value);

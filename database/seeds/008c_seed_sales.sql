@@ -70,6 +70,27 @@ INSERT INTO tbl_sales (
         '2025-08-20 14:30:00',
         'c6f1a22e-1f65-4355-be54-69ae3d326457'
     )
+    ,(
+        '11112222-3333-4444-5555-000000000101', 'STO/AUTO/S/101', 'f9294704-b5da-43ab-a9fb-5714a7f67b8f', 'c6f1a22e-1f65-4355-be54-69ae3d326457', 'MEMBER', 49000, 0, 49000, 'CASH', 49000, 0, '2026-03-10 10:00:00', 'Auto seeded missing sale', 'Y', '2026-03-10 10:00:00', 'c6f1a22e-1f65-4355-be54-69ae3d326457'
+    ),
+    (
+        '11112222-3333-4444-5555-000000000102', 'STO/AUTO/S/102', 'ff883d77-3386-487f-9f57-0608e0e23981', 'c6f1a22e-1f65-4355-be54-69ae3d326457', 'MEMBER', 49000, 0, 49000, 'CASH', 49000, 0, '2025-05-10 10:00:00', 'Auto seeded missing sale', 'Y', '2025-05-10 10:00:00', 'c6f1a22e-1f65-4355-be54-69ae3d326457'
+    ),
+    (
+        '11112222-3333-4444-5555-000000000103', 'STO/AUTO/S/103', 'ff883d77-3386-487f-9f57-0608e0e23981', 'c6f1a22e-1f65-4355-be54-69ae3d326457', 'MEMBER', 49000, 0, 49000, 'CASH', 49000, 0, '2026-03-10 10:00:00', 'Auto seeded missing sale', 'Y', '2026-03-10 10:00:00', 'c6f1a22e-1f65-4355-be54-69ae3d326457'
+    ),
+    (
+        '11112222-3333-4444-5555-000000000104', 'STO/AUTO/S/104', 'eff12e75-aa83-466a-9f58-3f89ca7f18dc', 'c6f1a22e-1f65-4355-be54-69ae3d326457', 'MEMBER', 49000, 0, 49000, 'CASH', 49000, 0, '2025-06-10 10:00:00', 'Auto seeded missing sale', 'Y', '2025-06-10 10:00:00', 'c6f1a22e-1f65-4355-be54-69ae3d326457'
+    ),
+    (
+        '11112222-3333-4444-5555-000000000105', 'STO/AUTO/S/105', 'eff12e75-aa83-466a-9f58-3f89ca7f18dc', 'c6f1a22e-1f65-4355-be54-69ae3d326457', 'MEMBER', 49000, 0, 49000, 'CASH', 49000, 0, '2026-03-10 10:00:00', 'Auto seeded missing sale', 'Y', '2026-03-10 10:00:00', 'c6f1a22e-1f65-4355-be54-69ae3d326457'
+    ),
+    (
+        '11112222-3333-4444-5555-000000000106', 'STO/AUTO/S/106', 'caa2a8d1-3cfc-43e5-b045-96c56924c6c0', 'c6f1a22e-1f65-4355-be54-69ae3d326457', 'MEMBER', 49000, 0, 49000, 'CASH', 49000, 0, '2025-07-10 10:00:00', 'Auto seeded missing sale', 'Y', '2025-07-10 10:00:00', 'c6f1a22e-1f65-4355-be54-69ae3d326457'
+    ),
+    (
+        '11112222-3333-4444-5555-000000000107', 'STO/AUTO/S/107', 'caa2a8d1-3cfc-43e5-b045-96c56924c6c0', 'c6f1a22e-1f65-4355-be54-69ae3d326457', 'MEMBER', 49000, 0, 49000, 'CASH', 49000, 0, '2026-03-10 10:00:00', 'Auto seeded missing sale', 'Y', '2026-03-10 10:00:00', 'c6f1a22e-1f65-4355-be54-69ae3d326457'
+    )
 ON CONFLICT (sale_number) DO UPDATE SET
     id_member = EXCLUDED.id_member,
     id_cashier = EXCLUDED.id_cashier,
@@ -84,3 +105,4 @@ ON CONFLICT (sale_number) DO UPDATE SET
     notes = EXCLUDED.notes,
     is_active = EXCLUDED.is_active,
     created_by = EXCLUDED.created_by;
+

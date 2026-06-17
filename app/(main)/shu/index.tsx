@@ -12,6 +12,7 @@ import {
   buildShuDetailReportPrintHtml,
   buildShuYearlyReportPrintHtml,
   distributionTableColumns,
+  buildShuDetailExcelFlattenedRows,
   downloadShuDetailReportExcel,
   downloadShuYearlyReportExcel,
   ShuSignatureSlot,
@@ -534,18 +535,14 @@ export default function ShuScreen() {
         ],
         columns: isTable 
           ? shuYearlyColumns.map(c => ({ key: c.key, title: c.title, align: c.align }))
-          : distributionTableColumns.map(c => ({ key: c.key, title: c.title, align: c.align })),
+          : (detailData ? buildShuDetailExcelFlattenedRows(detailData, signatures).columns : []),
         rows: isTable 
           ? filteredRows.map((row, idx) => {
               const rowData: any = {};
               shuYearlyColumns.forEach(c => { rowData[c.key] = c.getValue(row, idx); });
               return rowData;
             })
-          : (detailData?.member_distributions || []).map((row, idx) => {
-              const rowData: any = {};
-              distributionTableColumns.forEach(c => { rowData[c.key] = c.getValue(row, idx); });
-              return rowData;
-            }),
+          : (detailData ? buildShuDetailExcelFlattenedRows(detailData, signatures).rows : []),
       };
 
       const response = await fetchWithAuth("/api/reports/send-email", {
@@ -911,7 +908,21 @@ export default function ShuScreen() {
           {detailData ? (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Monthly Income</Text>
-              <InventoryDataTable columns={monthlyIncomeColumns} rows={detailData.monthly_income || []} rowKey={(row) => row.month} emptyText="No monthly income data." enablePagination={false} />
+              <InventoryDataTable
+                columns={monthlyIncomeColumns}
+                rows={detailData.monthly_income || []}
+                rowKey={(row) => row.month}
+                emptyText="No monthly income data."
+                enablePagination={false}
+                footerValues={
+                  !detailData?.monthly_income?.length ? undefined : [
+                    <Text style={[styles.rowCell, { fontWeight: "700" }]}>Total</Text>,
+                    <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(detailData.monthly_income.reduce((sum, r) => sum + r.sales_turnover_amount, 0))}</Text>,
+                    <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(detailData.monthly_income.reduce((sum, r) => sum + r.external_income_amount, 0))}</Text>,
+                    <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(detailData.monthly_income.reduce((sum, r) => sum + r.total_income_amount, 0))}</Text>,
+                  ]
+                }
+              />
             </View>
           ) : null}
 
@@ -923,6 +934,15 @@ export default function ShuScreen() {
                 rows={detailData.yearly_expenses || []}
                 rowKey={(row) => `${row.expense_date}-${row.expense_type}-${row.source}-${row.amount}`}
                 emptyText="No yearly expense data."
+                footerValues={
+                  !detailData?.yearly_expenses?.length ? undefined : [
+                    undefined,
+                    undefined,
+                    undefined,
+                    <Text style={[styles.rowCell, { fontWeight: "700", textAlign: "right", width: "100%" }]}>Total Expenses</Text>,
+                    <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(detailData.yearly_expenses.reduce((sum, r) => sum + r.amount, 0))}</Text>,
+                  ]
+                }
               />
             </View>
           ) : null}
@@ -931,7 +951,7 @@ export default function ShuScreen() {
 
           {detailData ? (
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>Remaining SHU Calculation</Text>
+              <Text style={styles.cardTitle}>Retained Earnings Calculation</Text>
               <View style={styles.summaryItem}>
                 <Text style={styles.summaryLabel}>Net Profit</Text>
                 <Text style={styles.summaryValue}>{formatRupiah(detailData.remaining_shu.gross_profit_amount)}</Text>
@@ -945,7 +965,7 @@ export default function ShuScreen() {
                 <Text style={styles.summaryValue}>{formatRupiah(detailData.remaining_shu.officer_distributed_amount)}</Text>
               </View>
               <View style={styles.summaryItem}>
-                <Text style={styles.summaryLabel}>Remaining SHU</Text>
+                <Text style={styles.summaryLabel}>Retained Earnings (Sisa SHU)</Text>
                 <Text style={styles.summaryValue}>{formatRupiah(detailData.remaining_shu.remaining_shu_amount)}</Text>
               </View>
             </View>

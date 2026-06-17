@@ -14,6 +14,7 @@ CREATE TABLE tbl_email_logs (
     failed_reason TEXT,
     attempt_count INT NOT NULL DEFAULT 0,
     next_retry_at TIMESTAMP,
+    email_payload JSONB,
 
     reference_table VARCHAR(100),
     reference_id UUID,

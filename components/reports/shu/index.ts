@@ -7,7 +7,7 @@ import {
   ReportNestedTable,
   ReportTableColumn,
 } from "../shared/ReportPrintTemplate";
-import { downloadExcelSectionWorkbook, ExcelSection, ExcelValue } from "../../../utils/excelExport";
+import { downloadExcelSectionWorkbook, flattenExcelSections, ExcelSection, ExcelValue } from "../../../utils/excelExport";
 
 export type ShuYearReportRow = {
   id_shu_period: string;
@@ -161,9 +161,9 @@ export const distributionTableColumns: ReportTableColumn<ShuDetailReportData["me
   { key: "full_name", title: "Member", width: "22%", getValue: (row) => row.full_name },
   { key: "member_total_spending", title: "Spending", align: "right", width: "15%", getValue: (row) => formatRupiah(row.member_total_spending) },
   { key: "sales_shu_amount", title: "Sales SHU", align: "right", width: "15%", getValue: (row) => formatRupiah(row.sales_shu_amount) },
-  { key: "spending_percentage", title: "SHU %", align: "right", width: "10%", getValue: (row) => percentText(row.spending_percentage) },
+  { key: "spending_percentage", title: "Ratio (%)", align: "center", width: "10%", getValue: (row) => percentText(row.spending_percentage) },
   { key: "business_shu_amount", title: "Business SHU", align: "right", width: "15%", getValue: (row) => formatRupiah(row.business_shu_amount) },
-  { key: "shu_amount", title: "SHU Total", align: "right", width: "15%", getValue: (row) => formatRupiah(row.shu_amount) },
+  { key: "shu_amount", title: "Total SHU", align: "right", width: "15%", getValue: (row) => formatRupiah(row.shu_amount) },
 ];
 
 export const buildShuYearlyReportPdfFileName = (date?: string | Date | null) =>
@@ -250,6 +250,28 @@ const detailTablesToExcelSections = (tables: ReportNestedTable[]): ExcelSection[
     })),
     rows: [...table.rows, ...detailTableFooterRowsToExcelRows(table)],
   }));
+
+
+export const buildShuDetailExcelFlattenedRows = (detail: ShuDetailReportData, signatures: ShuSignatureSlot[] = defaultSignatures) => {
+  const tables = buildDetailTables(detail, signatures);
+  const sections = [
+    {
+      title: "Period Information",
+      columns: [
+        { key: "label", title: "Field", width: 22 },
+        { key: "value", title: "Value", width: 32 },
+      ],
+      rows: [
+        { label: "Period", value: detail.period.period_name },
+        { label: "Start Date", value: formatDateOnly(detail.period.start_date) },
+        { label: "End Date", value: formatDateOnly(detail.period.end_date) },
+        { label: "Status", value: detail.period.calculation_status },
+      ],
+    },
+    ...detailTablesToExcelSections(tables),
+  ];
+  return flattenExcelSections(sections);
+};
 
 export const downloadShuDetailReportExcel = async ({
   detail,
@@ -369,9 +391,9 @@ const buildDetailTables = (detail: ShuDetailReportData, signatures: ShuSignature
         { key: "full_name", title: "Member", width: "22%" },
         { key: "member_total_spending", title: "Spending", align: "right", width: "15%" },
         { key: "sales_shu_amount", title: "Sales SHU", align: "right", width: "15%" },
-        { key: "spending_percentage", title: "SHU %", align: "right", width: "10%" },
+        { key: "spending_percentage", title: "Ratio (%)", align: "center", width: "10%" },
         { key: "business_shu_amount", title: "Business SHU", align: "right", width: "15%" },
-        { key: "shu_amount", title: "SHU Total", align: "right", width: "15%" },
+        { key: "shu_amount", title: "Total SHU", align: "right", width: "15%" },
       ],
       rows: activeMemberDistributions.map((row, index) => ({
         row_number: index + 1,
@@ -432,7 +454,7 @@ const buildDetailTables = (detail: ShuDetailReportData, signatures: ShuSignature
         { label: "Net Profit", value: formatRupiah(detail.remaining_shu.gross_profit_amount) },
         { label: "Distributed Member SHU", value: formatRupiah(detail.remaining_shu.member_distributed_amount) },
         { label: "Distributed Officer SHU", value: formatRupiah(detail.remaining_shu.officer_distributed_amount) },
-        { label: "Remaining SHU", value: formatRupiah(detail.remaining_shu.remaining_shu_amount) },
+        { label: "Remaining SHU / Retained Earnings", value: formatRupiah(detail.remaining_shu.remaining_shu_amount) },
       ],
     },
     {

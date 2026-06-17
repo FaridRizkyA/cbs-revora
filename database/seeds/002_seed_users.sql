@@ -32,7 +32,7 @@ INSERT INTO tbl_users (
     ),
     (
         '109745bd-441a-4af2-8792-d5d46f63d334',
-        'staff@cbsrevora.local',
+        'treasurer@cbsrevora.local',
         '$2b$10$RC8C.90Ig5tZ3ocKa.voiebbPFNXoCCY22vT/idXuh8uD26LrvbDe',
         'Y',
         '2026-01-01 08:05:00',
@@ -57,6 +57,14 @@ INSERT INTO tbl_users (
     (
         '81388bae-aab2-498c-98e7-5aa963c34a52',
         'advisor@cbsrevora.local',
+        '$2b$10$RC8C.90Ig5tZ3ocKa.voiebbPFNXoCCY22vT/idXuh8uD26LrvbDe',
+        'Y',
+        '2026-01-01 08:05:00',
+        '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'
+    ),
+    (
+        '1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d',
+        'staff@cbsrevora.local',
         '$2b$10$RC8C.90Ig5tZ3ocKa.voiebbPFNXoCCY22vT/idXuh8uD26LrvbDe',
         'Y',
         '2026-01-01 08:05:00',

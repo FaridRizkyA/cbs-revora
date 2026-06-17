@@ -3,6 +3,12 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
 import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import { formatActivityTypeLabel } from "../../../utils/activityLog";
+import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu";
+import SendEmailModal from "../../../components/modals/SendEmailModal";
+import { getAuthSession, normalizeRole } from "../../../utils/authSession";
+import { printReportHtml } from "../../../utils/printUtils";
+import { withEmailPdfAttachment } from "../../../utils/reportEmail";
+import { buildReportPdfFileName, buildReportTablePrintHtml, downloadReportTableExcel } from "../../../components/reports/shared/ReportPrintTemplate";
 
 type ActivityLogRow = {
   id_activity_log: string;
@@ -36,6 +42,77 @@ export default function LogsScreen() {
   const [rows, setRows] = useState<ActivityLogRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const session = getAuthSession();
+  const roleName = normalizeRole(session?.user?.id_role);
+
+  const getReportData = () => ({
+    title: "Activity Logs Report",
+    subtitle: "System audit trail",
+    reportKey: "activity-logs",
+    generatedAt: new Date(),
+    generatedBy: roleName,
+    meta: [{ label: "Total Logs", value: rows.length }],
+    columns: [
+      { key: "date", title: "Date", width: 16, getValue: (row: ActivityLogRow) => formatDateTime(row.activity_date) },
+      { key: "actor", title: "Actor", width: 18, getValue: (row: ActivityLogRow) => row.actor_name || row.actor_email || "-" },
+      { key: "activity", title: "Activity", width: 18, getValue: (row: ActivityLogRow) => formatActivityTypeLabel(row.activity_type) },
+      { key: "target", title: "Target", width: 20, getValue: (row: ActivityLogRow) => row.target_label || row.record_id || "-" },
+      { key: "description", title: "Description", width: 34, getValue: (row: ActivityLogRow) => row.description || "-" }
+    ],
+    rows,
+  });
+
+  const handlePrint = async () => {
+    try {
+      const html = buildReportTablePrintHtml(getReportData());
+      await printReportHtml(html, { tableName: "tbl_activity_logs", description: "Printed activity logs." });
+    } catch (error) {
+      setErrorMessage("Failed to print logs.");
+    }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      await downloadReportTableExcel(getReportData());
+    } catch (error) {
+      setErrorMessage("Failed to export Excel.");
+    }
+  };
+
+  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string, includeExcel: boolean) => {
+    try {
+      const payload = {
+        recipient_email: recipientEmail,
+        recipient_name: fullName,
+        subject: "Activity Logs Report",
+        message,
+        format: "PDF",
+        include_excel: includeExcel,
+        title: "Activity Logs Report",
+        subtitle: "System audit trail",
+        generated_by: roleName,
+        print_html: buildReportTablePrintHtml(getReportData()),
+        columns: getReportData().columns.map(c => ({ key: c.key, title: c.title, align: c.align })),
+        rows: rows.map(row => {
+          const rowData: any = {};
+          getReportData().columns.forEach(c => { rowData[c.key] = c.getValue(row); });
+          return rowData;
+        }),
+      };
+      const response = await fetchWithAuth("/api/reports/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(await withEmailPdfAttachment(payload)),
+      });
+      if (!response.ok) throw new Error("Failed to send email.");
+      setEmailModalOpen(false);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to send email.");
+    }
+  };
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
@@ -109,9 +186,14 @@ export default function LogsScreen() {
           <Text style={styles.title}>Logs</Text>
           <Text style={styles.subtitle}>Audit trail for authentication, data changes, print/export, and sensitive actions.</Text>
         </View>
-        <Pressable style={styles.refreshButton} onPress={loadLogs} disabled={loading}>
-          <Text style={styles.refreshText}>{loading ? "Loading..." : "Refresh"}</Text>
-        </Pressable>
+        
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          <Pressable style={styles.refreshButton} onPress={loadLogs} disabled={loading}>
+            <Text style={styles.refreshText}>{loading ? "Loading..." : "Refresh"}</Text>
+          </Pressable>
+          <ExportDropdownMenu onExportPdf={handlePrint} onExportExcel={handleExportExcel} onSendEmail={() => setEmailModalOpen(true)} />
+        </View>
+
       </View>
 
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
@@ -127,7 +209,10 @@ export default function LogsScreen() {
           minWidth={980}
         />
       </View>
+    
+      <SendEmailModal visible={emailModalOpen} onClose={() => setEmailModalOpen(false)} onSend={handleSendEmailReport} reportTitle="Activity Logs" />
     </ScrollView>
+
   );
 }
 

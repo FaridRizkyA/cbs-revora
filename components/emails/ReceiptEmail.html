@@ -8,18 +8,22 @@
 <div class="text" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;">
     <div style="font-weight: 700; color: #1e293b; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">Transaction Summary</div>
     
-    <table style="width: 100%; border-collapse: collapse;">
+    <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+        <colgroup>
+            <col style="width: 42%;">
+            <col style="width: 58%;">
+        </colgroup>
         <tr>
-            <td style="padding: 6px 0; color: #64748b;">Receipt No.</td>
-            <td style="padding: 6px 0; text-align: right; font-weight: 700; color: #0f172a;">{{SALE_NUMBER}}</td>
+            <td style="padding: 6px 0; color: #64748b; vertical-align: top;">Receipt No.</td>
+            <td style="padding: 6px 0; text-align: right; font-weight: 700; color: #0f172a; word-break: break-all;">{{SALE_NUMBER}}</td>
         </tr>
         <tr>
-            <td style="padding: 6px 0; color: #64748b;">Date</td>
-            <td style="padding: 6px 0; text-align: right; font-weight: 700; color: #0f172a;">{{SALE_DATE}}</td>
+            <td style="padding: 6px 0; color: #64748b; vertical-align: top;">Date</td>
+            <td style="padding: 6px 0; text-align: right; font-weight: 700; color: #0f172a; word-break: break-word;">{{SALE_DATE}}</td>
         </tr>
         <tr>
-            <td style="padding: 6px 0; color: #64748b;">Payment Method</td>
-            <td style="padding: 6px 0; text-align: right; font-weight: 700; color: #0f172a;">{{PAYMENT_METHOD}}</td>
+            <td style="padding: 6px 0; color: #64748b; vertical-align: top;">Payment Method</td>
+            <td style="padding: 6px 0; text-align: right; font-weight: 700; color: #0f172a; word-break: break-word;">{{PAYMENT_METHOD}}</td>
         </tr>
     </table>
 
@@ -52,6 +56,6 @@
 
 <div class="text" style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
     Best regards,<br>
-    <strong>Cashier Department</strong><br>
+    <strong>CBS Revora Support</strong><br>
     Koperasi Cahaya Berkah Sejahtera
 </div>

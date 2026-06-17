@@ -42,10 +42,18 @@ const authenticateToken = async (req, res, next) => {
       const user = result.rows[0];
       
       // 1. Check if session has been displaced by a newer login
-      if (decoded.jti && (!user.active_session_jti || user.active_session_jti !== decoded.jti)) {
+      if (decoded.jti && user.active_session_jti && user.active_session_jti !== decoded.jti) {
         return res.status(403).json({ 
           message: "Account logged in on another device.",
           code: "SESSION_DISPLACED"
+        });
+      }
+
+      // 1b. Check if session was explicitly revoked or cleared (e.g. via db:setup)
+      if (decoded.jti && !user.active_session_jti) {
+        return res.status(403).json({ 
+          message: "Session has been revoked.",
+          code: "SESSION_EXPIRED"
         });
       }
 

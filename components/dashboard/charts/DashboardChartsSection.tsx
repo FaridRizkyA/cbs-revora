@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
-import { BarChart, LineChart, ProgressChart } from "react-native-chart-kit";
+import { BarChart, LineChart, PieChart } from "react-native-chart-kit";
 import { GraphsResponse } from "./types";
 
 const isWeb = Platform.OS === "web";
@@ -158,17 +158,20 @@ export default function DashboardChartsSection({ graphs, width }: Props) {
               />
             </View>
           ) : (
-            <ProgressChart
-              data={{
-                labels: topStockProducts.map((item) => item.product_name.slice(0, 10)),
-                data: stockShareData.length ? stockShareData : [0],
-              }}
+            <PieChart
+              data={topStockProducts.map((item, index) => ({
+                name: " " + item.product_name.slice(0, 10) + (item.product_name.length > 10 ? "..." : ""),
+                population: Math.max(item.percentage, 0),
+                color: ["#2563eb", "#16a34a", "#d97706", "#7c3aed", "#dc2626", "#0891b2", "#ca8a04", "#0f766e"][index % 8],
+                legendFontColor: "#475569",
+                legendFontSize: 11
+              }))}
               width={chartWidth}
               height={230}
-              strokeWidth={16}
-              radius={30}
               chartConfig={chartConfig}
-              hideLegend
+              accessor="population"
+              backgroundColor="transparent"
+              paddingLeft="0"
               style={styles.chartKit}
             />
           )}

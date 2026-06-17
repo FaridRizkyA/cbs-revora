@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import ResponsiveModal from "../common/ResponsiveModal";
 import FilterSelectField from "../inventory/FilterSelectField";
 import { API_BASE_URL } from "../../utils/api";
+import { fetchWithAuth } from "../../utils/fetchWithAuth";
 
 type UserOption = {
   id_user: string;
@@ -39,7 +40,7 @@ export default function SendEmailModal({ visible, onClose, onSend, reportTitle }
   const fetchUsers = async () => {
     setLoadingUsers(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/people/staffs`);
+      const response = await fetchWithAuth(`/api/people/staffs`);
       const payload = await response.json();
       if (response.ok) {
         const data = Array.isArray(payload.data) ? payload.data : [];

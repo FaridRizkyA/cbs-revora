@@ -22,7 +22,7 @@ export function ShuPeriodCard({ period }: Props) {
     { label: "SHU (Patronage Refund) Business Pool", value: formatRupiah(period.business_shu_pool_amount) },
     { label: "Management Fund", value: formatRupiah(period.total_manager_fund_amount) },
     { label: "Total Member SHU (Patronage Refund)", value: formatRupiah(period.total_shu_distributed_amount) },
-    { label: "Reconciliation Gap", value: formatRupiah(period.reconciliation_gap_amount) },
+    { label: "Retained Earnings (Sisa SHU)", value: formatRupiah(period.reconciliation_gap_amount) },
   ];
 
   return (

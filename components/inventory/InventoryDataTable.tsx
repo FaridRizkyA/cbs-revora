@@ -17,13 +17,15 @@ export type InventoryDataTableColumn<T> = {
 type InventoryDataTableProps<T> = {
   columns: InventoryDataTableColumn<T>[];
   rows: T[];
-  rowKey: (row: T) => string;
+  rowKey: (row: T, index: number) => string;
   emptyText: string;
   isRowActive?: (row: T) => boolean;
   minWidth?: number;
   initialPageSize?: number;
   pageSizeOptions?: number[];
   enablePagination?: boolean;
+  renderFooter?: () => ReactNode;
+  footerValues?: ReactNode[];
 };
 type SortRule = { key: string; direction: SortDirection };
 
@@ -43,6 +45,8 @@ export default function InventoryDataTable<T>({
   initialPageSize = 10,
   pageSizeOptions = [10, 25, 50],
   enablePagination = true,
+  renderFooter,
+  footerValues,
 }: InventoryDataTableProps<T>) {
   const [containerWidth, setContainerWidth] = useState(0);
   const [sortRules, setSortRules] = useState<SortRule[]>([]);
@@ -151,7 +155,7 @@ export default function InventoryDataTable<T>({
           </View>
 
           {pagedRows.map((row, rowIndex) => (
-            <View key={rowKey(row)} style={[styles.tableRow, isRowActive?.(row) ? styles.tableRowActive : null]}>
+            <View key={rowKey(row, rowIndex)} style={[styles.tableRow, isRowActive?.(row) ? styles.tableRowActive : null]}>
               {columns.map((column) => (
                 <View
                   key={column.key}
@@ -177,6 +181,32 @@ export default function InventoryDataTable<T>({
           ))}
 
           {pagedRows.length === 0 ? <Text style={styles.emptyText}>{emptyText}</Text> : null}
+          {footerValues ? (
+            <View style={[styles.tableRow, { backgroundColor: "#f8fafc", borderTopWidth: 2, borderTopColor: "#e2e8f0" }]}>
+              {columns.map((column, index) => (
+                <View
+                  key={column.key}
+                  style={[
+                    styles.bodyCell,
+                    { width: resolveColumnWidth(column) },
+                    column.align === "center" && styles.centerBox,
+                    column.align === "right" && styles.rightBox,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.cellContent,
+                      column.align === "center" && styles.centerBox,
+                      column.align === "right" && styles.rightBox,
+                    ]}
+                  >
+                    {footerValues[index] !== undefined ? footerValues[index] : null}
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          {renderFooter ? renderFooter() : null}
         </View>
       </ScrollView>
 

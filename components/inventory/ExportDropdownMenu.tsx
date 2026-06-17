@@ -5,7 +5,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 type ExportDropdownMenuProps = {
   onExportPdf: () => void;
   onExportExcel?: () => void;
-  onSendEmail: () => void;
+  onSendEmail?: () => void;
   variant?: "table" | "detail";
 };
 
@@ -15,6 +15,7 @@ export default function ExportDropdownMenu({ onExportPdf, onExportExcel, onSendE
   const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [menuHeight, setMenuHeight] = useState(130);
   const canExportExcel = Boolean(onExportExcel);
+  const canSendEmail = Boolean(onSendEmail);
 
   const toggleOpen = () => setOpen((prev) => !prev);
 
@@ -71,7 +72,7 @@ export default function ExportDropdownMenu({ onExportPdf, onExportExcel, onSendE
                   style={[styles.menuItem, styles.menuItemExcel]}
                   onPress={() => {
                     toggleOpen();
-                    onExportExcel();
+                    onExportExcel?.();
                   }}
                 >
                   <MaterialCommunityIcons name="file-excel-box" size={18} color="#15803d" />
@@ -79,18 +80,21 @@ export default function ExportDropdownMenu({ onExportPdf, onExportExcel, onSendE
                 </Pressable>
               ) : null}
 
-              <View style={styles.divider} />
-
-              <Pressable
-                style={[styles.menuItem, styles.menuItemEmail]}
-                onPress={() => {
-                  toggleOpen();
-                  onSendEmail();
-                }}
-              >
-                <MaterialCommunityIcons name="email-fast-outline" size={18} color="#0f766e" />
-                <Text style={[styles.menuItemText, styles.menuItemTextEmail]}>Send via Email</Text>
-              </Pressable>
+              {canSendEmail ? (
+                <>
+                  <View style={styles.divider} />
+                  <Pressable
+                    style={[styles.menuItem, styles.menuItemEmail]}
+                    onPress={() => {
+                      toggleOpen();
+                      onSendEmail?.();
+                    }}
+                  >
+                    <MaterialCommunityIcons name="email-fast-outline" size={18} color="#0f766e" />
+                    <Text style={[styles.menuItemText, styles.menuItemTextEmail]}>Send via Email</Text>
+                  </Pressable>
+                </>
+              ) : null}
             </View>
           ) : null}
         </View>

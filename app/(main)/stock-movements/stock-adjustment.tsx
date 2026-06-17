@@ -69,6 +69,7 @@ export default function StockAdjustmentScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
   const [roleName, setRoleName] = useState("CASHIER");
+  const [staffGradeName, setStaffGradeName] = useState("");
   const [userId, setUserId] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -111,7 +112,7 @@ export default function StockAdjustmentScreen() {
   const [quantity, setQuantity] = useState("");
   const [notes, setNotes] = useState("");
 
-  const canInsert = canInsertStockMovement(roleName);
+  const canInsert = canInsertStockMovement(roleName, staffGradeName);
 
   const loadRows = () => {
     fetchWithAuth("/api/stock-adjustments")

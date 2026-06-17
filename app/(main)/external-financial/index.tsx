@@ -60,6 +60,7 @@ const displayText = (value?: string | null) => String(value || "-").replaceAll("
 export default function ExternalFinancialScreen() {
   const [rows, setRows] = useState<ExternalFinancialEntry[]>([]);
   const [roleName, setRoleName] = useState("CASHIER");
+  const [staffGradeName, setStaffGradeName] = useState("");
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [dateStartFilter, setDateStartFilter] = useState("");
@@ -95,7 +96,7 @@ export default function ExternalFinancialScreen() {
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [emailTarget, setEmailTarget] = useState<"table" | "detail">("table");
 
-  const canManage = canManageExternalFinancial(roleName);
+  const canManage = canManageExternalFinancial(roleName, staffGradeName);
 
   const loadRows = useCallback(() => {
     fetchWithAuth("/api/external-financial-entries")
@@ -106,8 +107,14 @@ export default function ExternalFinancialScreen() {
 
   useEffect(() => {
     getAuthSession()
-      .then((session) => setRoleName(normalizeRole(session?.user?.role_name) || "CASHIER"))
-      .catch(() => setRoleName("CASHIER"));
+      .then((session) => {
+        setRoleName(normalizeRole(session?.user?.role_name) || "CASHIER");
+        setStaffGradeName(session?.user?.staff_grade_name || "");
+      })
+      .catch(() => {
+        setRoleName("CASHIER");
+        setStaffGradeName("");
+      });
     loadRows();
   }, [loadRows]);
 

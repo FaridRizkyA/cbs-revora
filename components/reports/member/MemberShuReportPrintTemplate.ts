@@ -8,7 +8,7 @@ import {
   ReportNestedTable,
   buildReportDetailPrintHtml,
 } from "../shared/ReportPrintTemplate";
-import { downloadExcelSectionWorkbook, ExcelSection } from "../../../utils/excelExport";
+import { downloadExcelSectionWorkbook, flattenExcelSections, ExcelSection } from "../../../utils/excelExport";
 
 export type MemberShuHistoryRow = {
   id_shu_distribution: string;
@@ -227,6 +227,37 @@ export const buildMemberShuDetailReportPrintHtml = ({
     ],
     tables: buildMemberShuDetailTables(row),
   });
+};
+
+
+export const buildMemberShuDetailExcelFlattenedRows = (row: MemberShuDistributionData) => {
+  const tables = buildMemberShuDetailTables(row);
+  const sections = [
+    {
+      title: "Period Information",
+      columns: [
+        { key: "label", title: "Field", width: 22 },
+        { key: "value", title: "Value", width: 32 },
+      ],
+      rows: [
+        { label: "Period", value: row.period_name },
+        { label: "Start Date", value: formatDateOnly(row.start_date) },
+        { label: "End Date", value: formatDateOnly(row.end_date) },
+        { label: "Distribution Status", value: row.distribution_status },
+      ],
+    },
+    ...tables.map((table) => ({
+      title: table.title,
+      columns: table.columns.map((column) => ({
+        key: column.key,
+        title: column.title,
+        align: column.align,
+        width: typeof column.width === "number" ? column.width : undefined,
+      })),
+      rows: table.rows,
+    })),
+  ];
+  return flattenExcelSections(sections as any);
 };
 
 export const downloadMemberShuDetailReportExcel = async ({

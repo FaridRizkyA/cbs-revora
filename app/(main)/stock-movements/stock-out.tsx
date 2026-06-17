@@ -99,6 +99,7 @@ export default function StockOutScreen() {
   const [openActionStockOutId, setOpenActionStockOutId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [roleName, setRoleName] = useState("CASHIER");
+  const [staffGradeName, setStaffGradeName] = useState("");
   const [userId, setUserId] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -147,7 +148,7 @@ export default function StockOutScreen() {
   const [stockByProductId, setStockByProductId] = useState<Record<string, number>>({});
   const [batchesByProduct, setBatchesByProduct] = useState<Record<string, ProductBatch[]>>({});
 
-  const canInsert = canInsertStockMovement(roleName);
+  const canInsert = canInsertStockMovement(roleName, staffGradeName);
 
   const getProductAvailableQty = (idProduct: string) => {
     const batches = batchesByProduct[idProduct] || [];

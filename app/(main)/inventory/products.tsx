@@ -119,6 +119,7 @@ export default function ProductsScreen() {
   }, [cropTransform]);
 
   const [roleName, setRoleName] = useState("CASHIER");
+  const [staffGradeName, setStaffGradeName] = useState("");
   const [userId, setUserId] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
@@ -163,7 +164,7 @@ export default function ProductsScreen() {
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [emailTarget, setEmailTarget] = useState<"table" | "detail">("table");
 
-  const canManage = canManageInventoryMaster(roleName);
+  const canManage = canManageInventoryMaster(roleName, staffGradeName);
 
   const closeWebCropper = useCallback(() => {
     if (webCrop?.objectUrl?.startsWith("blob:")) {
@@ -421,9 +422,10 @@ export default function ProductsScreen() {
 
   useEffect(() => {
     getAuthSession().then((session) => {
-      setRoleName(normalizeRole(session?.user?.role_name) || "CASHIER");
-      setUserId(session?.user?.id_user || "");
-    });
+        setRoleName(normalizeRole(session?.user?.role_name) || "CASHIER");
+        setStaffGradeName(session?.user?.staff_grade_name || "");
+        setUserId(session?.user?.id_user || "");
+      });
     fetchProducts();
     fetchSuppliers();
   }, [fetchProducts, fetchSuppliers]);

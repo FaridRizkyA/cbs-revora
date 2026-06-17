@@ -34,7 +34,8 @@ FROM (
         ('83629890-1451-4439-b714-01f73743489d'::uuid, '3f25038b-2741-4c81-964f-a5ad3fcd955d'::uuid, 'Dewi', 'Lestari', '082112340002', 'Jl. Gegerkalong Hilir No. 8, Bandung', '2026-01-06 08:55:00'::timestamp, '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'::uuid),
         ('bed21488-23a9-4180-9eea-8eee68e15c28'::uuid, '54cc6ab0-e44f-404f-8160-c19e469da7f6'::uuid, 'Muhammad', 'Farhan', '082112340003', 'Jl. Dipatiukur No. 45, Bandung', '2026-01-07 08:55:00'::timestamp, '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'::uuid),
         ('855c852d-fcb1-440d-9d98-ef99108d3481'::uuid, '979aa548-dd41-4da9-abc7-b7a5050fb161'::uuid, 'Nabila', 'Putri', '082112340004', 'Jl. Setiabudi No. 31, Bandung', '2026-01-08 08:55:00'::timestamp, '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'::uuid),
-        ('35b7ba75-a552-4cea-920d-f3cd24762e8d'::uuid, '69861a00-ed21-4e78-88a3-a7f6b8134f50'::uuid, 'Bima', 'Arya Nugraha', '082112340005', 'Jl. Tubagus Ismail No. 12, Bandung', '2026-01-09 08:55:00'::timestamp, '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'::uuid)
+        ('35b7ba75-a552-4cea-920d-f3cd24762e8d'::uuid, '69861a00-ed21-4e78-88a3-a7f6b8134f50'::uuid, 'Bima', 'Arya Nugraha', '082112340005', 'Jl. Tubagus Ismail No. 12, Bandung', '2026-01-09 08:55:00'::timestamp, '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'::uuid),
+        ('2a3b4c5d-6e7f-8a9b-0c1d-2e3f4a5b6c7d'::uuid, '1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d'::uuid, 'Ahmad', 'Husein', '081234560007', 'Jl. Kampus Revora No. 2, Bandung', '2026-01-01 08:05:00'::timestamp, '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'::uuid)
 ) AS x(id_profile, id_user, first_name, last_name, phone_number, address, created_date, created_by)
 ON CONFLICT (id_user) DO UPDATE SET
     first_name = EXCLUDED.first_name,

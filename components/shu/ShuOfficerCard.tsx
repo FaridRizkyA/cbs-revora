@@ -47,6 +47,10 @@ export function ShuOfficerCard({ rows }: Props) {
           rowKey={(row) => `${row.id_staff}-${row.officer_role_code}`}
           emptyText="No officer distribution available yet."
           enablePagination={false}
+          footerValues={[
+            <Text style={[styles.rowCell, { fontWeight: "700" }]}>Total</Text>,
+            <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(rows.reduce((sum, r) => sum + (r.shu_amount || 0), 0))}</Text>,
+          ]}
         />
       )}
     </View>

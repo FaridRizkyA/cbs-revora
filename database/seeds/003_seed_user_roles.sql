@@ -114,6 +114,15 @@ INSERT INTO tbl_user_roles (
         'Y',
         '2026-01-09 08:55:00',
         '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'
+    ),
+    (
+        '4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d',
+        '1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d',
+        '9288fe0f-4cfc-461b-921f-8da51d7f0c0b',
+        '2026-01-01',
+        'Y',
+        '2026-01-01 08:05:00',
+        '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'
     )
 ON CONFLICT (id_user, id_role) DO UPDATE SET
     effective_start_date = EXCLUDED.effective_start_date,

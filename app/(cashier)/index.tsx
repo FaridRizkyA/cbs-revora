@@ -22,7 +22,6 @@ import ResponsiveModal from "../../components/common/ResponsiveModal";
 import { InventoryConfirmModal, InventoryResultModal } from "../../components/inventory/ActionModals";
 import { buildReceiptPrintHtml, formatReceiptProductLabel, ReceiptData, ReceiptItem } from "../../components/cashier/ReceiptPrintTemplate";
 import { AuthUser, getAuthSession, logoutAuthSession, subscribeAuthSession } from "../../utils/authSession";
-import { API_BASE_URL } from "../../utils/api";
 import { fetchWithAuth } from "../../utils/fetchWithAuth";
 import { logClientActivity } from "../../utils/activityLog";
 
@@ -146,6 +145,7 @@ export default function Index() {
   const [memberSearch, setMemberSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCashModalOpen, setIsCashModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
@@ -279,7 +279,7 @@ export default function Index() {
     };
   }, [router]);
 
-  useEffect(() => {
+    useEffect(() => {
     const focusTimer = setTimeout(() => {
       barcodeInputRef.current?.focus();
     }, 300);
@@ -297,6 +297,21 @@ export default function Index() {
 
   useEffect(() => {
     loadCashierData();
+
+    // Poll for real-time stock updates every 5 seconds
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetchWithAuth("/api/products");
+        if (response.ok) {
+          const payload = await response.json();
+          setProducts(payload.data ?? []);
+        }
+      } catch (error) {
+        // Silently ignore polling errors
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, [loadCashierData]);
 
   useEffect(() => {
@@ -348,13 +363,20 @@ export default function Index() {
   };
 
   const setItemQuantity = (idProduct: string, nextQuantity: number) => {
+    if (nextQuantity <= 0) {
+      setCart((currentCart) =>
+        currentCart.filter((item) => item.id_product !== idProduct)
+      );
+      return;
+    }
+
     setCart((currentCart) =>
       currentCart.map((item) => {
         if (item.id_product !== idProduct) {
           return item;
         }
 
-        const clampedQuantity = Math.max(0, Math.min(nextQuantity, item.available_stock));
+        const clampedQuantity = Math.min(nextQuantity, item.available_stock);
         if (nextQuantity > item.available_stock) {
           showError("Insufficient Stock", `Only ${item.available_stock} item(s) available.`);
         }
@@ -419,8 +441,8 @@ export default function Index() {
     }
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/products?search=${encodeURIComponent(query)}`
+      const response = await fetchWithAuth(
+        `/api/products?search=${encodeURIComponent(query)}`
       );
       const payload = await response.json();
 
@@ -537,6 +559,15 @@ export default function Index() {
     if (cart.length === 0 || checkoutLoading) {
       return;
     }
+    setIsCheckoutModalOpen(true);
+  };
+
+  const handleProceedPayment = async () => {
+    if (cart.length === 0 || checkoutLoading) {
+      return;
+    }
+
+    setIsCheckoutModalOpen(false);
 
     if (paymentMethod === "CASH") {
       captureReceiptSnapshot();
@@ -756,7 +787,7 @@ export default function Index() {
               </Pressable>
             </View>
           ) : (
-            <ScrollView style={styles.productListScroll} contentContainerStyle={styles.productGrid}>
+            <ScrollView style={styles.productListScroll} contentContainerStyle={styles.productGrid} keyboardShouldPersistTaps="handled">
               {filteredProducts.map((product) => {
                 const inCartItem = cart.find((item) => item.id_product === product.id_product) ?? null;
                 const inCartQuantity = inCartItem?.quantity ?? 0;
@@ -776,10 +807,10 @@ export default function Index() {
                         return;
                       }
                       addToCart(product);
+                      setSearch("");
                     }}
                     disabled={product.available_stock <= 0}
                   >
-                    <View style={styles.cardTopSpacer} />
                     <View style={styles.cardContent}>
                       <View style={styles.productImageWrap}>
                         <Image
@@ -846,7 +877,6 @@ export default function Index() {
                         </View>
                       ) : null}
                     </View>
-                    <View style={styles.cardBottomSpacer} />
                   </Pressable>
                 );
               })}
@@ -872,61 +902,7 @@ export default function Index() {
           <View style={styles.contextCard}>
             <Text style={styles.cashierLabel}>Cashier: {cashierName}</Text>
 
-            <Text style={styles.metaLabel}>MEMBER</Text>
-            <Pressable
-              style={styles.memberSelect}
-              onPress={() => {
-                setMemberPickerOpen((current) => !current);
-                setMemberSearch("");
-              }}
-            >
-              <Text style={styles.memberSelectText} numberOfLines={1}>
-                {selectedMember ? selectedMember.full_name : "General (Non-member)"}
-              </Text>
-              <AppIcon name="chevron-down" size={16} color="#475569" />
-            </Pressable>
-
-            {memberPickerOpen ? (
-              <ScrollView
-                style={styles.memberDropdown}
-                nestedScrollEnabled
-                showsVerticalScrollIndicator={false}
-              >
-                <View style={styles.memberSearchWrap}>
-                  <AppIcon name="search" size={14} color="#64748b" />
-                  <TextInput
-                    value={memberSearch}
-                    onChangeText={setMemberSearch}
-                    placeholder="Search member..."
-                    placeholderTextColor="#94a3b8"
-                    style={styles.memberSearchInput}
-                  />
-                </View>
-                <Pressable
-                  style={styles.memberDropdownOption}
-                  onPress={() => {
-                    setSelectedMemberId(null);
-                    setMemberPickerOpen(false);
-                    setMemberSearch("");
-                  }}
-                >
-                  <Text style={styles.memberDropdownText}>General (Non-member)</Text>
-                </Pressable>
-                {filteredMembers.map((member) => (
-                  <Pressable
-                    key={member.id_member}
-                    style={styles.memberDropdownOption}
-                    onPress={() => {
-                      setSelectedMemberId(member.id_member);
-                      setMemberPickerOpen(false);
-                      setMemberSearch("");
-                    }}
-                  >
-                    <Text style={styles.memberDropdownText}>{member.full_name} ({member.member_code})</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            ) : null}
+            
 
           </View>
 
@@ -999,46 +975,6 @@ export default function Index() {
               <Text style={styles.totalValue}>{formatRupiah(subtotal)}</Text>
             </View>
 
-            <Text style={styles.payLabel}>Payment Method</Text>
-            <View style={styles.paymentRow}>
-              <Pressable
-                style={[styles.paymentButton, paymentMethod === "CASH" && styles.paymentButtonActive]}
-                onPress={() => setPaymentMethod("CASH")}
-              >
-                <AppIcon
-                  name="cash"
-                  size={11}
-                  color={paymentMethod === "CASH" ? "#ffffff" : "#475569"}
-                />
-                <Text
-                  style={[
-                    styles.paymentText,
-                    paymentMethod === "CASH" && styles.paymentTextActive,
-                  ]}
-                >
-                  Cash
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[styles.paymentButton, paymentMethod === "QRIS" && styles.paymentButtonActive]}
-                onPress={() => setPaymentMethod("QRIS")}
-              >
-                <AppIcon
-                  name="qr"
-                  size={11}
-                  color={paymentMethod === "QRIS" ? "#ffffff" : "#475569"}
-                />
-                <Text
-                  style={[
-                    styles.paymentText,
-                    paymentMethod === "QRIS" && styles.paymentTextActive,
-                  ]}
-                >
-                  QRIS
-                </Text>
-              </Pressable>
-            </View>
-
             <Pressable
               style={[
                 styles.checkoutButton,
@@ -1047,7 +983,7 @@ export default function Index() {
               onPress={handleCheckoutPress}
               disabled={cart.length === 0 || checkoutLoading}
             >
-              <Text style={styles.checkoutText}>{checkoutLoading ? "Processing..." : "Pay"}</Text>
+              <Text style={styles.checkoutText}>{checkoutLoading ? "Processing..." : "Checkout"}</Text>
             </Pressable>
           </View>
         </View>
@@ -1218,6 +1154,116 @@ export default function Index() {
         message={resultMessage}
         onClose={() => setResultModalOpen(false)}
       />
+      {/* Checkout Modal */}
+      <ResponsiveModal
+        visible={isCheckoutModalOpen}
+        onClose={() => {
+          setIsCheckoutModalOpen(false);
+          setMemberPickerOpen(false);
+        }}
+        maxWidthDesktop={460}
+        maxWidthPhoneRatio={0.96}
+        maxHeightDesktopRatio={0.88}
+        maxHeightPhoneRatio={0.9}
+        cardStyle={styles.modalCard}
+      >
+        <Text style={styles.modalTitle}>Checkout Details</Text>
+        <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
+          <Text style={styles.modalLabel}>Customer</Text>
+          <Pressable
+            style={styles.memberSelect}
+            onPress={() => {
+              setMemberPickerOpen((current) => !current);
+              setMemberSearch("");
+            }}
+          >
+            <Text style={styles.memberSelectText} numberOfLines={1}>
+              {selectedMember ? selectedMember.full_name : "General (Non-member)"}
+            </Text>
+            <AppIcon name="chevron-down" size={16} color="#475569" />
+          </Pressable>
+
+          {memberPickerOpen ? (
+            <ScrollView
+              style={[styles.memberDropdown, { maxHeight: 200 }]}
+              nestedScrollEnabled
+              showsVerticalScrollIndicator={true}
+            >
+              <View style={styles.memberSearchWrap}>
+                <AppIcon name="search" size={14} color="#64748b" />
+                <TextInput
+                  value={memberSearch}
+                  onChangeText={setMemberSearch}
+                  placeholder="Search member..."
+                  placeholderTextColor="#94a3b8"
+                  style={styles.memberSearchInput}
+                />
+              </View>
+              <Pressable
+                style={styles.memberDropdownOption}
+                onPress={() => {
+                  setSelectedMemberId(null);
+                  setMemberPickerOpen(false);
+                  setMemberSearch("");
+                }}
+              >
+                <Text style={styles.memberDropdownText}>General (Non-member)</Text>
+              </Pressable>
+              {filteredMembers.map((member) => (
+                <Pressable
+                  key={member.id_member}
+                  style={styles.memberDropdownOption}
+                  onPress={() => {
+                    setSelectedMemberId(member.id_member);
+                    setMemberPickerOpen(false);
+                    setMemberSearch("");
+                  }}
+                >
+                  <Text style={styles.memberDropdownText}>{member.full_name} ({member.member_code})</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
+
+          <Text style={[styles.modalLabel, { marginTop: 16 }]}>Payment Method</Text>
+          <View style={styles.paymentRow}>
+            <Pressable
+              style={[styles.paymentButton, paymentMethod === "CASH" && styles.paymentButtonActive]}
+              onPress={() => setPaymentMethod("CASH")}
+            >
+              <AppIcon name="cash" size={11} color={paymentMethod === "CASH" ? "#ffffff" : "#475569"} />
+              <Text style={[styles.paymentText, paymentMethod === "CASH" && styles.paymentTextActive]}>Cash</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.paymentButton, paymentMethod === "QRIS" && styles.paymentButtonActive]}
+              onPress={() => setPaymentMethod("QRIS")}
+            >
+              <AppIcon name="qr" size={11} color={paymentMethod === "QRIS" ? "#ffffff" : "#475569"} />
+              <Text style={[styles.paymentText, paymentMethod === "QRIS" && styles.paymentTextActive]}>QRIS</Text>
+            </Pressable>
+          </View>
+
+          <Text style={[styles.modalLabel, { marginTop: 16 }]}>Total Amount</Text>
+          <Text style={styles.modalValue}>{formatRupiah(subtotal)}</Text>
+        </ScrollView>
+        <View style={styles.modalActions}>
+          <Pressable
+            style={styles.modalSecondaryButton}
+            onPress={() => {
+              setIsCheckoutModalOpen(false);
+              setMemberPickerOpen(false);
+            }}
+          >
+            <Text style={styles.modalSecondaryText}>Cancel</Text>
+          </Pressable>
+          <Pressable
+            style={styles.modalPrimaryButton}
+            onPress={handleProceedPayment}
+          >
+            <Text style={styles.modalPrimaryText}>Proceed</Text>
+          </Pressable>
+        </View>
+      </ResponsiveModal>
       </View>
     </View>
   );
@@ -1234,11 +1280,7 @@ const styles = StyleSheet.create({
   scaledCanvas: {
     backgroundColor: "#f8fafc",
   },
-  appShell: {
-    flex: 1,
-    flexDirection: "column",
-    backgroundColor: "#f8fafc",
-  },
+
   topBar: {
     minHeight: 72,
     borderBottomWidth: 1,
@@ -1251,10 +1293,6 @@ const styles = StyleSheet.create({
     position: "relative",
     zIndex: 30,
   },
-  topBarCompact: {
-    minHeight: 62,
-    paddingHorizontal: 10,
-  },
   topBarLogo: {
     width: 190,
     height: 44,
@@ -1264,9 +1302,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     zIndex: 40,
-  },
-  topBarRightCompact: {
-    gap: 6,
   },
   profileMenuWrap: {
     position: "relative",
@@ -1344,22 +1379,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
   },
-  dropdownItemTextNormal: {
-    color: "#334155",
-    fontSize: 13,
-    fontWeight: "700",
-  },
   mainArea: {
     flex: 1,
     flexDirection: "row",
     gap: 12,
     padding: 14,
     zIndex: 1,
-  },
-  mainAreaPhone: {
-    flexDirection: "column",
-    padding: 10,
-    gap: 10,
   },
   productsPanel: {
     flex: 1,
@@ -1369,31 +1394,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     padding: 16,
   },
-  productsPanelPhone: {
-    flex: 1.2,
-    padding: 10,
-  },
   productsHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     marginBottom: 10,
   },
-  productsHeaderPhone: {
-    flexWrap: "wrap",
-    alignItems: "stretch",
-    gap: 6,
-  },
   sectionTitle: {
     color: "#0f172a",
     fontSize: 33,
     fontWeight: "700",
     marginRight: 6,
-  },
-  sectionTitlePhone: {
-    width: "100%",
-    fontSize: 22,
-    marginRight: 0,
   },
   searchBox: {
     flex: 1,
@@ -1414,9 +1425,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     paddingHorizontal: 12,
-  },
-  barcodeBoxPhone: {
-    width: "100%",
   },
   searchInput: {
     flex: 1,
@@ -1473,27 +1481,8 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: "#ffffff",
     alignItems: "center",
+    justifyContent: "center",
     position: "relative",
-  },
-  productCardTablet: {
-    width: "31%",
-    minWidth: 0,
-    height: "auto",
-    minHeight: 204,
-    padding: 12,
-  },
-  productCardPhone: {
-    width: "48%",
-    minWidth: 0,
-    height: "auto",
-    minHeight: 182,
-    padding: 10,
-  },
-  cardTopSpacer: {
-    flex: 1,
-  },
-  cardBottomSpacer: {
-    flex: 1,
   },
   cardContent: {
     alignItems: "center",
@@ -1563,19 +1552,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     overflow: "hidden",
   },
-  productImageWrapPhone: {
-    width: 64,
-    height: 64,
-    marginBottom: 8,
-  },
   productImage: {
     width: "100%",
     height: "100%",
     borderRadius: 14,
-  },
-  productImagePhone: {
-    width: "100%",
-    height: "100%",
   },
   productName: {
     color: "#1e293b",
@@ -1604,16 +1584,6 @@ const styles = StyleSheet.create({
     borderColor: "#e2e8f0",
     backgroundColor: "#ffffff",
     padding: 16,
-  },
-  cartPanelTablet: {
-    width: "36%",
-    minWidth: 300,
-    maxWidth: 420,
-  },
-  cartPanelPhone: {
-    width: "100%",
-    flex: 1,
-    padding: 10,
   },
   cartHeader: {
     flexDirection: "row",
@@ -1880,13 +1850,6 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 17,
     fontWeight: "700",
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.45)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
   },
   modalCard: {
     width: "100%",

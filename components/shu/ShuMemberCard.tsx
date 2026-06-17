@@ -46,15 +46,6 @@ export function ShuMemberCard({ rows }: Props) {
         render: (row) => <Text style={styles.rowCell}>{formatRupiah(row.member_total_spending)}</Text>,
       },
       {
-        key: "ratio",
-        title: "Ratio",
-        weight: 10,
-        align: "center",
-        sortable: true,
-        sortValue: (row) => Number(row.spending_percentage || 0),
-        render: (row) => <Text style={styles.rowCell}>{formatPercent(row.spending_percentage)}</Text>,
-      },
-      {
         key: "sales_shu",
         title: "Sales SHU",
         weight: 14,
@@ -62,6 +53,15 @@ export function ShuMemberCard({ rows }: Props) {
         sortable: true,
         sortValue: (row) => Number(row.sales_shu_amount || 0),
         render: (row) => <Text style={styles.rowCell}>{formatRupiah(row.sales_shu_amount)}</Text>,
+      },
+      {
+        key: "ratio",
+        title: "Ratio (%)",
+        weight: 10,
+        align: "center",
+        sortable: true,
+        sortValue: (row) => Number(row.spending_percentage || 0),
+        render: (row) => <Text style={styles.rowCell}>{formatPercent(row.spending_percentage)}</Text>,
       },
       {
         key: "business_shu",
@@ -111,6 +111,14 @@ export function ShuMemberCard({ rows }: Props) {
             emptyText="No member distribution available yet."
             initialPageSize={10}
             pageSizeOptions={[10, 25, 50]}
+            footerValues={[
+              <Text style={[styles.rowCell, { fontWeight: "700" }]}>Total</Text>,
+              <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(totals.totalSpending)}</Text>,
+              <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(activeRows.reduce((s, r) => s + (r.sales_shu_amount || 0), 0))}</Text>,
+              <Text style={[styles.rowCell, { fontWeight: "700", textAlign: "center" }]}>100%</Text>,
+              <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(activeRows.reduce((s, r) => s + (r.business_shu_amount || 0), 0))}</Text>,
+              <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(totals.totalShu)}</Text>,
+            ]}
           />
         </>
       )}

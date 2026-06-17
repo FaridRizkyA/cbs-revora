@@ -63,6 +63,7 @@ export default function StockOutManualScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<StockOutManualDetail | null>(null);
   const [roleName, setRoleName] = useState("CASHIER");
+  const [staffGradeName, setStaffGradeName] = useState("");
   const [userId, setUserId] = useState("");
   const [search, setSearch] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
@@ -88,7 +89,7 @@ export default function StockOutManualScreen() {
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<DraftItem[]>([{ id_product: "", quantity: "" }]);
 
-  const canInsert = canInsertStockMovement(roleName);
+  const canInsert = canInsertStockMovement(roleName, staffGradeName);
 
   const loadRows = () => {
     fetchWithAuth("/api/stock-out-manual-documents")

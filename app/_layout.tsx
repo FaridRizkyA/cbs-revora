@@ -13,7 +13,6 @@ export default function RootLayout() {
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(main)" />
       <Stack.Screen name="(cashier)" />
-      <Stack.Screen name="(member)" />
     </Stack>
   );
 }

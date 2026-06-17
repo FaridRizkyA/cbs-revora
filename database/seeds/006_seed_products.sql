@@ -19,8 +19,7 @@ INSERT INTO tbl_products (
     ('d71f2c16-471e-4e21-b10c-2f36ce9b283f', 'PRD-DMSM', NULL, 'Dimsum', 'Produk makanan titipan UMKM tanpa barcode.', '41c23d6b-8fd0-4c2f-a0bc-6d702db8d021', 12000.00, 5, NULL, 'Y', '2026-01-01 08:10:00', '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'),
     ('2f277743-7479-49b9-b00e-48677a6a2b5b', 'PRD-DNT-MKM', NULL, 'Donat UMKM', 'Donat titipan UMKM tanpa barcode.', '41c23d6b-8fd0-4c2f-a0bc-6d702db8d021', 5000.00, 8, NULL, 'Y', '2026-01-01 08:10:00', '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'),
     ('22b29696-7682-43c0-8e04-5211ef612d6e', 'PRD-PLPN', NULL, 'Pulpen', 'Alat tulis tanpa barcode.', 'fc0d12c0-1a2a-4b20-984e-edd50c661a84', 3000.00, 20, NULL, 'Y', '2026-01-01 08:10:00', '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'),
-    ('c301b094-4191-41e0-9b61-baeb01d78336', 'PRD-PNSL', NULL, 'Pensil', 'Pensil tulis tanpa barcode.', 'fc0d12c0-1a2a-4b20-984e-edd50c661a84', 2500.00, 20, NULL, 'Y', '2026-01-01 08:10:00', '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc'),
-    ('7aecd6be-a641-40aa-beb0-8ba0ceca01f7', 'PRD-FTKP', NULL, 'Fotokopi', 'Jasa fotokopi per lembar tanpa barcode.', 'fc0d12c0-1a2a-4b20-984e-edd50c661a84', 500.00, 0, NULL, 'Y', '2026-01-01 08:10:00', '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc')
+    ('c301b094-4191-41e0-9b61-baeb01d78336', 'PRD-PNSL', NULL, 'Pensil', 'Pensil tulis tanpa barcode.', 'fc0d12c0-1a2a-4b20-984e-edd50c661a84', 2500.00, 20, NULL, 'Y', '2026-01-01 08:10:00', '34305b6c-c61f-4247-b2c2-d6ec35a4b2bc')
 ON CONFLICT (id_product) DO UPDATE SET
     product_code = EXCLUDED.product_code,
     product_name = EXCLUDED.product_name,

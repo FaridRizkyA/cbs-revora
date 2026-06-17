@@ -49,6 +49,7 @@ const PHONE_ALLOWED_PATTERN = /^[0-9+\-\s]{1,25}$/;
 
 export default function SuppliersScreen() {
   const [roleName, setRoleName] = useState("CASHIER");
+  const [staffGradeName, setStaffGradeName] = useState("");
   const [userId, setUserId] = useState("");
   const [rows, setRows] = useState<Supplier[]>([]);
   const [search, setSearch] = useState("");
@@ -85,7 +86,7 @@ export default function SuppliersScreen() {
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [emailTarget, setEmailTarget] = useState<"table" | "detail">("table");
 
-  const canManage = canManageInventoryMaster(roleName);
+  const canManage = canManageInventoryMaster(roleName, staffGradeName);
 
   const loadSuppliers = () => {
     fetchWithAuth("/api/suppliers")

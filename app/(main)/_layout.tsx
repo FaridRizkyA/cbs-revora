@@ -388,7 +388,7 @@ export default function MainLayout() {
             onLogoutPress={handleLogout}
           />
           <View style={{ flex: 1 }}>
-            <Stack screenOptions={{ headerShown: false }} />
+            <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
           </View>
         </View>
       </View>
