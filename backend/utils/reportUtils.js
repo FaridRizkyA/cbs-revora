@@ -233,7 +233,7 @@ const buildEmailPdfHtml = ({
 </html>`;
 };
 
-const buildExcelBuffer = async (title, columns, rows, meta) => {
+const buildExcelBuffer = async (title, subtitle, columns, rows, meta) => {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("Report");
   workbook.creator = "CBS Revora";
@@ -258,6 +258,11 @@ const buildExcelBuffer = async (title, columns, rows, meta) => {
   worksheet.getCell(1, Math.max(columnCount - 2, 1)).value = title || "Report";
   worksheet.getCell(1, Math.max(columnCount - 2, 1)).font = { size: 20, bold: true, color: { argb: "FF0F2852" } };
   worksheet.getCell(1, Math.max(columnCount - 2, 1)).alignment = { horizontal: "right", vertical: "middle" };
+  if (subtitle) {
+    worksheet.getCell(2, Math.max(columnCount - 2, 1)).value = subtitle;
+    worksheet.getCell(2, Math.max(columnCount - 2, 1)).font = { size: 11, color: { argb: "FF475569" } };
+    worksheet.getCell(2, Math.max(columnCount - 2, 1)).alignment = { horizontal: "right", vertical: "middle" };
+  }
   worksheet.getRow(1).height = 28;
   worksheet.getRow(2).height = 22;
   currentRow = 4;
@@ -276,39 +281,110 @@ const buildExcelBuffer = async (title, columns, rows, meta) => {
     currentRow++;
   }
 
-  // Add Headers
-  const headerRow = worksheet.getRow(currentRow);
-  safeColumns.forEach((c, i) => {
-    const cell = headerRow.getCell(i + 1);
-    cell.value = c.title;
-    cell.font = { bold: true, color: { argb: "FF0F172A" } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E2F3" } };
-    cell.alignment = { horizontal: c.align || "left", vertical: "middle" };
-    cell.border = {
-      top: { style: "thin", color: { argb: "FFB7C4D4" } },
-      left: { style: "thin", color: { argb: "FFB7C4D4" } },
-      bottom: { style: "thin", color: { argb: "FFB7C4D4" } },
-      right: { style: "thin", color: { argb: "FFB7C4D4" } },
-    };
-    worksheet.getColumn(i + 1).width = Number(c.width) || Math.max(String(c.title || "").length + 5, 15);
-  });
-  currentRow++;
+  // Check if this is a sectioned report
+  const isSectioned = safeRows.some(r => r._type === "section_title");
 
-  // Add Rows
-  safeRows.forEach((row) => {
-    const excelRow = worksheet.getRow(currentRow);
+  // Add Headers (only if not sectioned)
+  if (!isSectioned) {
+    const headerRow = worksheet.getRow(currentRow);
     safeColumns.forEach((c, i) => {
-      const val = row[c.key];
-      const cell = excelRow.getCell(i + 1);
-      cell.value = val !== null && val !== undefined && val !== "" ? val : "-";
-      cell.alignment = { horizontal: c.align || "left", vertical: "top", wrapText: true };
-      if (typeof val === "number") cell.numFmt = "#,##0";
+      const cell = headerRow.getCell(i + 1);
+      cell.value = c.title;
+      cell.font = { bold: true, color: { argb: "FF0F172A" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E2F3" } };
+      cell.alignment = { horizontal: c.align || "left", vertical: "middle" };
       cell.border = {
         top: { style: "thin", color: { argb: "FFB7C4D4" } },
         left: { style: "thin", color: { argb: "FFB7C4D4" } },
         bottom: { style: "thin", color: { argb: "FFB7C4D4" } },
         right: { style: "thin", color: { argb: "FFB7C4D4" } },
       };
+      worksheet.getColumn(i + 1).width = Number(c.width) || Math.max(String(c.title || "").length + 5, 15);
+    });
+    currentRow++;
+  } else {
+    // Apply column widths for sectioned report
+    safeColumns.forEach((c, i) => {
+      worksheet.getColumn(i + 1).width = Number(c.width) || 18;
+    });
+  }
+
+  // Add Rows
+  safeRows.forEach((row, rowIndex) => {
+    const excelRow = worksheet.getRow(currentRow);
+    const rowType = row._type; // e.g. "section_title", "section_header", "section_empty", "data", "blank"
+
+    if (rowType === "blank" || Object.keys(row).filter(k => k !== "_type").length === 0) {
+      excelRow.height = 10;
+      currentRow++;
+      return;
+    }
+
+    if (rowType === "section_title") {
+      let sectionCols = columnCount;
+      const nextRow = safeRows[rowIndex + 1];
+      if (nextRow && nextRow._type === "section_header") {
+        sectionCols = Object.keys(nextRow).filter(k => k !== "_type").length;
+      }
+
+      const cell = excelRow.getCell(1);
+      cell.value = row[safeColumns[0]?.key || "col_1"];
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F2852" } };
+      cell.alignment = { horizontal: "left", vertical: "middle" };
+      worksheet.mergeCells(currentRow, 1, currentRow, Math.max(sectionCols, 1));
+      currentRow++;
+      return;
+    }
+
+    if (rowType === "section_empty") {
+      let sectionCols = columnCount;
+      const prevRow = safeRows[rowIndex - 1];
+      if (prevRow && prevRow._type === "section_header") {
+        sectionCols = Object.keys(prevRow).filter(k => k !== "_type").length;
+      }
+
+      const cell = excelRow.getCell(1);
+      cell.value = row[safeColumns[0]?.key || "col_1"];
+      cell.font = { italic: true, color: { argb: "FF64748B" } };
+      worksheet.mergeCells(currentRow, 1, currentRow, Math.max(sectionCols, 1));
+      currentRow++;
+      return;
+    }
+
+    safeColumns.forEach((c, i) => {
+      const val = row[c.key];
+      const cell = excelRow.getCell(i + 1);
+      
+      const hasKey = Object.prototype.hasOwnProperty.call(row, c.key);
+
+      if (rowType === "section_header") {
+        if (hasKey && val) {
+          cell.value = val;
+          cell.font = { bold: true, color: { argb: "FF0F172A" } };
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E2F3" } };
+          cell.alignment = { horizontal: c.align || "left", vertical: "middle" };
+          cell.border = {
+            top: { style: "thin", color: { argb: "FFB7C4D4" } },
+            left: { style: "thin", color: { argb: "FFB7C4D4" } },
+            bottom: { style: "thin", color: { argb: "FFB7C4D4" } },
+            right: { style: "thin", color: { argb: "FFB7C4D4" } },
+          };
+        }
+      } else {
+        // Normal data row
+        if (hasKey) {
+          cell.value = val !== null && val !== undefined && val !== "" ? val : "-";
+          cell.alignment = { horizontal: c.align || "left", vertical: "top", wrapText: true };
+          if (typeof val === "number") cell.numFmt = "#,##0";
+          cell.border = {
+            top: { style: "thin", color: { argb: "FFB7C4D4" } },
+            left: { style: "thin", color: { argb: "FFB7C4D4" } },
+            bottom: { style: "thin", color: { argb: "FFB7C4D4" } },
+            right: { style: "thin", color: { argb: "FFB7C4D4" } },
+          };
+        }
+      }
     });
     currentRow++;
   });

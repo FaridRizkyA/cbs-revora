@@ -1,4 +1,4 @@
-﻿const fs = require("fs");
+const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
 const pool = require("../../../config/db");
@@ -506,6 +506,7 @@ const getBatches = async (req, res) => {
 
 const getSuppliers = async (req, res) => {
   const search = String(req.query.search || "").trim();
+  const activeOnly = req.query.active_only === "true";
 
   try {
     const result = await pool.query(
@@ -518,7 +519,8 @@ const getSuppliers = async (req, res) => {
         pr.phone_number,
         pr.is_active
       FROM tbl_suppliers pr
-      WHERE (
+      WHERE ($3::boolean = false OR pr.is_active = 'Y')
+        AND (
         $1 = ''
         OR pr.supplier_code ILIKE $2
         OR pr.supplier_name ILIKE $2
@@ -527,7 +529,7 @@ const getSuppliers = async (req, res) => {
       )
       ORDER BY pr.supplier_name ASC;
       `,
-      [search, `%${search}%`]
+      [search, `%${search}%`, activeOnly]
     );
 
     res.json({ data: result.rows });
@@ -557,7 +559,7 @@ const getProductsBySupplier = async (req, res) => {
         p.selling_price::float AS selling_price,
         p.is_active
       FROM tbl_products p
-      WHERE p.id_supplier = $1
+      WHERE p.id_supplier = $1 AND p.is_active = 'Y'
       ORDER BY p.product_name ASC;
       `,
       [idSupplier]

@@ -319,6 +319,8 @@ const signatureValue = (signature: ShuSignatureSlot) =>
 
 const buildDetailTables = (detail: ShuDetailReportData, signatures: ShuSignatureSlot[] = defaultSignatures): ReportNestedTable[] => {
   const activeMemberDistributions = detail.member_distributions.filter((row) => row.is_active !== "N");
+  const totalSalesTurnover = sumBy(detail.monthly_income, (row) => row.sales_turnover_amount);
+  const totalExternalIncome = sumBy(detail.monthly_income, (row) => row.external_income_amount);
   const totalIncome = sumBy(detail.monthly_income, (row) => row.total_income_amount);
   const totalExpenses = sumBy(detail.yearly_expenses, (row) => row.amount);
   const totalMemberSpending = sumBy(activeMemberDistributions, (row) => row.member_total_spending);
@@ -347,7 +349,9 @@ const buildDetailTables = (detail: ShuDetailReportData, signatures: ShuSignature
       footerRows: [
         {
           cells: [
-            { value: "Total Income", colspan: 3, align: "right" },
+            { value: "Total", colspan: 1, align: "right" },
+            { value: formatRupiah(totalSalesTurnover), align: "right" },
+            { value: formatRupiah(totalExternalIncome), align: "right" },
             { value: formatRupiah(totalIncome), align: "right" },
           ],
         },

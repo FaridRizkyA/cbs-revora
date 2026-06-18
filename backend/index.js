@@ -22,6 +22,25 @@ const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: "15mb" }));
+
+// Workaround for React Native Android fetch bug where large JSON bodies are padded with garbage bytes
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    try {
+      const str = err.body;
+      const lastIndex = Math.max(str.lastIndexOf('}'), str.lastIndexOf(']'));
+      if (lastIndex !== -1) {
+        const cleaned = str.substring(0, lastIndex + 1);
+        req.body = JSON.parse(cleaned);
+        return next(); // Recovered successfully
+      }
+    } catch (recoverErr) {
+      // Fall through if recovery fails
+    }
+  }
+  next(err);
+});
+
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.get("/", async (req, res) => {

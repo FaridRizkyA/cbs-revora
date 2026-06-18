@@ -418,7 +418,7 @@ const processReportJob = async (job) => {
     if (data.excel_base64) {
       excelBuffer = Buffer.from(data.excel_base64, "base64");
     } else {
-      excelBuffer = await buildExcelBuffer(reportTitle, data.columns, data.rows, data.meta);
+      excelBuffer = await buildExcelBuffer(reportTitle, data.subtitle, data.columns, data.rows, data.meta);
     }
 
     attachments.push({

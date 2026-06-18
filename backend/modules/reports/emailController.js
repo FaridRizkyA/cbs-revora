@@ -38,13 +38,13 @@ const sendEmailReport = async (req, res) => {
 };
 
 const exportExcelReport = async (req, res) => {
-  const { title, columns, rows, meta, file_name } = req.body;
+  const { title, subtitle, columns, rows, meta, file_name } = req.body;
   if (!Array.isArray(columns) || !Array.isArray(rows)) {
     return res.status(400).json({ message: "columns and rows are required." });
   }
 
   try {
-    const buffer = await buildExcelBuffer(title || "Report", columns, rows, meta);
+    const buffer = await buildExcelBuffer(title || "Report", subtitle, columns, rows, meta);
     const filename = sanitizeAttachmentFileName(file_name, `${(title || "report").toLowerCase().replace(/\s+/g, "_")}_${Date.now()}.xlsx`);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);

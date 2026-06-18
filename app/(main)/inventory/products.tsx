@@ -200,202 +200,11 @@ export default function ProductsScreen() {
     [cropBoxSize, cropViewportSize]
   );
 
-  const setCropScale = useCallback(
-    (nextScale: number) => {
-      if (!webCrop) return;
-      setCropTransform((current) =>
-        clampCropTransform(
-          nextScale,
-          current.translateX,
-          current.translateY,
-          webCrop.naturalWidth || cropViewportSize,
-          webCrop.naturalHeight || cropViewportSize
-        )
-      );
-    },
-    [clampCropTransform, cropViewportSize, webCrop]
-  );
-
-  const updateCropTranslation = useCallback(
-    (nextTranslateX: number, nextTranslateY: number) => {
-      if (!webCrop) return;
-      setCropTransform((current) =>
-        clampCropTransform(
-          current.scale,
-          nextTranslateX,
-          nextTranslateY,
-          webCrop.naturalWidth || cropViewportSize,
-          webCrop.naturalHeight || cropViewportSize
-        )
-      );
-    },
-    [clampCropTransform, cropViewportSize, webCrop]
-  );
-
-  const beginCropDrag = useCallback(
-    (clientX: number, clientY: number) => {
-      cropDragRef.current = {
-        active: true,
-        lastX: clientX,
-        lastY: clientY,
-      };
-      cropGestureRef.current = {
-        startScale: cropTransformRef.current.scale,
-        startTranslateX: cropTransformRef.current.translateX,
-        startTranslateY: cropTransformRef.current.translateY,
-        startClientX: clientX,
-        startClientY: clientY,
-      };
-      setIsCropDragging(true);
-    },
-    []
-  );
-
-  useEffect(() => {
-    if (Platform.OS !== "web" || !isCropDragging || !webCrop) return;
-
-    const handleMouseMove = (event: MouseEvent) => {
-      if (!cropDragRef.current.active) return;
-      const nextX = event.clientX;
-      const nextY = event.clientY;
-      cropDragRef.current = {
-        active: true,
-        lastX: nextX,
-        lastY: nextY,
-      };
-      updateCropTranslation(
-        cropGestureRef.current.startTranslateX + (nextX - cropGestureRef.current.startClientX),
-        cropGestureRef.current.startTranslateY + (nextY - cropGestureRef.current.startClientY)
-      );
-      event.preventDefault();
-    };
-
-    const handleMouseUp = () => {
-      cropDragRef.current.active = false;
-      setIsCropDragging(false);
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [isCropDragging, updateCropTranslation, webCrop]);
-
-  useEffect(() => {
-    if (Platform.OS !== "web" || !webCrop) return;
-    let cancelled = false;
-
-    const image = new window.Image();
-    image.onload = () => {
-      if (cancelled) return;
-      const naturalWidth = image.naturalWidth || 1;
-      const naturalHeight = image.naturalHeight || 1;
-      const fitScale = Math.min(
-        cropViewportSize / Math.max(1, naturalWidth),
-        cropViewportSize / Math.max(1, naturalHeight)
-      );
-      const minCoverScale = Math.max(
-        cropBoxSize / Math.max(1, naturalWidth * fitScale),
-        cropBoxSize / Math.max(1, naturalHeight * fitScale)
-      );
-      const needsSlack = Math.abs(naturalWidth - naturalHeight) > 2;
-      const initialScale = needsSlack ? minCoverScale * 1.08 : minCoverScale;
-      setWebCrop((current) =>
-        current
-          ? {
-              ...current,
-              naturalWidth,
-              naturalHeight,
-          }
-          : current
-      );
-      setCropTransform((current) =>
-        clampCropTransform(
-          Math.max(current.scale, initialScale),
-          current.translateX,
-          current.translateY,
-          naturalWidth,
-          naturalHeight
-        )
-      );
-    };
-    image.onerror = () => {
-      if (cancelled) return;
-      showResult("error", "Error", "Failed to load image for cropping.");
-      closeWebCropper();
-    };
-    image.src = webCrop.sourceUri;
-
-    return () => {
-      cancelled = true;
-    };
-  }, [webCrop, closeWebCropper, clampCropTransform, cropBoxSize, cropViewportSize]);
-
-  const openWebCropperFromSource = (sourceUri: string, fileName: string, mimeType: string, objectUrl?: string) => {
-    setCropTransform({ scale: 1, translateX: 0, translateY: 0 });
-    setWebCrop({
-      sourceUri,
-      fileName,
-      mimeType,
-      objectUrl,
-      naturalWidth: 0,
-      naturalHeight: 0,
-    });
-  };
-
-  const applyWebCrop = async () => {
-    if (!webCrop || Platform.OS !== "web") return;
-    const img = new window.Image();
-    img.src = webCrop.sourceUri;
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error("Failed to load image for cropping."));
-    });
-
-    const cropSize = 1024;
-    const exportScale = cropSize / Math.max(1, cropBoxSize);
-    const naturalWidth = img.naturalWidth || webCrop.naturalWidth || 1;
-    const naturalHeight = img.naturalHeight || webCrop.naturalHeight || 1;
-    const fitScale = Math.min(cropViewportSize / naturalWidth, cropViewportSize / naturalHeight);
-    const renderScale = fitScale * cropTransform.scale * exportScale;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = cropSize;
-    canvas.height = cropSize;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      throw new Error("Canvas is not supported in this browser.");
-    }
-
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, cropSize, cropSize);
-    ctx.translate(
-      cropSize / 2 + cropTransform.translateX * exportScale,
-      cropSize / 2 + cropTransform.translateY * exportScale
-    );
-    ctx.scale(renderScale, renderScale);
-    ctx.translate(-naturalWidth / 2, -naturalHeight / 2);
-    ctx.drawImage(img, 0, 0);
-
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
-    
-    setSelectedProductImage({
-      uri: dataUrl,
-      name: webCrop.fileName,
-      mimeType: webCrop.mimeType,
-      file: undefined,
-    });
-    closeWebCropper();
-  };
-
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
       setErrorMessage(null);
-      const response = await fetchWithAuth("/api/products");
+      const response = await fetchWithAuth("/api/products?include_inactive=1");
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.message || "Failed to fetch products.");
@@ -410,7 +219,7 @@ export default function ProductsScreen() {
 
   const fetchSuppliers = useCallback(async () => {
     try {
-      const response = await fetchWithAuth("/api/suppliers");
+      const response = await fetchWithAuth("/api/suppliers?active_only=true");
       const payload = await response.json();
       if (response.ok) {
         setSuppliers(Array.isArray(payload.data) ? payload.data : []);
@@ -2068,3 +1877,5 @@ const styles = StyleSheet.create({
   cropModalFooter: { padding: 16, flexDirection: "row", justifyContent: "flex-end", gap: 10, borderTopWidth: 1, borderTopColor: "#e2e8f0" },
   saveButtonDisabled: { opacity: 0.6 },
 });
+
+

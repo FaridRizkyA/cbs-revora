@@ -372,6 +372,7 @@ const getAvailableFileName = (
 
 const downloadBackendExcel = async ({
   title,
+  subtitle,
   reportKey,
   generatedAt,
   generatedBy,
@@ -381,6 +382,7 @@ const downloadBackendExcel = async ({
   fileName,
 }: {
   title: string;
+  subtitle?: string;
   reportKey: string;
   generatedAt?: string | Date;
   generatedBy?: string | null;
@@ -397,6 +399,7 @@ const downloadBackendExcel = async ({
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       title,
+      subtitle,
       file_name: targetFileName,
       columns,
       rows,
@@ -622,16 +625,22 @@ export const flattenExcelSections = (sections: ExcelSection[]) => {
   }));
   
   sections.forEach((section) => {
-    flattenedRows.push({ col_1: section.title });
-    flattenedRows.push(Object.fromEntries(section.columns.map((column, index) => [`col_${index + 1}`, column.title])));
+    flattenedRows.push({ col_1: section.title, _type: "section_title" });
+    flattenedRows.push({
+      ...Object.fromEntries(section.columns.map((column, index) => [`col_${index + 1}`, column.title])),
+      _type: "section_header",
+    });
     if (section.rows.length === 0) {
-      flattenedRows.push({ col_1: "No data." });
+      flattenedRows.push({ col_1: "No data.", _type: "section_empty" });
     } else {
       section.rows.forEach((row) => {
-        flattenedRows.push(Object.fromEntries(section.columns.map((column, index) => [`col_${index + 1}`, row[column.key]])));
+        flattenedRows.push({
+          ...Object.fromEntries(section.columns.map((column, index) => [`col_${index + 1}`, row[column.key]])),
+          _type: "data",
+        });
       });
     }
-    flattenedRows.push({});
+    flattenedRows.push({ _type: "blank" });
   });
   
   return { columns: sectionColumns, rows: flattenedRows };
@@ -641,6 +650,7 @@ export const downloadExcelSectionWorkbook = async (options: ExcelSectionWorkbook
   const { columns: sectionColumns, rows: flattenedRows } = flattenExcelSections(options.sections);
   const handledByBackend = await downloadBackendExcel({
     title: options.title,
+    subtitle: options.subtitle,
     reportKey: options.reportKey,
     generatedAt: options.generatedAt,
     generatedBy: options.generatedBy,

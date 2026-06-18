@@ -313,10 +313,18 @@ const requestPasswordResetOtp = async (req, res) => {
       EXPIRY_MINUTES: OTP_DURATION_MINUTES,
     });
 
+    const path = require("path");
+    const logoPath = path.join(__dirname, "..", "..", "..", "assets", "images", "ui", "logo_horizontal.png");
+    const cbsLogoPath = path.join(__dirname, "..", "..", "..", "assets", "images", "ui", "logo_koperasi_cbs.png");
+
     await sendEmail({
       to: user.email,
       subject: "CBS Revora Password Reset OTP",
       html: emailHtml,
+      attachments: [
+        { filename: "logo_cbs.png", path: cbsLogoPath, cid: "cbs-logo" },
+        { filename: "logo.png", path: logoPath, cid: "revora-logo" },
+      ],
     });
 
     return res.json({ message: "OTP has been sent to your email." });
