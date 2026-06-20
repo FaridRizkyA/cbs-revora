@@ -1,5 +1,5 @@
 const pool = require("../../config/db");
-const { getShuPeriodBounds } = require("../shu/shuPeriodUtils");
+const { getShuPeriodBounds } = require("../../utils/shuPeriodUtils");
 
 const getMemberProfileByUserId = async (client, idUser) => {
   const result = await client.query(

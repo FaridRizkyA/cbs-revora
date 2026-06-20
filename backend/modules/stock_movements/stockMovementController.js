@@ -1,8 +1,8 @@
-﻿const pool = require("../../../config/db");
+const pool = require("../../../config/db");
 
-const { STOCK_MOVEMENT_ALLOWED_ROLES, getActiveUserRole, assertInventoryMasterRole } = require("../shared/auth");
-const { validatePositiveInteger } = require("../shared/validators");
-const { createStockInCode } = require("../shared/numbering");
+const { STOCK_MOVEMENT_ALLOWED_ROLES, getActiveUserRole, assertInventoryMasterRole } = require("../cashier/shared/auth");
+const { validatePositiveInteger } = require("../cashier/shared/validators");
+const { createStockInCode } = require("../cashier/shared/numbering");
 const { logActivity } = require("../../../utils/activityLogger");
 
 const getStockMovements = async (req, res) => {

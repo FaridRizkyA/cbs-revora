@@ -4,9 +4,9 @@ const multer = require("multer");
 const pool = require("../../../config/db");
 const { logActivity } = require("../../../utils/activityLogger");
 
-const { getActiveUserRole, assertInventoryMasterRole } = require("../shared/auth");
-const { validatePhoneNumber } = require("../shared/validators");
-const { generateNextSupplierCode, generateNextProductCode } = require("../shared/codes");
+const { getActiveUserRole, assertInventoryMasterRole } = require("../cashier/shared/auth");
+const { validatePhoneNumber } = require("../cashier/shared/validators");
+const { generateNextSupplierCode, generateNextProductCode } = require("../cashier/shared/codes");
 
 const SUPPLIER_OPERATION_LOCK_KEY = 820001;
 const PRODUCT_OPERATION_LOCK_KEY = 820002;

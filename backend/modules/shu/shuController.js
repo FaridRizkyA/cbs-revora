@@ -1,6 +1,6 @@
 const pool = require("../../config/db");
 const { logActivity } = require("../../utils/activityLogger");
-const { getShuPeriodBounds } = require("./shuPeriodUtils");
+const { getShuPeriodBounds } = require("../../utils/shuPeriodUtils");
 const { enqueueShuNotificationJobs } = require("../emailQueue/emailQueue");
 
 const OFFICER_ROLE_CODES = ["CHAIRPERSON", "VICE_CHAIRPERSON", "TREASURER"];

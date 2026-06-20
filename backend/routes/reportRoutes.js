@@ -3,7 +3,7 @@ const {
   listReportDataSources,
   runReport,
 } = require("../modules/reports/reportsController");
-const { sendEmailReport, exportExcelReport, exportPdfReport } = require("../modules/reports/emailController");
+const { sendEmailReport, exportExcelReport, exportPdfReport } = require("../modules/email/emailController");
 const { authenticateToken } = require("../middleware/authMiddleware");
 
 const router = express.Router();

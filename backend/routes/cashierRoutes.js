@@ -1,12 +1,19 @@
 const express = require("express");
 const {
-  getBatches,
-  checkoutSale,
-  getMembers,
   getProductsBySupplier,
   getProductBatchesByProduct,
   getSuppliers,
   getProducts,
+  createSupplier,
+  updateSupplier,
+  setSupplierActiveState,
+  createProduct,
+  uploadProductImage,
+  updateProduct,
+  setProductActiveState,
+} = require("../modules/inventory");
+
+const {
   getStockMovements,
   getStockAdjustments,
   createStockAdjustment,
@@ -18,17 +25,15 @@ const {
   getStockInDocumentById,
   getStockOutDocuments,
   getStockOutDocumentById,
+} = require("../modules/stock_movements");
+
+const {
+  checkoutSale,
+  getMembers,
   getSalesItems,
   getSalesCosts,
-  createSupplier,
-  updateSupplier,
-  setSupplierActiveState,
-  createProduct,
-  uploadProductImage,
-  updateProduct,
-  setProductActiveState,
   getReceiptEmailStatus,
-} = require("../modules/cashier");
+} = require("../modules/sales");
 
 const router = express.Router();
 
