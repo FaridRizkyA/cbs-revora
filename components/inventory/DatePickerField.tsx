@@ -89,7 +89,23 @@ export default function DatePickerField({
       </Pressable>
       )}
 
-      <Modal visible={Platform.OS !== "web" && open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+      {Platform.OS === "android" && open && (
+        <DateTimePicker
+          value={draftDate}
+          mode="date"
+          display="default"
+          minimumDate={minimumDate}
+          maximumDate={maximumDate}
+          onChange={(event, selectedDate) => {
+            setOpen(false);
+            if (event.type === "set" && selectedDate) {
+              onChange(formatDate(selectedDate));
+            }
+          }}
+        />
+      )}
+
+      <Modal visible={Platform.OS === "ios" && open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <View style={styles.backdrop}>
           <View
             style={[
@@ -105,7 +121,7 @@ export default function DatePickerField({
               <DateTimePicker
                 value={draftDate}
                 mode="date"
-                display={Platform.OS === "ios" ? "spinner" : "default"}
+                display="spinner"
                 minimumDate={minimumDate}
                 maximumDate={maximumDate}
                 onChange={(_, selectedDate) => {
