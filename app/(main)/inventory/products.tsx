@@ -166,13 +166,7 @@ export default function ProductsScreen() {
 
   const canManage = canManageInventoryMaster(roleName, staffGradeName);
 
-  const closeWebCropper = useCallback(() => {
-    if (webCrop?.objectUrl?.startsWith("blob:")) {
-      URL.revokeObjectURL(webCrop.objectUrl);
-    }
-    setWebCrop(null);
-    setCropTransform({ scale: 1, translateX: 0, translateY: 0 });
-  }, [webCrop]);
+
 
   const clampCropTransform = useCallback(
     (nextScale: number, nextTranslateX: number, nextTranslateY: number, sourceWidth: number, sourceHeight: number) => {
@@ -185,7 +179,7 @@ export default function ProductsScreen() {
         cropBoxSize / Math.max(1, sourceHeight * fitScale)
       );
       const needsSlack = Math.abs(sourceWidth - sourceHeight) > 2;
-      const minInteractiveScale = needsSlack ? minCoverScale * 1.08 : minCoverScale;
+      const minInteractiveScale = minCoverScale;
       const safeScale = Math.max(minInteractiveScale, nextScale);
       const displayWidth = Math.max(1, sourceWidth * fitScale * safeScale);
       const displayHeight = Math.max(1, sourceHeight * fitScale * safeScale);
@@ -199,6 +193,177 @@ export default function ProductsScreen() {
     },
     [cropBoxSize, cropViewportSize]
   );
+
+  const updateCropTranslation = useCallback(
+    (nextTranslateX: number, nextTranslateY: number) => {
+      if (!webCrop) return;
+      setCropTransform((current) =>
+        clampCropTransform(
+          current.scale,
+          nextTranslateX,
+          nextTranslateY,
+          webCrop.naturalWidth || cropViewportSize,
+          webCrop.naturalHeight || cropViewportSize
+        )
+      );
+    },
+    [clampCropTransform, cropViewportSize, webCrop]
+  );
+
+  const setCropScale = useCallback(
+    (nextScale: number) => {
+      if (!webCrop) return;
+      setCropTransform((current) =>
+        clampCropTransform(
+          nextScale,
+          current.translateX,
+          current.translateY,
+          webCrop.naturalWidth || cropViewportSize,
+          webCrop.naturalHeight || cropViewportSize
+        )
+      );
+    },
+    [clampCropTransform, cropViewportSize, webCrop]
+  );
+
+  const beginCropDrag = useCallback(
+    (clientX: number, clientY: number) => {
+      cropDragRef.current = {
+        active: true,
+        lastX: clientX,
+        lastY: clientY,
+      };
+      cropGestureRef.current = {
+        startScale: cropTransformRef.current.scale,
+        startTranslateX: cropTransformRef.current.translateX,
+        startTranslateY: cropTransformRef.current.translateY,
+        startClientX: clientX,
+        startClientY: clientY,
+      };
+      setIsCropDragging(true);
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || !isCropDragging || !webCrop) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!cropDragRef.current.active) return;
+      const nextX = event.clientX;
+      const nextY = event.clientY;
+      cropDragRef.current = {
+        active: true,
+        lastX: nextX,
+        lastY: nextY,
+      };
+      updateCropTranslation(
+        cropGestureRef.current.startTranslateX + (nextX - cropGestureRef.current.startClientX),
+        cropGestureRef.current.startTranslateY + (nextY - cropGestureRef.current.startClientY)
+      );
+      event.preventDefault();
+    };
+
+    const handleMouseUp = () => {
+      cropDragRef.current.active = false;
+      setIsCropDragging(false);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove as any);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove as any);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isCropDragging, updateCropTranslation, webCrop]);
+
+  const openWebCropperFromSource = useCallback((sourceUri: string, fileName: string, mimeType: string, objectUrl?: string) => {
+    if (Platform.OS === "web") {
+      const img = new window.Image();
+      img.onload = () => {
+        setWebCrop({ sourceUri, fileName, mimeType, objectUrl, naturalWidth: img.width, naturalHeight: img.height });
+      };
+      img.onerror = () => {
+        setWebCrop({ sourceUri, fileName, mimeType, objectUrl, naturalWidth: 800, naturalHeight: 800 });
+      };
+      img.src = sourceUri;
+    } else {
+      setWebCrop({ sourceUri, fileName, mimeType, objectUrl, naturalWidth: 800, naturalHeight: 800 });
+    }
+  }, []);
+
+  const closeWebCropper = useCallback(() => {
+    if (webCrop?.objectUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(webCrop.objectUrl);
+    }
+    setWebCrop(null);
+    setCropTransform({ scale: 1, translateX: 0, translateY: 0 });
+  }, [webCrop]);
+
+  const applyWebCrop = async () => {
+    if (!webCrop) return;
+    try {
+      const img = new window.Image();
+      img.src = webCrop.objectUrl || webCrop.sourceUri;
+      img.crossOrigin = "anonymous";
+      await new Promise((res) => {
+        img.onload = res;
+        img.onerror = res;
+      });
+      const fitScale = Math.min(
+        cropViewportSize / Math.max(1, webCrop.naturalWidth || cropViewportSize),
+        cropViewportSize / Math.max(1, webCrop.naturalHeight || cropViewportSize)
+      );
+      const cropSize = 1024;
+      const exportScale = cropSize / cropBoxSize;
+      const renderScale = fitScale * cropTransform.scale * exportScale;
+      
+      const canvas = document.createElement("canvas");
+      canvas.width = cropSize;
+      canvas.height = cropSize;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, cropSize, cropSize);
+      ctx.translate(
+        cropSize / 2 + cropTransform.translateX * exportScale,
+        cropSize / 2 + cropTransform.translateY * exportScale
+      );
+      ctx.scale(renderScale, renderScale);
+      ctx.translate(-img.naturalWidth / 2, -img.naturalHeight / 2);
+      ctx.drawImage(img, 0, 0);
+      
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            setResultStatus("error");
+            setResultTitle("Action Failed");
+            setResultMessage("Failed to crop image.");
+            setResultModalOpen(true);
+            return;
+          }
+          const croppedUri = URL.createObjectURL(blob);
+          const file = new File([blob], webCrop.fileName, { type: "image/jpeg" });
+          setSelectedProductImage({
+            uri: croppedUri,
+            name: webCrop.fileName,
+            mimeType: "image/jpeg",
+            file: file as any,
+          });
+          closeWebCropper();
+        },
+        "image/jpeg",
+        0.92
+      );
+    } catch (e: any) {
+      setResultStatus("error");
+      setResultTitle("Action Failed");
+      setResultMessage(e?.message || "Failed to process image.");
+      setResultModalOpen(true);
+    }
+  };
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -259,14 +424,15 @@ export default function ProductsScreen() {
 
       setSelectedProductImage({
         uri: image.uri,
-        name: image.name || `product-${Date.now()}.jpg`,
+        name: image.name || "product-$(Date.now()).jpg",
         mimeType: image.mimeType || null,
         file: undefined,
       });
-    } catch {
+    } catch (e: any) {
+      console.error("Image pick error:", e);
       setResultStatus("error");
       setResultTitle("Action Failed");
-      setResultMessage("Failed to pick image file.");
+      setResultMessage(e?.message || "Failed to pick image file.");
       setResultModalOpen(true);
     }
   };

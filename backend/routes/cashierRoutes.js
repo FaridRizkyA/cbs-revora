@@ -1,5 +1,6 @@
 const express = require("express");
 const {
+  getBatches,
   getProductsBySupplier,
   getProductBatchesByProduct,
   getSuppliers,
@@ -25,13 +26,13 @@ const {
   getStockInDocumentById,
   getStockOutDocuments,
   getStockOutDocumentById,
+  getSalesItems,
+  getSalesCosts,
 } = require("../modules/stock_movements");
 
 const {
   checkoutSale,
   getMembers,
-  getSalesItems,
-  getSalesCosts,
   getReceiptEmailStatus,
 } = require("../modules/sales");
 

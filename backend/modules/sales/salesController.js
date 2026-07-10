@@ -1,10 +1,10 @@
-﻿const pool = require("../../../config/db");
+const pool = require("../../config/db");
 
-const { canAccessCashierModeRole, getActiveUserRole } = require("../shared/auth");
-const { logActivity } = require("../../../utils/activityLogger");
-const { enqueueReceiptEmailJob } = require("../../emailQueue/emailQueue");
-const { toNumber, validatePositiveInteger } = require("../shared/validators");
-const { createSaleNumber } = require("../shared/numbering");
+const { canAccessCashierModeRole, getActiveUserRole } = require("./shared/auth");
+const { logActivity } = require("../../utils/activityLogger");
+const { enqueueReceiptEmailJob } = require("../emailQueue/emailQueue");
+const { toNumber, validatePositiveInteger } = require("./shared/validators");
+const { createSaleNumber } = require("./shared/numbering");
 
 const getMembers = async (req, res) => {
   const search = String(req.query.search || "").trim();

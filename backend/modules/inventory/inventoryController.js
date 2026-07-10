@@ -1,12 +1,12 @@
 const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
-const pool = require("../../../config/db");
-const { logActivity } = require("../../../utils/activityLogger");
+const pool = require("../../config/db");
+const { logActivity } = require("../../utils/activityLogger");
 
-const { getActiveUserRole, assertInventoryMasterRole } = require("../cashier/shared/auth");
-const { validatePhoneNumber } = require("../cashier/shared/validators");
-const { generateNextSupplierCode, generateNextProductCode } = require("../cashier/shared/codes");
+const { getActiveUserRole, assertInventoryMasterRole } = require("../sales/shared/auth");
+const { validatePhoneNumber } = require("../sales/shared/validators");
+const { generateNextSupplierCode, generateNextProductCode } = require("../sales/shared/codes");
 
 const SUPPLIER_OPERATION_LOCK_KEY = 820001;
 const PRODUCT_OPERATION_LOCK_KEY = 820002;
@@ -67,7 +67,7 @@ const assertUniqueProductName = async (client, productName, ignoreProductId = nu
   }
 };
 
-const uploadsRootDir = path.join(__dirname, "..", "..", "..", "uploads");
+const uploadsRootDir = path.join(__dirname, "..", "..", "uploads");
 const productUploadsDir = path.join(uploadsRootDir, "products");
 if (!fs.existsSync(productUploadsDir)) {
   fs.mkdirSync(productUploadsDir, { recursive: true });
