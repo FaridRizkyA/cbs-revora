@@ -1,3 +1,5 @@
+import { formatDisplayDate, formatDisplayDateTime } from "../../utils/dateFormat";
+
 export const formatRupiah = (value: number | undefined) =>
   new Intl.NumberFormat("id-ID", {
     style: "currency",
@@ -9,16 +11,6 @@ export const formatRupiah = (value: number | undefined) =>
 
 export const formatPercent = (value: number | undefined) => `${((value || 0) * 100).toFixed(2)}%`;
 
-export const formatDate = (value: string | undefined) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("id-ID");
-};
+export const formatDate = (value: string | undefined) => formatDisplayDate(value);
 
-export const formatDateTime = (value: string | undefined) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("id-ID").replace(/:/g, ".");
-};
+export const formatDateTime = (value: string | undefined) => formatDisplayDateTime(value);

@@ -22,6 +22,7 @@ import { getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { downloadExcelWorkbook } from "../../../utils/excelExport";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
 import { printReportHtml } from "../../../utils/printUtils";
+import { formatDisplayDateTime } from "../../../utils/dateFormat";
 
 type SalesItem = {
   id_sale_item: string;
@@ -52,12 +53,7 @@ const formatDateInput = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
-const formatDateTime = (value?: string | null) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("id-ID");
-};
+const formatDateTime = (value?: string | null) => formatDisplayDateTime(value);
 
 export default function SalesItemsScreen() {
   const [rows, setRows] = useState<SalesItem[]>([]);
@@ -438,7 +434,7 @@ export default function SalesItemsScreen() {
           columns={tableColumns}
           rows={filteredRows}
           rowKey={(row) => row.id_sale_item}
-          emptyText="No sales items found."
+          emptyText={periodFilter === "TODAY" ? "No sales today. Choose This Month or All Time to see earlier sales." : "No sales items found."}
         />
       </ScrollView>
 

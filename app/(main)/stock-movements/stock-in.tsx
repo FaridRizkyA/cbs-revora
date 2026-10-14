@@ -80,7 +80,7 @@ type DraftItem = {
 };
 
 import { downloadReportPdf } from "../../../utils/pdfExport";
-import { toLocalDateInput } from "../../../utils/dateFormat";
+import { toLocalDateInput, formatDisplayDateTime } from "../../../utils/dateFormat";
 
 export default function StockInScreen() {
   const [rows, setRows] = useState<StockInDocument[]>([]);
@@ -134,12 +134,7 @@ export default function StockInScreen() {
   const todayDayNumber = useMemo(() => Number(toLocalDateInput().replaceAll("-", "")), []);  
 
   const canInsert = canInsertStockMovement(roleName, staffGradeName);
-  const formatDateTime = useCallback((value?: string | null) => {
-    if (!value) return "-";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value);
-    return date.toLocaleString("id-ID");
-  }, []);
+  const formatDateTime = useCallback((value?: string | null) => formatDisplayDateTime(value), []);
 
   const loadRows = () => {
     fetchWithAuth("/api/stock-in-documents")
@@ -470,7 +465,7 @@ export default function StockInScreen() {
       weight: 16,
       sortable: true,
       sortValue: (row) => new Date(row.stock_in_date).getTime(),
-      render: (row) => <Text style={styles.rowCell}>{new Date(row.stock_in_date).toLocaleString("id-ID")}</Text>,
+      render: (row) => <Text style={styles.rowCell}>{formatDisplayDateTime(row.stock_in_date)}</Text>,
     },
     {
       key: "action",

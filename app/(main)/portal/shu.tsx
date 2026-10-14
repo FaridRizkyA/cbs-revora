@@ -20,6 +20,7 @@ import { buildReportPdfFileName } from "../../../components/reports/shared/Repor
 import { logClientActivity } from "../../../utils/activityLog";
 import { printReportHtml } from "../../../utils/printUtils";
 import { getAuthSession, AuthSession } from "../../../utils/authSession";
+import { formatDisplayDate } from "../../../utils/dateFormat";
 
 type OverviewResponse = {
   member: {
@@ -190,7 +191,7 @@ export default function MemberShuScreen() {
       weight: 22,
       render: (row) => (
         <Text style={[styles.cellText, { color: "#64748b" }]}>
-          {new Date(row.start_date).toLocaleDateString("id-ID")} - {new Date(row.end_date).toLocaleDateString("id-ID")}
+          {formatDisplayDate(row.start_date)} - {formatDisplayDate(row.end_date)}
         </Text>
       ),
     },
@@ -310,7 +311,7 @@ export default function MemberShuScreen() {
           <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
             <View style={styles.detailGrid}>
               <Detail label="Period" value={selectedRow.period_name} />
-              <Detail label="Date Range" value={`${new Date(selectedRow.start_date).toLocaleDateString("id-ID")} - ${new Date(selectedRow.end_date).toLocaleDateString("id-ID")}`} />
+              <Detail label="Date Range" value={`${formatDisplayDate(selectedRow.start_date)} - ${formatDisplayDate(selectedRow.end_date)}`} />
               <Detail label="Status" value={selectedRow.distribution_status} />
               <Detail label="Total Spending" value={formatRupiah(Number(selectedRow.member_total_spending || 0))} />
               <Detail label="Spending Percentage" value={`${(Number(selectedRow.spending_percentage || 0) * 100).toFixed(2)}%`} />

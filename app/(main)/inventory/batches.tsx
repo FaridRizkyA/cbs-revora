@@ -25,7 +25,7 @@ import { logClientActivity } from "../../../utils/activityLog";
 import { printReportHtml } from "../../../utils/printUtils";
 import { getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
-import { formatDateOnly } from "../../../utils/dateFormat";
+import { formatDateOnly, formatDisplayDateTime } from "../../../utils/dateFormat";
 
 type BatchRow = {
   id_product_batch: string;
@@ -337,20 +337,7 @@ export default function BatchesScreen() {
     }
   };
 
-  const formatDateTime = (value?: string | null) => {
-    if (!value) return "-";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return new Intl.DateTimeFormat("id-ID", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    }).format(date);
-  };
+  const formatDateTime = (value?: string | null) => formatDisplayDateTime(value);
 
   const batchColumns = useMemo<InventoryDataTableColumn<BatchRow>[]>(() => [
     {

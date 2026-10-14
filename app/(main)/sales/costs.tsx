@@ -20,6 +20,7 @@ import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import { getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
 import { printReportHtml } from "../../../utils/printUtils";
+import { formatDisplayDateTime } from "../../../utils/dateFormat";
 
 type SalesCost = {
   id_stock_in_item: string;
@@ -48,12 +49,7 @@ const formatDateInput = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
-const formatDateTime = (value?: string | null) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("id-ID");
-};
+const formatDateTime = (value?: string | null) => formatDisplayDateTime(value);
 
 export default function SalesCostScreen() {
   const [rows, setRows] = useState<SalesCost[]>([]);
@@ -418,7 +414,7 @@ export default function SalesCostScreen() {
           columns={tableColumns}
           rows={filteredRows}
           rowKey={(row) => row.id_stock_in_item}
-          emptyText="No sales cost data found."
+          emptyText={periodFilter === "TODAY" ? "No stock in today. Choose This Month or All Time to see earlier purchases." : "No sales cost data found."}
         />
       </ScrollView>
 

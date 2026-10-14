@@ -8,6 +8,7 @@ import { formatRupiah } from "../../../components/shu/formatters";
 import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import PageContainer from "../../../components/layout/PageContainer";
 import InventoryPageHeader from "../../../components/inventory/InventoryPageHeader";
+import { formatDisplayDateTime } from "../../../utils/dateFormat";
 
 const isWeb = Platform.OS === "web";
 let WebLineChart: any = null;
@@ -92,17 +93,7 @@ const formatChartDate = (value?: string | null) => {
   return date.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
 };
 
-const formatShortDateTime = (value?: string | null) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("en-US", {
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};
+const formatShortDateTime = (value?: string | null) => formatDisplayDateTime(value);
 
 export default function MemberDashboardScreen() {
   const router = useRouter();

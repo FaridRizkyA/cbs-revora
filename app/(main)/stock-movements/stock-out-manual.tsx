@@ -9,6 +9,7 @@ import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import { InventoryConfirmModal, InventoryResultModal } from "../../../components/inventory/ActionModals";
 import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import { canInsertStockMovement, getAuthSession, normalizeRole } from "../../../utils/authSession";
+import { formatDisplayDateTime } from "../../../utils/dateFormat";
 
 type StockOutManualDocument = {
   id_stock_out_manual: string;
@@ -256,7 +257,7 @@ export default function StockOutManualScreen() {
             <Text style={[styles.rowCell, styles.colCode]} numberOfLines={1}>{row.stock_out_code}</Text>
             <Text style={[styles.rowCell, styles.colQty]}>{row.total_qty}</Text>
             <Text style={[styles.rowCell, styles.colOperator]} numberOfLines={1}>{row.operator_name || "-"}</Text>
-            <Text style={[styles.rowCell, styles.colDate]}>{new Date(row.stock_out_date).toLocaleString("id-ID")}</Text>
+            <Text style={[styles.rowCell, styles.colDate]}>{formatDisplayDateTime(row.stock_out_date)}</Text>
             <View style={[styles.colAction, styles.actionWrap]}>
               <Pressable style={styles.detailBtn} onPress={() => openDetail(row.id_stock_out_manual)}>
                 <Text style={styles.detailBtnText}>See Details</Text>
@@ -379,7 +380,7 @@ export default function StockOutManualScreen() {
             <View style={styles.metaGrid}>
               <View style={styles.metaItem}><Text style={styles.metaLabel}>Code</Text><Text style={styles.metaValue}>{selectedDoc?.stock_out_code || "-"}</Text></View>
               <View style={styles.metaItem}><Text style={styles.metaLabel}>Operator</Text><Text style={styles.metaValue}>{selectedDoc?.operator_name || "-"}</Text></View>
-              <View style={styles.metaItem}><Text style={styles.metaLabel}>Date</Text><Text style={styles.metaValue}>{selectedDoc ? new Date(selectedDoc.stock_out_date).toLocaleString("id-ID") : "-"}</Text></View>
+              <View style={styles.metaItem}><Text style={styles.metaLabel}>Date</Text><Text style={styles.metaValue}>{selectedDoc ? formatDisplayDateTime(selectedDoc.stock_out_date) : "-"}</Text></View>
               <View style={styles.metaItem}><Text style={styles.metaLabel}>Total Qty</Text><Text style={styles.metaValue}>{selectedDoc?.total_qty || 0}</Text></View>
               <View style={[styles.metaItem, styles.metaItemFull]}><Text style={styles.metaLabel}>Notes</Text><Text style={styles.metaValue}>{selectedDoc?.notes || "-"}</Text></View>
             </View>

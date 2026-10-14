@@ -15,6 +15,7 @@ import {
   normalizeRole,
 } from "../../../utils/authSession";
 import { fetchWithAuth } from "../../../utils/fetchWithAuth";
+import { logClientActivity } from "../../../utils/activityLog";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
 import { printReportHtml } from "../../../utils/printUtils";
 import {
@@ -27,6 +28,7 @@ import {
 import { buildReportPdfFileName } from "../../../components/reports/shared/ReportPrintTemplate";
 import PageContainer from "../../../components/layout/PageContainer";
 import InventoryPageHeader from "../../../components/inventory/InventoryPageHeader";
+import { formatDisplayDateTime } from "../../../utils/dateFormat";
 
 type ReportSource = {
   key: string;
@@ -48,20 +50,7 @@ type ReportResult = {
   total_rows: number;
 };
 
-const formatDateTime = (value: unknown) => {
-  if (!value) return "-";
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString("id-ID", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-};
+const formatDateTime = (value: unknown) => formatDisplayDateTime(value ? String(value) : null);
 
 const formatCellValue = (value: unknown) => {
   if (value === null || value === undefined || value === "") return "-";
