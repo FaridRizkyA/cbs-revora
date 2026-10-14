@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -34,6 +34,9 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Enter moves to the next field and submits from the last one, for tablets with a keyboard.
+  const passwordInputRef = useRef<TextInput | null>(null);
+  const confirmPasswordInputRef = useRef<TextInput | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [authView, setAuthView] = useState<AuthView>("login");
   const [resetEmail, setResetEmail] = useState("");
@@ -262,12 +265,15 @@ export default function LoginScreen() {
                         keyboardType="email-address"
                         value={email}
                         onChangeText={setEmail}
+                        returnKeyType="next"
+                        onSubmitEditing={() => passwordInputRef.current?.focus()}
                       />
 
                       <View style={styles.passwordSection}>
                         <Text style={styles.passwordLabel}>Password</Text>
                         <View style={styles.passwordInputWrap}>
                           <TextInput
+                            ref={passwordInputRef}
                             placeholder="Enter your password"
                             placeholderTextColor="#61708a"
                             secureTextEntry={!showPassword}
@@ -275,6 +281,8 @@ export default function LoginScreen() {
                             autoCorrect={false}
                             value={password}
                             onChangeText={setPassword}
+                            returnKeyType="go"
+                            onSubmitEditing={() => { if (!submitting) handleLogin(); }}
                             style={styles.passwordInput}
                           />
                           <Pressable
@@ -307,6 +315,8 @@ export default function LoginScreen() {
                         keyboardType="email-address"
                         value={resetEmail}
                         onChangeText={setResetEmail}
+                        returnKeyType="send"
+                        onSubmitEditing={() => { if (!submitting) submitForgotEmail(); }}
                       />
                       <AppButton title={submitting ? "Sending OTP..." : "Send OTP"} style={styles.loginButton} onPress={submitForgotEmail} disabled={submitting} />
                     </>
@@ -315,7 +325,7 @@ export default function LoginScreen() {
                   {authView === "forgot-otp" ? (
                     <>
                       <Text style={styles.formTitle}>Verify OTP</Text>
-                      <AppInput label="OTP" placeholder="Enter OTP code" keyboardType="number-pad" value={resetOtp} onChangeText={setResetOtp} />
+                      <AppInput label="OTP" placeholder="Enter OTP code" keyboardType="number-pad" value={resetOtp} onChangeText={setResetOtp} returnKeyType="next" onSubmitEditing={() => { if (!submitting) submitOtp(); }} />
                       <AppButton title={submitting ? "Verifying..." : "Next"} style={styles.loginButton} onPress={submitOtp} disabled={submitting} />
                     </>
                   ) : null}
@@ -323,8 +333,8 @@ export default function LoginScreen() {
                   {authView === "forgot-reset" ? (
                     <>
                       <Text style={styles.formTitle}>Set New Password</Text>
-                      <TextInput placeholder="New Password" placeholderTextColor="#61708a" secureTextEntry autoCapitalize="none" autoCorrect={false} value={newPassword} onChangeText={setNewPassword} style={styles.passwordInput} />
-                      <TextInput placeholder="Confirm Password" placeholderTextColor="#61708a" secureTextEntry autoCapitalize="none" autoCorrect={false} value={confirmPassword} onChangeText={setConfirmPassword} style={styles.passwordInput} />
+                      <TextInput placeholder="New Password" placeholderTextColor="#61708a" secureTextEntry autoCapitalize="none" autoCorrect={false} value={newPassword} onChangeText={setNewPassword} returnKeyType="next" onSubmitEditing={() => confirmPasswordInputRef.current?.focus()} style={styles.passwordInput} />
+                      <TextInput ref={confirmPasswordInputRef} placeholder="Confirm Password" placeholderTextColor="#61708a" secureTextEntry autoCapitalize="none" autoCorrect={false} value={confirmPassword} onChangeText={setConfirmPassword} returnKeyType="done" onSubmitEditing={() => { if (!submitting) submitResetPassword(); }} style={styles.passwordInput} />
                       <AppButton title={submitting ? "Saving..." : "Reset Password"} style={styles.loginButton} onPress={submitResetPassword} disabled={submitting} />
                     </>
                   ) : null}

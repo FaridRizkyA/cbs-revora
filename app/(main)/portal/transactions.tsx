@@ -85,7 +85,7 @@ export default function MemberTransactionsScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [printing, setPrinting] = useState(false);
-  const [range, setRange] = useState<RangeKey>("MONTHLY");
+  const [range, setRange] = useState<RangeKey>("ALL");
   const [viewMode, setViewMode] = useState<ViewMode>("TRANSACTION");
   const [search, setSearch] = useState("");
   const [overview, setOverview] = useState<MemberOverview | null>(null);
@@ -274,7 +274,7 @@ export default function MemberTransactionsScreen() {
       });
       await printHtml(html, "PRINT_RECEIPT", `Printed sale receipt ${selectedRow.sale_number}.`);
     } catch (error) {
-      showError("Print Failed", error instanceof Error ? error.message : "Failed to print receipt.");
+      showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print receipt.");
     } finally {
       setPrinting(false);
     }
