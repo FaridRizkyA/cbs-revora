@@ -15,7 +15,6 @@ import {
   Text,
   TextStyle,
   TextInput,
-  useWindowDimensions,
   View,
 } from "react-native";
 import ResponsiveModal from "../../components/common/ResponsiveModal";
@@ -24,6 +23,8 @@ import { buildReceiptPrintHtml, formatReceiptProductLabel, ReceiptData, ReceiptI
 import { AuthUser, getAuthSession, logoutAuthSession, subscribeAuthSession } from "../../utils/authSession";
 import { fetchWithAuth } from "../../utils/fetchWithAuth";
 import { logClientActivity } from "../../utils/activityLog";
+import { useAppScale } from "../../utils/useAppScale";
+import { formatDisplayDateTime } from "../../utils/dateFormat";
 
 const PRODUCT_PLACEHOLDER = require("../../assets/images/placeholders/default-product.png");
 const SIDEBAR_LOGO = require("../../assets/images/ui/logo_horizontal.png");
@@ -129,10 +130,8 @@ const formatRupiah = (value: number) =>
 export default function Index() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
-  const BASE_WIDTH = 1366;
-  const BASE_HEIGHT = 768;
-  const appScale = Math.min(1, Math.min(width / BASE_WIDTH, height / BASE_HEIGHT));
+  // Cashier mode pads the safe area inside its own top bar.
+  const { scale: appScale, canvasWidth, canvasHeight } = useAppScale({ withSafeAreaPadding: false });
   const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -196,12 +195,15 @@ export default function Index() {
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return products.filter((product) => {
-      const searchable = [product.product_name, product.product_code, product.description ?? ""]
-        .join(" ")
-        .toLowerCase();
-      return !query || searchable.includes(query);
-    });
+    return products
+      .filter((product) => {
+        const searchable = [product.product_name, product.product_code, product.description ?? ""]
+          .join(" ")
+          .toLowerCase();
+        return !query || searchable.includes(query);
+      })
+      // Sellable products first; sort is stable, so the name order is kept within each group.
+      .sort((a, b) => Number(a.available_stock <= 0) - Number(b.available_stock <= 0));
   }, [products, search]);
 
   const filteredMembers = useMemo(() => {
@@ -680,8 +682,8 @@ export default function Index() {
         style={[
           styles.scaledCanvas,
           {
-            width: BASE_WIDTH,
-            height: BASE_HEIGHT,
+            width: canvasWidth,
+            height: canvasHeight,
             transform: [{ scale: appScale }],
           },
         ]}
@@ -1074,7 +1076,7 @@ export default function Index() {
                 <Image source={SIDEBAR_LOGO} style={[styles.receiptLogo, { marginLeft: -16 }]} contentFit="contain" />
               </View>
               <Text style={styles.receiptMeta}>Cashier: {cashierName}</Text>
-              <Text style={styles.receiptMeta}>Time: {new Date().toLocaleString("id-ID")}</Text>
+              <Text style={styles.receiptMeta}>Time: {formatDisplayDateTime(new Date())}</Text>
               <Text style={styles.receiptMeta}>
                 Payment: {receiptPaymentMethod === "CASH" ? "Cash" : "QRIS"}
               </Text>
@@ -1431,6 +1433,8 @@ const styles = StyleSheet.create({
     color: "#334155",
     fontSize: 14,
     paddingVertical: 0,
+    // The surrounding box already shows focus; drop the browser's default black outline.
+    ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as object) : null),
   },
   centerState: {
     flex: 1,

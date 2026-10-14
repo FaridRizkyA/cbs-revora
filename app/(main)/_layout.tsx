@@ -1,10 +1,10 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { useWindowDimensions, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { View } from "react-native";
 import AppNavigationSidebar, { NavigationItem } from "../../components/navigation/AppNavigationSidebar";
 import { fetchWithAuth } from "../../utils/fetchWithAuth";
+import { useAppScale } from "../../utils/useAppScale";
 import {
   canAccessMainApp,
   canAccessMainPath,
@@ -100,19 +100,18 @@ const routeBySubmenu = (child: string) => {
   return "/(main)/dashboard";
 };
 
+const getMenuGroupForPath = (pathname: string) => {
+  if (pathname.includes("/inventory/")) return "inventory";
+  if (pathname.includes("/stock-movements/")) return "stock-movements";
+  if (pathname.includes("/sales/")) return "sales";
+  if (pathname.includes("/users") || pathname.includes("/members") || pathname.includes("/staffs")) return "people";
+  return null;
+};
+
 export default function MainLayout() {
   const router = useRouter();
   const pathname = usePathname();
-  const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
-  const shortSide = Math.min(width, height);
-  const isPhoneLandscape = shortSide < 768 && width > height;
-  const BASE_WIDTH = 1366;
-  const BASE_HEIGHT = 768;
-  const topPad = Math.max(insets.top, 12) + (isPhoneLandscape ? 14 : 0);
-  const bottomPad = Math.max(insets.bottom, 8);
-  const usableHeight = Math.max(height - topPad - bottomPad, 320);
-  const appScale = Math.min(1, Math.min(width / BASE_WIDTH, usableHeight / BASE_HEIGHT));
+  const { scale: appScale, canvasWidth, canvasHeight, topPad, bottomPad } = useAppScale();
   const [ready, setReady] = useState(false);
   const [appMode, setAppModeState] = useState<AppMode>("STAFF");
   const [roleName, setRoleName] = useState<string>("ADMIN");
@@ -121,12 +120,16 @@ export default function MainLayout() {
   const [staffGradeName, setStaffGradeName] = useState<string | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [hasMemberAccess, setHasMemberAccess] = useState(false);
-  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({
-    inventory: true,
-    "stock-movements": true,
-    sales: true,
-    people: true,
+  // Only the group of the current page starts open, so the menus below it stay visible.
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>(() => {
+    const activeGroup = getMenuGroupForPath(pathname);
+    return activeGroup ? { [activeGroup]: true } : {};
   });
+
+  useEffect(() => {
+    const activeGroup = getMenuGroupForPath(pathname);
+    if (activeGroup) setExpandedMenus((current) => (current[activeGroup] ? current : { ...current, [activeGroup]: true }));
+  }, [pathname]);
 
   useEffect(() => {
     let active = true;
@@ -322,7 +325,7 @@ export default function MainLayout() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#f8fafc", alignItems: "center", justifyContent: "center", overflow: "hidden", paddingTop: topPad, paddingBottom: bottomPad }}>
-      <View style={{ width: BASE_WIDTH, height: BASE_HEIGHT, transform: [{ scale: appScale }] }}>
+      <View style={{ width: canvasWidth, height: canvasHeight, transform: [{ scale: appScale }] }}>
         <View style={{ flex: 1, flexDirection: "row", backgroundColor: "#f8fafc" }}>
           <AppNavigationSidebar
             logoSource={SIDEBAR_LOGO}
