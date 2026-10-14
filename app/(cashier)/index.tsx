@@ -214,7 +214,7 @@ export default function Index() {
   }, [members, memberSearch]);
 
   const fetchProducts = useCallback(async () => {
-    const response = await fetchWithAuth("/api/products");
+    const response = await fetchWithAuth("/api/products?for_sale=1");
     const payload = await response.json();
 
     if (!response.ok) {
@@ -301,7 +301,7 @@ export default function Index() {
     // Poll for real-time stock updates every 5 seconds
     const interval = setInterval(async () => {
       try {
-        const response = await fetchWithAuth("/api/products");
+        const response = await fetchWithAuth("/api/products?for_sale=1");
         if (response.ok) {
           const payload = await response.json();
           setProducts(payload.data ?? []);
@@ -442,7 +442,7 @@ export default function Index() {
 
     try {
       const response = await fetchWithAuth(
-        `/api/products?search=${encodeURIComponent(query)}`
+        `/api/products?for_sale=1&search=${encodeURIComponent(query)}`
       );
       const payload = await response.json();
 

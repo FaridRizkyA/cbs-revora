@@ -104,6 +104,7 @@ const getAvailableBatches = async (client, idProduct) => {
       ON sm.id_product_batch = pb.id_product_batch
      AND sm.is_active = 'Y'
     WHERE pb.id_product = $1
+      AND pb.expired_date >= CURRENT_DATE
     GROUP BY pb.id_product_batch, pb.batch_code, pb.expired_date
     HAVING GREATEST(
       COALESCE(
@@ -228,11 +229,8 @@ const checkoutSale = async (req, res) => {
 
       const product = await lockProduct(client, item.id_product);
       const requestedQuantity = validatePositiveInteger(item.quantity || 1, "quantity");
-      const unitPrice = toNumber(item.unit_price ?? product.selling_price);
-
-      if (unitPrice < 0) {
-        throw new Error(`unit_price cannot be negative for product: ${item.id_product}`);
-      }
+      // Price always comes from the product master, never from the client.
+      const unitPrice = Number(product.selling_price || 0);
 
       const availableBatches = await getAvailableBatches(client, item.id_product);
       const availableStock = availableBatches.reduce(
@@ -242,7 +240,7 @@ const checkoutSale = async (req, res) => {
 
       if (requestedQuantity > availableStock) {
         throw new Error(
-          `Insufficient stock for product ${product.product_name}. Available: ${availableStock}.`
+          `Insufficient stock for product ${product.product_name}. Available (not expired): ${availableStock}.`
         );
       }
 

@@ -159,6 +159,8 @@ const removeUploadedProductImageIfAny = (productImageValue) => {
 const getProducts = async (req, res) => {
   const search = String(req.query.search || "").trim();
   const includeInactive = String(req.query.include_inactive || "") === "1";
+  // Cashier mode only counts stock it may sell, so expired batches are left out.
+  const forSale = String(req.query.for_sale || "") === "1";
 
   try {
     const result = await pool.query(
@@ -173,7 +175,10 @@ const getProducts = async (req, res) => {
             END
           )::int AS available_stock
         FROM tbl_stock_movements sm
+        LEFT JOIN tbl_product_batches pb
+          ON pb.id_product_batch = sm.id_product_batch
         WHERE sm.is_active = 'Y'
+          AND ($4::boolean = false OR pb.expired_date IS NULL OR pb.expired_date >= CURRENT_DATE)
         GROUP BY sm.id_product
       )
       SELECT
@@ -220,7 +225,7 @@ const getProducts = async (req, res) => {
         s.available_stock
       ORDER BY p.product_name ASC;
       `,
-      [search, `%${search}%`, includeInactive]
+      [search, `%${search}%`, includeInactive, forSale]
     );
 
     res.json({
