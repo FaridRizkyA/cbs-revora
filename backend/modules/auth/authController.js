@@ -12,6 +12,36 @@ const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_POLICY_MESSAGE =
   "Password must be at least 8 characters and include uppercase letters, lowercase letters, and numbers.";
 
+// Same message for unknown email and wrong password, so the login form cannot be
+// used to find out which emails are registered.
+const INVALID_CREDENTIALS_MESSAGE = "Invalid email or password.";
+const MAX_LOGIN_FAILURES = 5;
+const LOGIN_LOCKOUT_MINUTES = 15;
+const MAX_OTP_ATTEMPTS = 5;
+const OTP_REQUEST_COOLDOWN_SECONDS = 60;
+const OTP_REQUEST_MESSAGE = "If the email is registered, an OTP has been sent to it.";
+
+// Failed logins since the last successful one within the lockout window.
+const countRecentLoginFailures = async (idUser) => {
+  const result = await pool.query(
+    `
+    SELECT COUNT(*)::int AS failures
+    FROM tbl_activity_logs
+    WHERE activity_type = 'LOGIN_FAILED'
+      AND record_id = $1::uuid
+      AND created_date > NOW() - ($2 || ' minutes')::interval
+      AND created_date > COALESCE((
+        SELECT MAX(created_date)
+        FROM tbl_activity_logs
+        WHERE activity_type = 'LOGIN_SUCCESS'
+          AND record_id = $1::uuid
+      ), '-infinity'::timestamp);
+    `,
+    [idUser, LOGIN_LOCKOUT_MINUTES]
+  );
+  return result.rows[0]?.failures || 0;
+};
+
 const isValidPasswordPolicy = (password) =>
   String(password || "").length >= PASSWORD_MIN_LENGTH &&
   /[A-Z]/.test(password) &&
@@ -115,11 +145,32 @@ const login = async (req, res) => {
         description: `Failed login attempt for ${identifier}: account not found.`,
       });
       return res.status(401).json({
-        message: "User not found.",
+        message: INVALID_CREDENTIALS_MESSAGE,
       });
     }
 
     const user = result.rows[0];
+
+    if ((await countRecentLoginFailures(user.id_user)) >= MAX_LOGIN_FAILURES) {
+      return res.status(429).json({
+        message: `Too many failed login attempts. Please try again in ${LOGIN_LOCKOUT_MINUTES} minutes.`,
+      });
+    }
+
+    const passwordMatched = await bcrypt.compare(password, user.password_hash);
+
+    if (!passwordMatched) {
+      await logActivitySafe(pool, req, {
+        idUser: user.id_user,
+        activityType: "LOGIN_FAILED",
+        tableName: "tbl_users",
+        recordId: user.id_user,
+        description: `Failed login attempt for ${user.email}: invalid password.`,
+      });
+      return res.status(401).json({
+        message: INVALID_CREDENTIALS_MESSAGE,
+      });
+    }
 
     if (user.is_active !== "Y") {
       await logActivitySafe(pool, req, {
@@ -144,21 +195,6 @@ const login = async (req, res) => {
       });
       return res.status(403).json({
         message: "User account role is not assigned.",
-      });
-    }
-
-    const passwordMatched = await bcrypt.compare(password, user.password_hash);
-
-    if (!passwordMatched) {
-      await logActivitySafe(pool, req, {
-        idUser: user.id_user,
-        activityType: "LOGIN_FAILED",
-        tableName: "tbl_users",
-        recordId: user.id_user,
-        description: `Failed login attempt for ${user.email}: invalid password.`,
-      });
-      return res.status(401).json({
-        message: "Invalid password.",
       });
     }
 
@@ -284,11 +320,39 @@ const requestPasswordResetOtp = async (req, res) => {
       [email]
     );
 
+    // Unknown or inactive emails get the same answer as registered ones.
     if (result.rowCount === 0 || result.rows[0].is_active !== "Y") {
-      return res.status(404).json({ message: "User was not found." });
+      return res.json({ message: OTP_REQUEST_MESSAGE });
     }
 
     const user = result.rows[0];
+
+    // A short cooldown stops the form from being used to flood someone's inbox.
+    const recent = await pool.query(
+      `
+      SELECT 1
+      FROM tbl_password_reset_otps
+      WHERE id_user = $1
+        AND created_date > NOW() - ($2 || ' seconds')::interval
+      LIMIT 1;
+      `,
+      [user.id_user, OTP_REQUEST_COOLDOWN_SECONDS]
+    );
+    if (recent.rowCount > 0) {
+      return res.json({ message: OTP_REQUEST_MESSAGE });
+    }
+
+    // Only the newest OTP stays valid.
+    await pool.query(
+      `
+      UPDATE tbl_password_reset_otps
+      SET used_at = NOW()
+      WHERE id_user = $1
+        AND used_at IS NULL;
+      `,
+      [user.id_user]
+    );
+
     const otp = generateOtp();
     await pool.query(
       `
@@ -327,7 +391,7 @@ const requestPasswordResetOtp = async (req, res) => {
       ],
     });
 
-    return res.json({ message: "OTP has been sent to your email." });
+    return res.json({ message: OTP_REQUEST_MESSAGE });
   } catch (error) {
     return res.status(400).json({ message: "Failed to send OTP.", error: error.message });
   }
@@ -341,29 +405,48 @@ const verifyPasswordResetOtp = async (req, res) => {
   }
 
   try {
-    const result = await pool.query(
+    const active = await pool.query(
       `
-      UPDATE tbl_password_reset_otps
-      SET verified_at = NOW()
-      WHERE id_password_reset_otp = (
-        SELECT o.id_password_reset_otp
-        FROM tbl_password_reset_otps o
-        JOIN tbl_users u ON u.id_user = o.id_user
-        WHERE LOWER(o.email) = LOWER($1)
-          AND o.otp_hash = $2
-          AND o.expires_at > NOW()
-          AND o.used_at IS NULL
-        ORDER BY o.created_date DESC
-        LIMIT 1
-      )
-      RETURNING id_password_reset_otp;
+      SELECT id_password_reset_otp, otp_hash, failed_attempts
+      FROM tbl_password_reset_otps
+      WHERE LOWER(email) = LOWER($1)
+        AND expires_at > NOW()
+        AND used_at IS NULL
+      ORDER BY created_date DESC
+      LIMIT 1;
       `,
-      [email, hashOtp(otp)]
+      [email]
     );
 
-    if (result.rowCount === 0) {
+    if (active.rowCount === 0) {
       return res.status(400).json({ message: "Invalid or expired OTP." });
     }
+
+    const row = active.rows[0];
+    if (row.otp_hash !== hashOtp(otp)) {
+      // Each wrong guess counts; the OTP is burned once the limit is reached.
+      const attempts = row.failed_attempts + 1;
+      await pool.query(
+        `
+        UPDATE tbl_password_reset_otps
+        SET failed_attempts = $2::int,
+            used_at = CASE WHEN $2::int >= $3::int THEN NOW() ELSE used_at END
+        WHERE id_password_reset_otp = $1;
+        `,
+        [row.id_password_reset_otp, attempts, MAX_OTP_ATTEMPTS]
+      );
+      return res.status(400).json({
+        message:
+          attempts >= MAX_OTP_ATTEMPTS
+            ? "Too many wrong OTP attempts. Please request a new OTP."
+            : "Invalid or expired OTP.",
+      });
+    }
+
+    await pool.query(
+      `UPDATE tbl_password_reset_otps SET verified_at = NOW() WHERE id_password_reset_otp = $1;`,
+      [row.id_password_reset_otp]
+    );
 
     return res.json({ message: "OTP verified successfully." });
   } catch (error) {
