@@ -15,14 +15,28 @@ const summaryCard = async (req, res) => {
       ),
       pool.query(
         `
+        -- Only batches that still have stock need attention.
+        WITH batch_stock AS (
+          SELECT
+            pb.id_product_batch,
+            pb.expired_date,
+            COALESCE(SUM(
+              CASE WHEN sm.movement_type = 'OUT' THEN -sm.quantity ELSE sm.quantity END
+            ), 0) AS remaining_qty
+          FROM tbl_product_batches pb
+          LEFT JOIN tbl_stock_movements sm
+            ON sm.id_product_batch = pb.id_product_batch
+           AND sm.is_active = 'Y'
+          GROUP BY pb.id_product_batch, pb.expired_date
+        )
         SELECT
           COUNT(*) FILTER (WHERE expired_date < CURRENT_DATE)::int AS expired_batch_count,
           COUNT(*) FILTER (
             WHERE expired_date >= CURRENT_DATE
               AND expired_date <= CURRENT_DATE + INTERVAL '14 days'
           )::int AS near_expired_batch_count
-        FROM tbl_product_batches
-        ;
+        FROM batch_stock
+        WHERE remaining_qty > 0;
         `
       ),
     ]);
@@ -53,10 +67,25 @@ const graphs = async (req, res) => {
           SELECT date_trunc('month', CURRENT_DATE) - (INTERVAL '1 month' * gs.n) AS month_start
           FROM generate_series(5, 0, -1) AS gs(n)
         )
+        -- Gross profit: item margin (selling price minus batch purchase price) minus
+        -- sale discounts, the same basis the SHU sales income uses.
         SELECT
           TO_CHAR(ms.month_start, 'YYYY-MM') AS month_key,
           TO_CHAR(ms.month_start, 'Mon') AS month_label,
-          COALESCE(SUM(s.total_amount), 0)::float AS total_profit,
+          (
+            COALESCE((
+              SELECT SUM((si.unit_price - COALESCE(pb.purchase_price, 0)) * si.quantity)
+              FROM tbl_sale_items si
+              JOIN tbl_sales s2
+                ON s2.id_sale = si.id_sale
+               AND s2.is_active = 'Y'
+              LEFT JOIN tbl_product_batches pb
+                ON pb.id_product_batch = si.id_product_batch
+              WHERE si.is_active = 'Y'
+                AND date_trunc('month', s2.sale_date) = ms.month_start
+            ), 0)
+            - COALESCE(SUM(s.discount_amount), 0)
+          )::float AS total_profit,
           COUNT(s.id_sale)::int AS total_transactions
         FROM month_series ms
         LEFT JOIN tbl_sales s
