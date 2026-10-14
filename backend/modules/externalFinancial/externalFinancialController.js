@@ -26,7 +26,8 @@ const listExternalFinancialEntries = async (_req, res) => {
 };
 
 const createExternalFinancialEntry = async (req, res) => {
-  const { entry_type, entry_date, entry_source, amount, notes, id_user } = req.body || {};
+  const { entry_type, entry_date, entry_source, amount, notes} = req.body || {};
+  const id_user = req.user.id_user;
   const normalizedType = String(entry_type || "").toUpperCase();
   const normalizedAmount = Number(amount || 0);
 
@@ -68,7 +69,8 @@ const createExternalFinancialEntry = async (req, res) => {
 
 const updateExternalFinancialEntry = async (req, res) => {
   const { id } = req.params;
-  const { entry_type, entry_date, entry_source, amount, notes, is_active, id_user } = req.body || {};
+  const { entry_type, entry_date, entry_source, amount, notes, is_active} = req.body || {};
+  const id_user = req.user.id_user;
   const normalizedType = String(entry_type || "").toUpperCase();
   const normalizedAmount = Number(amount || 0);
   const normalizedActive = String(is_active || "Y").toUpperCase();
@@ -122,7 +124,8 @@ const updateExternalFinancialEntry = async (req, res) => {
 
 const updateExternalFinancialEntryStatus = async (req, res) => {
   const { id } = req.params;
-  const { is_active, id_user } = req.body || {};
+  const { is_active} = req.body || {};
+  const id_user = req.user.id_user;
   const normalizedActive = String(is_active || "").toUpperCase();
   if (!["Y", "N"].includes(normalizedActive)) {
     return res.status(400).json({ message: "Active status must be Y or N." });

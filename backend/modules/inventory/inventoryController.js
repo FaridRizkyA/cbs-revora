@@ -103,7 +103,7 @@ const uploadProductImage = (req, res) => {
     const imageUrl = `${req.protocol}://${req.get("host")}/${relativePath}`;
 
     logActivity(pool, req, {
-      idUser: req.body?.id_user || null,
+      idUser: req.user?.id_user || null,
       activityType: "UPLOAD_PRODUCT_IMAGE",
       description: `Uploaded product image: ${req.file.filename}.`,
     }).catch((err) => console.warn("Failed to log product image upload:", err.message));
@@ -235,7 +235,8 @@ const getProducts = async (req, res) => {
 };
 
 const createSupplier = async (req, res) => {
-  const { id_user, supplier_code, supplier_name, city, phone_number } = req.body || {};
+  const id_user = req.user.id_user;
+  const { supplier_code, supplier_name, city, phone_number } = req.body || {};
   const inputCode = String(supplier_code || "").trim().toUpperCase();
   const name = String(supplier_name || "").trim();
   const cityValue = String(city || "").trim();
@@ -291,7 +292,8 @@ const createSupplier = async (req, res) => {
 
 const updateSupplier = async (req, res) => {
   const idSupplier = String(req.params.idSupplier || "").trim();
-  const { id_user, supplier_name, city, phone_number } = req.body || {};
+  const id_user = req.user.id_user;
+  const { supplier_name, city, phone_number } = req.body || {};
   const name = String(supplier_name || "").trim();
   const cityValue = String(city || "").trim();
   let phoneValue = null;
@@ -345,7 +347,8 @@ const updateSupplier = async (req, res) => {
 
 const setSupplierActiveState = async (req, res) => {
   const idSupplier = String(req.params.idSupplier || "").trim();
-  const { id_user, is_active } = req.body || {};
+  const id_user = req.user.id_user;
+  const { is_active } = req.body || {};
   const nextState = String(is_active || "").trim().toUpperCase();
 
   if (!idSupplier) return res.status(400).json({ message: "idSupplier is required." });
@@ -575,8 +578,8 @@ const getProductsBySupplier = async (req, res) => {
 };
 
 const createProduct = async (req, res) => {
+  const id_user = req.user.id_user;
   const {
-    id_user,
     id_supplier,
     barcode,
     product_name,
@@ -654,8 +657,8 @@ const createProduct = async (req, res) => {
 
 const updateProduct = async (req, res) => {
   const idProduct = String(req.params.idProduct || "").trim();
+  const id_user = req.user.id_user;
   const {
-    id_user,
     id_supplier,
     barcode,
     product_name,
@@ -759,7 +762,8 @@ const updateProduct = async (req, res) => {
 
 const setProductActiveState = async (req, res) => {
   const idProduct = String(req.params.idProduct || "").trim();
-  const { id_user, is_active } = req.body || {};
+  const id_user = req.user.id_user;
+  const { is_active } = req.body || {};
   const nextState = String(is_active || "").trim().toUpperCase();
 
   if (!idProduct) return res.status(400).json({ message: "idProduct is required." });

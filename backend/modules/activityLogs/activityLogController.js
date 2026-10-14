@@ -73,7 +73,7 @@ const resolveTargetLabel = (row) => {
 };
 
 const createClientActivityLog = async (req, res) => {
-  const idUser = req.body?.id_user || null;
+  const idUser = req.user.id_user;
   const activityType = String(req.body?.activity_type || "").trim().toUpperCase();
   const tableName = String(req.body?.table_name || "").trim() || null;
   const recordId = String(req.body?.record_id || "").trim() || null;

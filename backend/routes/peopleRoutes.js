@@ -23,31 +23,33 @@ const {
   updateStaffStatus,
 } = require("../modules/people/peopleController");
 
+const { requireAccess, requireSelfOrAdmin } = require("../utils/accessPolicy");
+
 const router = express.Router();
 
-router.get("/people/roles", listRoles);
-router.post("/people/profile-image", uploadProfileImage);
-router.get("/people/staff-grades", listStaffGrades);
-router.post("/people/staff-grades", createStaffGrade);
-router.put("/people/staff-grades/:id", updateStaffGrade);
-router.patch("/people/staff-grades/:id/status", updateStaffGradeStatus);
+router.get("/people/roles", requireAccess("viewPeople"), listRoles);
+router.post("/people/profile-image", requireAccess("authenticated"), uploadProfileImage);
+router.get("/people/staff-grades", requireAccess("viewPeople"), listStaffGrades);
+router.post("/people/staff-grades", requireAccess("managePeople"), createStaffGrade);
+router.put("/people/staff-grades/:id", requireAccess("managePeople"), updateStaffGrade);
+router.patch("/people/staff-grades/:id/status", requireAccess("managePeople"), updateStaffGradeStatus);
 
-router.get("/people/users", listUsers);
-router.get("/people/users/:id/profile", getUserProfile);
-router.post("/people/users", createUser);
-router.put("/people/users/:id", updateUser);
-router.put("/people/users/:id/profile", updateUserProfile);
-router.patch("/people/users/:id/password", changeUserPassword);
-router.patch("/people/users/:id/status", updateUserStatus);
+router.get("/people/users", requireAccess("viewPeople"), listUsers);
+router.get("/people/users/:id/profile", requireSelfOrAdmin, getUserProfile);
+router.post("/people/users", requireAccess("managePeople"), createUser);
+router.put("/people/users/:id", requireAccess("managePeople"), updateUser);
+router.put("/people/users/:id/profile", requireSelfOrAdmin, updateUserProfile);
+router.patch("/people/users/:id/password", requireSelfOrAdmin, changeUserPassword);
+router.patch("/people/users/:id/status", requireAccess("managePeople"), updateUserStatus);
 
-router.get("/people/members", listMembers);
-router.post("/people/members", createMember);
-router.put("/people/members/:id", updateMember);
-router.patch("/people/members/:id/status", updateMemberStatus);
+router.get("/people/members", requireAccess("viewPeople"), listMembers);
+router.post("/people/members", requireAccess("managePeople"), createMember);
+router.put("/people/members/:id", requireAccess("managePeople"), updateMember);
+router.patch("/people/members/:id/status", requireAccess("managePeople"), updateMemberStatus);
 
-router.get("/people/staffs", listStaffs);
-router.post("/people/staffs", createStaff);
-router.put("/people/staffs/:id", updateStaff);
-router.patch("/people/staffs/:id/status", updateStaffStatus);
+router.get("/people/staffs", requireAccess("backOffice"), listStaffs);
+router.post("/people/staffs", requireAccess("managePeople"), createStaff);
+router.put("/people/staffs/:id", requireAccess("managePeople"), updateStaff);
+router.patch("/people/staffs/:id/status", requireAccess("managePeople"), updateStaffStatus);
 
 module.exports = router;

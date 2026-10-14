@@ -4,9 +4,11 @@ const {
   listActivityLogs,
 } = require("../modules/activityLogs/activityLogController");
 
+const { requireAccess } = require("../utils/accessPolicy");
+
 const router = express.Router();
 
-router.get("/activity-logs", listActivityLogs);
-router.post("/activity-logs/client", createClientActivityLog);
+router.get("/activity-logs", requireAccess("viewLogs"), listActivityLogs);
+router.post("/activity-logs/client", requireAccess("authenticated"), createClientActivityLog);
 
 module.exports = router;

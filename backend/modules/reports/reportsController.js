@@ -1,6 +1,17 @@
 const pool = require("../../config/db");
+const { policies } = require("../../utils/accessPolicy");
 
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+// Sources not listed here only need back-office access (checked on the route).
+const SOURCE_POLICIES = {
+  users: policies.viewPeople,
+  members: policies.viewPeople,
+  staffs: policies.viewPeople,
+  external_financial: policies.viewExternalFinancial,
+};
+
+const canReadSource = (user, key) => (SOURCE_POLICIES[key] ? SOURCE_POLICIES[key](user) : true);
 
 const dataSources = {
   users: {
@@ -281,13 +292,15 @@ const dataSources = {
   },
 };
 
-const listReportDataSources = (_req, res) => {
+const listReportDataSources = (req, res) => {
   res.json({
-    data: Object.entries(dataSources).map(([key, source]) => ({
-      key,
-      label: source.label,
-      columns: source.columns,
-    })),
+    data: Object.entries(dataSources)
+      .filter(([key]) => canReadSource(req.user, key))
+      .map(([key, source]) => ({
+        key,
+        label: source.label,
+        columns: source.columns,
+      })),
   });
 };
 
@@ -304,6 +317,10 @@ const runReport = async (req, res) => {
 
   if (!source) {
     return res.status(400).json({ message: "Invalid report data source." });
+  }
+
+  if (!canReadSource(req.user, sourceKey)) {
+    return res.status(403).json({ message: "Access denied. Insufficient permissions." });
   }
 
   const startDate = parseReportDate(req.query.start_date || req.body?.start_date);

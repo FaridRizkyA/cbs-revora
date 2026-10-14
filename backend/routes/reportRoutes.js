@@ -6,14 +6,16 @@ const {
 const { sendEmailReport, exportExcelReport, exportPdfReport } = require("../modules/email/emailController");
 const { authenticateToken } = require("../middleware/authMiddleware");
 
+const { requireAccess } = require("../utils/accessPolicy");
+
 const router = express.Router();
 
 router.use(authenticateToken);
 
-router.get("/reports/sources", listReportDataSources);
-router.get("/reports/run", runReport);
-router.post("/reports/send-email", sendEmailReport);
-router.post("/reports/export-excel", exportExcelReport);
-router.post("/reports/export-pdf", exportPdfReport);
+router.get("/reports/sources", requireAccess("backOffice"), listReportDataSources);
+router.get("/reports/run", requireAccess("backOffice"), runReport);
+router.post("/reports/send-email", requireAccess("backOffice"), sendEmailReport);
+router.post("/reports/export-excel", requireAccess("authenticated"), exportExcelReport);
+router.post("/reports/export-pdf", requireAccess("authenticated"), exportPdfReport);
 
 module.exports = router;

@@ -182,8 +182,8 @@ const getStockAdjustments = async (req, res) => {
 };
 
 const createStockAdjustment = async (req, res) => {
+  const id_user = req.user.id_user;
   const {
-    id_user,
     id_product,
     id_product_batch,
     adjustment_type,
@@ -982,7 +982,8 @@ const getStockOutManualDocumentById = async (req, res) => {
 };
 
 const createStockOutManual = async (req, res) => {
-  const { id_user, reason, notes, items, return_refund } = req.body || {};
+  const id_user = req.user.id_user;
+  const { reason, notes, items, return_refund } = req.body || {};
   const normalizedReason = String(reason || "").trim().toUpperCase();
   const normalizedNotes = String(notes || "").trim();
   const allowedManualReasons = new Set(["DAMAGED", "EXPIRED", "RETURN_TO_SUPPLIER", "LOST", "DONATION", "OTHER"]);
@@ -1274,7 +1275,8 @@ const createBatchCode = async (client, { idProduct, productCode, productName, no
 };
 
 const createStockIn = async (req, res) => {
-  const { id_user, id_supplier, notes, items } = req.body;
+  const id_user = req.user.id_user;
+  const { id_supplier, notes, items } = req.body;
 
   if (!id_user) {
     return res.status(400).json({ message: "id_user is required." });

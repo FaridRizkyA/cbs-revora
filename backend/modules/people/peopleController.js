@@ -522,7 +522,7 @@ const getUserProfile = async (req, res) => {
 const updateUserProfile = async (req, res) => {
   const client = await pool.connect();
   try {
-    const actorId = req.body.actor_id || req.body.id_user || null;
+    const actorId = req.user.id_user;
     const idUser = req.params.id;
 
     await client.query("BEGIN");
@@ -548,7 +548,7 @@ const updateUserProfile = async (req, res) => {
 
 const changeUserPassword = async (req, res) => {
   const idUser = req.params.id;
-  const actorId = req.body.actor_id || req.body.id_user || null;
+  const actorId = req.user.id_user;
   const currentPassword = String(req.body.current_password || "");
   const newPassword = String(req.body.new_password || "");
   const confirmPassword = String(req.body.confirm_password || "");
@@ -643,7 +643,7 @@ const createStaffGrade = async (req, res) => {
   const gradeName = normalizeText(req.body.grade_name);
   const gradeOrder = Number(req.body.grade_order || 0);
   const description = normalizeText(req.body.description);
-  const actorId = req.body.actor_id || req.body.id_user || null;
+  const actorId = req.user.id_user;
 
   if (!gradeName) return res.status(400).json({ message: "grade_name is required." });
     if (!Number.isInteger(gradeOrder) || gradeOrder < 0) {
@@ -685,7 +685,7 @@ const updateStaffGrade = async (req, res) => {
   const gradeName = normalizeText(req.body.grade_name);
   const gradeOrder = Number(req.body.grade_order || 0);
   const description = normalizeText(req.body.description);
-  const actorId = req.body.id_user || req.body.actor_id || req.body.last_modify_by || null;
+  const actorId = req.user.id_user;
 
   if (!gradeName) return res.status(400).json({ message: "grade_name is required." });
   if (!Number.isInteger(gradeOrder) || gradeOrder < 0) {
@@ -763,7 +763,7 @@ const createUser = async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
     const password = String(req.body.password || "");
-    const actorId = req.body.actor_id || req.body.id_user || null;
+    const actorId = req.user.id_user;
 
     if (!email) throw new Error("email is required.");
     validatePasswordPolicy(password);
@@ -803,7 +803,7 @@ const updateUser = async (req, res) => {
     const idUser = req.params.id;
     const email = normalizeEmail(req.body.email);
     const password = String(req.body.password || "");
-    const actorId = req.body.actor_id || req.body.id_user || null;
+    const actorId = req.user.id_user;
 
     if (!email) throw new Error("email is required.");
     if (password) validatePasswordPolicy(password);
@@ -868,11 +868,11 @@ const updateUserStatus = async (req, res) => {
       WHERE id_user = $1
       RETURNING id_user, email, is_active;
       `,
-      [req.params.id, next, req.body.id_user || null]
+      [req.params.id, next, req.user.id_user]
     );
     if (result.rowCount === 0) return res.status(404).json({ message: "User not found." });
     await logActivitySafe(pool, req, {
-      idUser: req.body.id_user || null,
+      idUser: req.user.id_user,
       activityType: next === "Y" ? "ACTIVATE_USER" : "DEACTIVATE_USER",
       tableName: "tbl_users",
       recordId: result.rows[0].id_user,
@@ -922,7 +922,7 @@ const createMember = async (req, res) => {
   const client = await pool.connect();
   try {
     const idUser = req.body.id_user;
-    const actorId = req.body.actor_id || req.body.id_user || null;
+    const actorId = req.user.id_user;
     const joinDate = toDateOrNull(req.body.join_date) || new Date().toISOString().slice(0, 10);
     if (!idUser) throw new Error("id_user is required.");
 
@@ -962,7 +962,7 @@ const createMember = async (req, res) => {
 const updateMember = async (req, res) => {
   const client = await pool.connect();
   try {
-    const actorId = req.body.actor_id || req.body.id_user || null;
+    const actorId = req.user.id_user;
     const joinDate = toDateOrNull(req.body.join_date);
     if (!joinDate) throw new Error("join_date must use YYYY-MM-DD format.");
 
@@ -1027,15 +1027,15 @@ const updateMemberStatus = async (req, res) => {
           last_modify_by = $3
       WHERE id_member = $1;
       `,
-      [req.params.id, next, req.body.id_user || req.body.actor_id || null]
+      [req.params.id, next, req.user.id_user]
     );
     if (next === "Y") {
-      await assignRoleByName(client, current.rows[0].id_user, "MEMBER", req.body.id_user || req.body.actor_id || null);
+      await assignRoleByName(client, current.rows[0].id_user, "MEMBER", req.user.id_user);
     } else {
-      await deactivateRoleByNames(client, current.rows[0].id_user, ["MEMBER"], req.body.id_user || req.body.actor_id || null);
+      await deactivateRoleByNames(client, current.rows[0].id_user, ["MEMBER"], req.user.id_user);
     }
     await logActivity(client, req, {
-      idUser: req.body.id_user || req.body.actor_id || null,
+      idUser: req.user.id_user,
       activityType: next === "Y" ? "ACTIVATE_MEMBER" : "DEACTIVATE_MEMBER",
       tableName: "tbl_members",
       recordId: req.params.id,
@@ -1110,7 +1110,7 @@ const createStaff = async (req, res) => {
   const client = await pool.connect();
   try {
     const idUser = req.body.id_user;
-    const actorId = req.body.actor_id || req.body.id_user || null;
+    const actorId = req.user.id_user;
     const accessRole = String(req.body.access_role || "").trim().toUpperCase();
     const joinDate = toDateOrNull(req.body.join_date) || new Date().toISOString().slice(0, 10);
     if (!idUser) throw new Error("id_user is required.");
@@ -1159,7 +1159,7 @@ const createStaff = async (req, res) => {
 const updateStaff = async (req, res) => {
   const client = await pool.connect();
   try {
-    const actorId = req.body.actor_id || req.body.id_user || null;
+    const actorId = req.user.id_user;
     const accessRole = String(req.body.access_role || "").trim().toUpperCase();
     const joinDate = toDateOrNull(req.body.join_date);
     if (!["ADMIN", "STAFF", "CASHIER"].includes(accessRole)) throw new Error("access_role must be ADMIN, STAFF, or CASHIER.");
@@ -1257,15 +1257,15 @@ const updateStaffStatus = async (req, res) => {
           last_modify_by = $3
       WHERE id_staff = $1;
       `,
-      [req.params.id, next, req.body.actor_id || req.body.id_user || null]
+      [req.params.id, next, req.user.id_user]
     );
     if (next === "Y") {
-      await assignRoleByName(client, current.rows[0].id_user, current.rows[0].access_role || "STAFF", req.body.actor_id || req.body.id_user || null);
+      await assignRoleByName(client, current.rows[0].id_user, current.rows[0].access_role || "STAFF", req.user.id_user);
     } else {
-      await deactivateRoleByNames(client, current.rows[0].id_user, ["ADMIN", "STAFF", "CASHIER"], req.body.actor_id || req.body.id_user || null);
+      await deactivateRoleByNames(client, current.rows[0].id_user, ["ADMIN", "STAFF", "CASHIER"], req.user.id_user);
     }
     await logActivity(client, req, {
-      idUser: req.body.actor_id || req.body.id_user || null,
+      idUser: req.user.id_user,
       activityType: next === "Y" ? "ACTIVATE_STAFF" : "DEACTIVATE_STAFF",
       tableName: "tbl_staff",
       recordId: req.params.id,
@@ -1297,11 +1297,11 @@ const updateEntityStatus = async (req, res, tableName, idColumn, label) => {
       WHERE ${idColumn} = $1
       RETURNING ${idColumn}, is_active;
       `,
-      [req.params.id, next, req.body.id_user || req.body.actor_id || null]
+      [req.params.id, next, req.user.id_user]
     );
     if (result.rowCount === 0) return res.status(404).json({ message: `${label} not found.` });
     await logActivitySafe(pool, req, {
-      idUser: req.body.id_user || req.body.actor_id || null,
+      idUser: req.user.id_user,
       activityType: next === "Y" ? `ACTIVATE_${label.toUpperCase().replace(/\s+/g, "_")}` : `DEACTIVATE_${label.toUpperCase().replace(/\s+/g, "_")}`,
       tableName,
       recordId: result.rows[0][idColumn],
