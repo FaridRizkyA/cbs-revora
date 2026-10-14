@@ -54,7 +54,13 @@ Open the **pgAdmin** application, then follow these steps:
 ```bash
 npm run db:setup
 ```
-*(This command will automatically create the entire table structure and insert dummy data along with a list of ready-to-use users).*
+*(This command will automatically create the entire table structure and insert only the admin, cooperative officer, cashier, and staff accounts, together with their roles, profiles, and staff data. Use this for a real cooperative setup and input the rest from the app).*
+
+To explore the application with sample data instead, run:
+```bash
+npm run db:setup:demo
+```
+*(This recreates the database and loads every seeder, including members, suppliers, products, stock movements, sales, external financial entries, and SHU periods).*
 
 ### 4. Adjusting Local Network IP
 For the Mobile version (Phone/Tablet) to connect with the Backend server on your laptop/computer:
@@ -62,8 +68,8 @@ For the Mobile version (Phone/Tablet) to connect with the Backend server on your
    - Opening **Command Prompt (CMD)** in Windows.
    - Typing the command `ipconfig` and pressing Enter.
    - Finding the **IPv4 Address** line and copying the numbers (example: `192.168.1.10`).
-2. Open the **`utils/api.ts`** file in your *code editor*.
-3. Change the *base IP URL* address inside the file with the newly copied IPv4.
+2. Copy **`utils/api.example.ts`** to **`utils/api.ts`** (this file is ignored by Git, so each device keeps its own address).
+3. Open **`utils/api.ts`** and change the *base IP URL* address inside the file with the newly copied IPv4.
 *(Make sure the Phone and Computer are connected to the exact same WiFi/Hotspot network).*
 
 ### 5. Running the Application (Terminal)

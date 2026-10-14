@@ -4,6 +4,9 @@ node_modules
 .env
 **/.env
 
+# Local API address (copy utils/api.example.ts)
+utils/api.ts
+
 .expo
 dist
 build
