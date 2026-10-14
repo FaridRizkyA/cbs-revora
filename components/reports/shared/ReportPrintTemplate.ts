@@ -27,6 +27,9 @@ export type ReportDetailSection = {
   fields: ReportDetailField[];
 };
 
+// Optional key on a nested table row; "danger" renders the row with a red background.
+export const REPORT_ROW_HIGHLIGHT_KEY = "_highlight";
+
 export type ReportNestedTable = {
   title?: string;
   repeatReportHeader?: boolean;
@@ -291,6 +294,11 @@ const buildDocumentHead = (title: string) => `<!doctype html>
         background: #f8fafc;
       }
 
+      tbody tr.row-danger td {
+        background: #fca5a5;
+        color: #7f1d1d;
+      }
+
       .table-total-cell {
         background: #e2e8f0;
         font-weight: 800;
@@ -443,7 +451,7 @@ const renderNestedTables = (data: ReportDocumentInfo, tables: ReportNestedTable[
       const bodyRows = table.rows
         .map(
           (row) => `
-            <tr>
+            <tr${row[REPORT_ROW_HIGHLIGHT_KEY] === "danger" ? ' class="row-danger"' : ""}>
               ${table.columns
                 .map((column) => `<td class="text-${column.align || "left"}">${escapeHtml(formatReportValue(row[column.key]))}</td>`)
                 .join("")}

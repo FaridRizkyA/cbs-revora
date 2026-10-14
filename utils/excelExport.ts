@@ -34,6 +34,9 @@ export type ExcelTableOptions<Row> = {
   };
 };
 
+// Optional key on a section row; "danger" fills the row red (e.g. inactive members).
+export const EXCEL_ROW_HIGHLIGHT_KEY = "_highlight";
+
 export type ExcelSection = {
   title: string;
   columns: {
@@ -637,6 +640,7 @@ export const flattenExcelSections = (sections: ExcelSection[]) => {
         flattenedRows.push({
           ...Object.fromEntries(section.columns.map((column, index) => [`col_${index + 1}`, row[column.key]])),
           _type: "data",
+          ...(row[EXCEL_ROW_HIGHLIGHT_KEY] ? { [EXCEL_ROW_HIGHLIGHT_KEY]: row[EXCEL_ROW_HIGHLIGHT_KEY] } : {}),
         });
       });
     }
@@ -718,6 +722,9 @@ export const downloadExcelSectionWorkbook = async (options: ExcelSectionWorkbook
         cell.value = toExcelCellValue(rawValue);
         cell.alignment = { horizontal: column.align || "left", vertical: "top", wrapText: true };
         if (typeof rawValue === "number") cell.numFmt = "#,##0";
+        if (row[EXCEL_ROW_HIGHLIGHT_KEY] === "danger") {
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFF0000" } };
+        }
         cell.border = {
           top: { style: "thin", color: { argb: "FFB7C4D4" } },
           left: { style: "thin", color: { argb: "FFB7C4D4" } },

@@ -10,11 +10,9 @@ type Props = {
 };
 
 export function ShuMemberCard({ rows }: Props) {
-  const activeRows = useMemo(() => rows.filter((row) => row.is_active !== "N"), [rows]);
-
   const totals = useMemo(
     () =>
-      activeRows.reduce(
+      rows.reduce(
         (acc, row) => {
           acc.memberCount += 1;
           acc.totalSpending += row.member_total_spending || 0;
@@ -23,7 +21,7 @@ export function ShuMemberCard({ rows }: Props) {
         },
         { memberCount: 0, totalSpending: 0, totalShu: 0 }
       ),
-    [activeRows]
+    [rows]
   );
 
   const columns = useMemo<InventoryDataTableColumn<MemberDistribution>[]>(
@@ -34,7 +32,14 @@ export function ShuMemberCard({ rows }: Props) {
         weight: 24,
         sortable: true,
         sortValue: (row) => row.full_name || row.member_code || row.id_member,
-        render: (row) => <Text style={styles.rowCell}>{row.full_name || row.member_code || row.id_member}</Text>,
+        render: (row) =>
+          row.is_active === "N" ? (
+            <Text style={[styles.rowCell, { color: "#dc2626", fontWeight: "700" }]}>
+              {row.full_name || row.member_code || row.id_member} (Inactive)
+            </Text>
+          ) : (
+            <Text style={styles.rowCell}>{row.full_name || row.member_code || row.id_member}</Text>
+          ),
       },
       {
         key: "spending",
@@ -88,7 +93,7 @@ export function ShuMemberCard({ rows }: Props) {
   return (
     <View style={styles.card}>
       <Text style={styles.cardTitle}>Member Distribution</Text>
-      {activeRows.length === 0 ? (
+      {rows.length === 0 ? (
         <Text style={styles.metaText}>No member distribution available yet.</Text>
       ) : (
         <>
@@ -106,7 +111,7 @@ export function ShuMemberCard({ rows }: Props) {
           </View>
           <InventoryDataTable
             columns={columns}
-            rows={activeRows}
+            rows={rows}
             rowKey={(row) => row.id_member}
             emptyText="No member distribution available yet."
             initialPageSize={10}
@@ -114,9 +119,9 @@ export function ShuMemberCard({ rows }: Props) {
             footerValues={[
               <Text style={[styles.rowCell, { fontWeight: "700" }]}>Total</Text>,
               <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(totals.totalSpending)}</Text>,
-              <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(activeRows.reduce((s, r) => s + (r.sales_shu_amount || 0), 0))}</Text>,
+              <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(rows.reduce((s, r) => s + (r.sales_shu_amount || 0), 0))}</Text>,
               <Text style={[styles.rowCell, { fontWeight: "700", textAlign: "center" }]}>100%</Text>,
-              <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(activeRows.reduce((s, r) => s + (r.business_shu_amount || 0), 0))}</Text>,
+              <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(rows.reduce((s, r) => s + (r.business_shu_amount || 0), 0))}</Text>,
               <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(totals.totalShu)}</Text>,
             ]}
           />

@@ -547,7 +547,7 @@ const getCurrentShuSimulation = async (req, res) => {
 
 const calculateCurrentShu = async (req, res) => {
   const period = getShuPeriodBounds(req.body?.date || req.query?.date);
-  const idUser = req.body?.id_user || null;
+  const idUser = req.user.id_user;
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -587,7 +587,7 @@ const calculateCurrentShu = async (req, res) => {
 
 const finalizeCurrentShu = async (req, res) => {
   const period = getShuPeriodBounds(req.body?.date || req.query?.date);
-  const idUser = req.body?.id_user || null;
+  const idUser = req.user.id_user;
   const client = await pool.connect();
   try {
     if (!isFinalizeAllowed(period.end_date, req.body?.now || req.query?.now)) {
@@ -717,7 +717,6 @@ const getCurrentShuResult = async (req, res) => {
           ON p.id_user = m.id_user
         WHERE d.id_shu_period = $1
           AND d.is_active = 'Y'
-          AND m.is_active = 'Y'
         ORDER BY TRIM(CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, ''))) ASC;
         `,
         [periodRow.id_shu_period]
@@ -876,7 +875,6 @@ const getCurrentShuDetail = async (req, res) => {
           ON p.id_user = m.id_user
         WHERE d.id_shu_period = $1
           AND d.is_active = 'Y'
-          AND m.is_active = 'Y'
         ORDER BY TRIM(CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, ''))) ASC;
         `,
         [periodRow.id_shu_period]

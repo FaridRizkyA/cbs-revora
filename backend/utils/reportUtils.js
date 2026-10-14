@@ -377,6 +377,9 @@ const buildExcelBuffer = async (title, subtitle, columns, rows, meta) => {
           cell.value = val !== null && val !== undefined && val !== "" ? val : "-";
           cell.alignment = { horizontal: c.align || "left", vertical: "top", wrapText: true };
           if (typeof val === "number") cell.numFmt = "#,##0";
+          if (row._highlight === "danger") {
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFF0000" } };
+          }
           cell.border = {
             top: { style: "thin", color: { argb: "FFB7C4D4" } },
             left: { style: "thin", color: { argb: "FFB7C4D4" } },

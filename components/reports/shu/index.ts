@@ -6,6 +6,7 @@ import {
   ReportMetaItem,
   ReportNestedTable,
   ReportTableColumn,
+  REPORT_ROW_HIGHLIGHT_KEY,
 } from "../shared/ReportPrintTemplate";
 import { downloadExcelSectionWorkbook, flattenExcelSections, ExcelSection, ExcelValue } from "../../../utils/excelExport";
 
@@ -318,16 +319,16 @@ const signatureValue = (signature: ShuSignatureSlot) =>
   `\n\n\n\n${signature.name || "[name]"}\n${signature.position}`;
 
 const buildDetailTables = (detail: ShuDetailReportData, signatures: ShuSignatureSlot[] = defaultSignatures): ReportNestedTable[] => {
-  const activeMemberDistributions = detail.member_distributions.filter((row) => row.is_active !== "N");
+  const memberDistributions = detail.member_distributions;
   const totalSalesTurnover = sumBy(detail.monthly_income, (row) => row.sales_turnover_amount);
   const totalExternalIncome = sumBy(detail.monthly_income, (row) => row.external_income_amount);
   const totalIncome = sumBy(detail.monthly_income, (row) => row.total_income_amount);
   const totalExpenses = sumBy(detail.yearly_expenses, (row) => row.amount);
-  const totalMemberSpending = sumBy(activeMemberDistributions, (row) => row.member_total_spending);
-  const totalSalesShu = sumBy(activeMemberDistributions, (row) => row.sales_shu_amount);
-  const totalSpendingPercentage = sumBy(activeMemberDistributions, (row) => row.spending_percentage);
-  const totalBusinessShu = sumBy(activeMemberDistributions, (row) => row.business_shu_amount);
-  const totalMemberShu = sumBy(activeMemberDistributions, (row) => row.shu_amount);
+  const totalMemberSpending = sumBy(memberDistributions, (row) => row.member_total_spending);
+  const totalSalesShu = sumBy(memberDistributions, (row) => row.sales_shu_amount);
+  const totalSpendingPercentage = sumBy(memberDistributions, (row) => row.spending_percentage);
+  const totalBusinessShu = sumBy(memberDistributions, (row) => row.business_shu_amount);
+  const totalMemberShu = sumBy(memberDistributions, (row) => row.shu_amount);
   const totalOfficerShu = sumBy(detail.officer_distributions, (row) => row.shu_amount);
 
   return [
@@ -399,9 +400,10 @@ const buildDetailTables = (detail: ShuDetailReportData, signatures: ShuSignature
         { key: "business_shu_amount", title: "Business SHU", align: "right", width: "15%" },
         { key: "shu_amount", title: "Total SHU", align: "right", width: "15%" },
       ],
-      rows: activeMemberDistributions.map((row, index) => ({
+      rows: memberDistributions.map((row, index) => ({
         row_number: index + 1,
-        full_name: row.full_name,
+        full_name: row.is_active === "N" ? `${row.full_name} (Inactive)` : row.full_name,
+        ...(row.is_active === "N" ? { [REPORT_ROW_HIGHLIGHT_KEY]: "danger" } : {}),
         member_total_spending: formatRupiah(row.member_total_spending),
         sales_shu_amount: formatRupiah(row.sales_shu_amount),
         spending_percentage: percentText(row.spending_percentage),
