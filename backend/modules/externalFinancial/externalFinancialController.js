@@ -1,6 +1,39 @@
 const pool = require("../../config/db");
 const { logActivitySafe } = require("../../utils/activityLogger");
 
+// Entries dated inside a finalized SHU period are locked, otherwise the stored
+// SHU result would no longer match the data it was calculated from.
+const findFinalizedPeriod = async (dates) => {
+  const result = await pool.query(
+    `
+    SELECT period_name
+    FROM tbl_shu_periods
+    WHERE is_active = 'Y'
+      AND calculation_status = 'FINALIZED'
+      AND EXISTS (
+        SELECT 1 FROM UNNEST($1::date[]) AS d(entry_date)
+        WHERE d.entry_date BETWEEN start_date AND end_date
+      )
+    LIMIT 1;
+    `,
+    [dates.filter(Boolean)]
+  );
+  return result.rows[0]?.period_name || null;
+};
+
+const finalizedPeriodResponse = (res, periodName) =>
+  res.status(409).json({
+    message: `${periodName} is already finalized. Entries in this period can no longer be changed.`,
+  });
+
+const getEntryDate = async (id) => {
+  const result = await pool.query(
+    `SELECT entry_date FROM tbl_external_financial_entries WHERE id_external_entry = $1;`,
+    [id]
+  );
+  return result.rows[0]?.entry_date || null;
+};
+
 const listExternalFinancialEntries = async (_req, res) => {
   try {
     const result = await pool.query(
@@ -26,7 +59,7 @@ const listExternalFinancialEntries = async (_req, res) => {
 };
 
 const createExternalFinancialEntry = async (req, res) => {
-  const { entry_type, entry_date, entry_source, amount, notes} = req.body || {};
+  const { entry_type, entry_date, entry_source, amount, notes } = req.body || {};
   const id_user = req.user.id_user;
   const normalizedType = String(entry_type || "").toUpperCase();
   const normalizedAmount = Number(amount || 0);
@@ -45,6 +78,9 @@ const createExternalFinancialEntry = async (req, res) => {
   }
 
   try {
+    const finalizedPeriod = await findFinalizedPeriod([entry_date]);
+    if (finalizedPeriod) return finalizedPeriodResponse(res, finalizedPeriod);
+
     const result = await pool.query(
       `
       INSERT INTO tbl_external_financial_entries (
@@ -69,7 +105,7 @@ const createExternalFinancialEntry = async (req, res) => {
 
 const updateExternalFinancialEntry = async (req, res) => {
   const { id } = req.params;
-  const { entry_type, entry_date, entry_source, amount, notes, is_active} = req.body || {};
+  const { entry_type, entry_date, entry_source, amount, notes, is_active } = req.body || {};
   const id_user = req.user.id_user;
   const normalizedType = String(entry_type || "").toUpperCase();
   const normalizedAmount = Number(amount || 0);
@@ -92,6 +128,11 @@ const updateExternalFinancialEntry = async (req, res) => {
   }
 
   try {
+    const currentDate = await getEntryDate(id);
+    if (!currentDate) return res.status(404).json({ message: "External financial entry not found." });
+    const finalizedPeriod = await findFinalizedPeriod([currentDate, entry_date]);
+    if (finalizedPeriod) return finalizedPeriodResponse(res, finalizedPeriod);
+
     const result = await pool.query(
       `
       UPDATE tbl_external_financial_entries
@@ -124,7 +165,7 @@ const updateExternalFinancialEntry = async (req, res) => {
 
 const updateExternalFinancialEntryStatus = async (req, res) => {
   const { id } = req.params;
-  const { is_active} = req.body || {};
+  const { is_active } = req.body || {};
   const id_user = req.user.id_user;
   const normalizedActive = String(is_active || "").toUpperCase();
   if (!["Y", "N"].includes(normalizedActive)) {
@@ -132,6 +173,11 @@ const updateExternalFinancialEntryStatus = async (req, res) => {
   }
 
   try {
+    const currentDate = await getEntryDate(id);
+    if (!currentDate) return res.status(404).json({ message: "External financial entry not found." });
+    const finalizedPeriod = await findFinalizedPeriod([currentDate]);
+    if (finalizedPeriod) return finalizedPeriodResponse(res, finalizedPeriod);
+
     const result = await pool.query(
       `
       UPDATE tbl_external_financial_entries

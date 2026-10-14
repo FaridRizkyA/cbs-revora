@@ -107,23 +107,29 @@ const ensurePeriod = async (client, period) => {
 const calculateShuData = async (client, period) => {
   const { start_date, end_date } = period;
 
+  // Gross margin of sold items minus discounts given on the sale header.
   const salesProfitResult = await client.query(
     `
     SELECT
-      COALESCE(
-        SUM(
-          (COALESCE(si.unit_price, 0) - COALESCE(pb.purchase_price, 0)) * si.quantity
-        ),
-        0
-      )::float AS amount
-    FROM tbl_sale_items si
-    JOIN tbl_sales s
-      ON s.id_sale = si.id_sale
-     AND s.is_active = 'Y'
-    LEFT JOIN tbl_product_batches pb
-      ON pb.id_product_batch = si.id_product_batch
-    WHERE si.is_active = 'Y'
-      AND s.sale_date::date BETWEEN $1::date AND $2::date;
+      (
+        COALESCE((
+          SELECT SUM((COALESCE(si.unit_price, 0) - COALESCE(pb.purchase_price, 0)) * si.quantity)
+          FROM tbl_sale_items si
+          JOIN tbl_sales s
+            ON s.id_sale = si.id_sale
+           AND s.is_active = 'Y'
+          LEFT JOIN tbl_product_batches pb
+            ON pb.id_product_batch = si.id_product_batch
+          WHERE si.is_active = 'Y'
+            AND s.sale_date::date BETWEEN $1::date AND $2::date
+        ), 0)
+        - COALESCE((
+          SELECT SUM(s.discount_amount)
+          FROM tbl_sales s
+          WHERE s.is_active = 'Y'
+            AND s.sale_date::date BETWEEN $1::date AND $2::date
+        ), 0)
+      )::float AS amount;
     `,
     [start_date, end_date]
   );
