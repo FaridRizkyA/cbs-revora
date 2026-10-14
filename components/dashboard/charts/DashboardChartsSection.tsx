@@ -8,6 +8,8 @@ let WebLineChart: any = null;
 let WebBarChart: any = null;
 let WebDoughnutChart: any = null;
 let webChartOptions: any = null;
+let webCountChartOptions: any = null;
+let webMoneyChartOptions: any = null;
 
 if (isWeb) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -26,6 +28,29 @@ if (isWeb) {
       legend: { display: false },
     },
   };
+  // Counts start at zero and only show whole numbers.
+  webCountChartOptions = {
+    ...webChartOptions,
+    scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+  };
+  webMoneyChartOptions = {
+    ...webChartOptions,
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: { callback: (value: number) => `Rp ${Number(value).toLocaleString("id-ID")}` },
+      },
+    },
+  };
+}
+
+// Shown in place of a chart when there is nothing to plot, at the same height so the layout stays put.
+function EmptyChart({ message }: { message: string }) {
+  return (
+    <View style={styles.emptyChart}>
+      <Text style={styles.emptyChartText}>{message}</Text>
+    </View>
+  );
 }
 
 type Props = {
@@ -56,16 +81,22 @@ export default function DashboardChartsSection({ graphs, width }: Props) {
   const stackedCharts = effectiveWidth < 860;
   const chartCardWidth = stackedCharts ? effectiveWidth - 32 : (effectiveWidth - 12) / 2 - 32;
   const chartWidth = Math.max(220, Math.floor(chartCardWidth));
+  const hasProfitData = lineRows.some((row) => Number(row.total_profit || 0) !== 0);
+  const hasTransactionData = lineRows.some((row) => Number(row.total_transactions || 0) > 0);
+  const hasStockData = topStockProducts.some((item) => Number(item.percentage || 0) > 0);
+  const hasTopProductData = topTransactions.some((item) => Number(item.transaction_count || 0) > 0);
 
   return (
     <>
       <View style={[styles.chartRow, stackedCharts && styles.chartRowStack]}>
         <View style={styles.chartCard}>
           <Text style={styles.cardTitle}>Profit (Last 6 Months)</Text>
-          {isWeb ? (
+          {!hasProfitData ? (
+            <EmptyChart message="No sales profit in the last 6 months yet." />
+          ) : isWeb ? (
             <View style={styles.webChartWrap}>
               <WebLineChart
-                options={webChartOptions}
+                options={webMoneyChartOptions}
                 data={{
                   labels: lineRows.map((row) => row.month_label),
                   datasets: [
@@ -90,6 +121,7 @@ export default function DashboardChartsSection({ graphs, width }: Props) {
               height={230}
               chartConfig={chartConfig}
               bezier
+              fromZero
               style={styles.chartKit}
               withInnerLines
               withOuterLines={false}
@@ -100,10 +132,12 @@ export default function DashboardChartsSection({ graphs, width }: Props) {
 
         <View style={styles.chartCard}>
           <Text style={styles.cardTitle}>Transactions (Last 6 Months)</Text>
-          {isWeb ? (
+          {!hasTransactionData ? (
+            <EmptyChart message="No transactions in the last 6 months yet." />
+          ) : isWeb ? (
             <View style={styles.webChartWrap}>
               <WebLineChart
-                options={webChartOptions}
+                options={webCountChartOptions}
                 data={{
                   labels: lineRows.map((row) => row.month_label),
                   datasets: [
@@ -131,6 +165,7 @@ export default function DashboardChartsSection({ graphs, width }: Props) {
                 color: (opacity = 1) => `rgba(22, 163, 74, ${opacity})`,
               }}
               bezier
+              fromZero
               style={styles.chartKit}
               withInnerLines
               withOuterLines={false}
@@ -142,7 +177,9 @@ export default function DashboardChartsSection({ graphs, width }: Props) {
       <View style={[styles.chartRow, stackedCharts && styles.chartRowStack]}>
         <View style={styles.chartCard}>
           <Text style={styles.cardTitle}>Stock Distribution by Product</Text>
-          {isWeb ? (
+          {!hasStockData ? (
+            <EmptyChart message="No products in stock yet." />
+          ) : isWeb ? (
             <View style={styles.webChartWrap}>
               <WebDoughnutChart
                 options={webChartOptions}
@@ -179,10 +216,12 @@ export default function DashboardChartsSection({ graphs, width }: Props) {
 
         <View style={styles.chartCard}>
           <Text style={styles.cardTitle}>Top 3 Most Transacted Products</Text>
-          {isWeb ? (
+          {!hasTopProductData ? (
+            <EmptyChart message="No product transactions yet." />
+          ) : isWeb ? (
             <View style={styles.webChartWrap}>
               <WebBarChart
-                options={webChartOptions}
+                options={webCountChartOptions}
                 data={{
                   labels: topTransactions.map((item) => item.product_name.slice(0, 8)),
                   datasets: [{ data: topTransactions.map((item) => item.transaction_count || 0), backgroundColor: "#2563eb" }],
@@ -219,4 +258,6 @@ const styles = StyleSheet.create({
   cardTitle: { color: "#0f2852", fontSize: 17, fontWeight: "700" },
   chartKit: { borderRadius: 10 },
   webChartWrap: { height: 230 },
+  emptyChart: { height: 230, alignItems: "center", justifyContent: "center", borderRadius: 10, backgroundColor: "#f8fafc" },
+  emptyChartText: { color: "#64748b", fontSize: 13, fontWeight: "600" },
 });
