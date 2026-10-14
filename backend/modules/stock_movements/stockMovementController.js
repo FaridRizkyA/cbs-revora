@@ -233,7 +233,8 @@ const createStockAdjustment = async (req, res) => {
       FROM tbl_products p
       WHERE p.id_product = $1
         AND p.is_active = 'Y'
-      LIMIT 1;
+      LIMIT 1
+      FOR UPDATE;
       `,
       [id_product]
     );
@@ -1035,6 +1036,9 @@ const createStockOutManual = async (req, res) => {
       const idProduct = String(item.id_product);
       const requestedQuantity = Number(item.quantity);
       const selectedBatchId = String(item.id_product_batch || "").trim();
+
+      // Lock the product row like checkout does, so concurrent stock reductions run one at a time.
+      await client.query(`SELECT 1 FROM tbl_products WHERE id_product = $1 FOR UPDATE;`, [idProduct]);
 
       const productResult = await client.query(
         `

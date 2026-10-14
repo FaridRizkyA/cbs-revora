@@ -1,4 +1,10 @@
+// Advisory locks serialize number generation until the surrounding transaction ends,
+// so two checkouts on the same day cannot read the same COUNT and collide on UNIQUE.
+const SALE_NUMBER_LOCK_KEY = 830101;
+const STOCK_IN_CODE_LOCK_KEY = 830102;
+
 const createSaleNumber = async (client) => {
+  await client.query(`SELECT pg_advisory_xact_lock($1);`, [SALE_NUMBER_LOCK_KEY]);
   const seqResult = await client.query(
     `
     SELECT
@@ -13,6 +19,7 @@ const createSaleNumber = async (client) => {
 };
 
 const createStockInCode = async (client) => {
+  await client.query(`SELECT pg_advisory_xact_lock($1);`, [STOCK_IN_CODE_LOCK_KEY]);
   const seqResult = await client.query(
     `
     SELECT
