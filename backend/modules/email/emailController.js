@@ -1,5 +1,6 @@
 const path = require("path");
-const { 
+const pool = require("../../config/db");
+const {
   buildExcelBuffer, 
   sanitizeAttachmentFileName,
   buildReportPdfFromHtml,
@@ -25,6 +26,23 @@ const sendEmailReport = async (req, res) => {
   }
 
   try {
+    // Reports may only go to active staff, the same list the send-email form offers.
+    const recipient = await pool.query(
+      `
+      SELECT 1
+      FROM tbl_users u
+      JOIN tbl_staff s ON s.id_user = u.id_user
+      WHERE LOWER(u.email) = LOWER($1)
+        AND u.is_active = 'Y'
+        AND s.is_active = 'Y'
+      LIMIT 1;
+      `,
+      [String(recipient_email).trim()]
+    );
+    if (recipient.rowCount === 0) {
+      return res.status(400).json({ message: "Reports can only be sent to active cooperative staff." });
+    }
+
     await enqueueReportEmailJob({
       idUser: req.user.id_user,
       payload: req.body

@@ -37,6 +37,25 @@ const escapeHtml = (value) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 
+// One Chromium instance is shared by all PDF exports; launching a browser per
+// report took several seconds each time. It is relaunched if it ever disconnects.
+let pdfBrowserPromise = null;
+
+const getPdfBrowser = async () => {
+  if (!pdfBrowserPromise) {
+    pdfBrowserPromise = chromium.launch({ headless: true }).then((browser) => {
+      browser.on("disconnected", () => {
+        pdfBrowserPromise = null;
+      });
+      return browser;
+    });
+    pdfBrowserPromise.catch(() => {
+      pdfBrowserPromise = null;
+    });
+  }
+  return pdfBrowserPromise;
+};
+
 const buildReportPdfFromHtml = async (html) => {
   const normalizedHtml = String(html || "")
     .replace(
@@ -48,15 +67,22 @@ const buildReportPdfFromHtml = async (html) => {
       `$1${REVORA_LOGO_URI}$2`
     );
 
-  const browser = await chromium.launch({
-    headless: true,
+  const browser = await getPdfBrowser();
+  // The HTML comes from the client, so scripts are disabled and every request except
+  // inline data: resources is blocked. Report templates never load anything else.
+  const context = await browser.newContext({
+    javaScriptEnabled: false,
+    viewport: { width: 1440, height: 2200 },
   });
 
   try {
-    const page = await browser.newPage({
-      viewport: { width: 1440, height: 2200 },
+    await context.route("**/*", (route) => {
+      const url = route.request().url();
+      if (url.startsWith("data:") || url === "about:blank") return route.continue();
+      return route.abort();
     });
-    await page.setContent(normalizedHtml, { waitUntil: "networkidle" });
+    const page = await context.newPage();
+    await page.setContent(normalizedHtml, { waitUntil: "load" });
     return await page.pdf({
       format: "A4",
       printBackground: true,
@@ -68,7 +94,7 @@ const buildReportPdfFromHtml = async (html) => {
       },
     });
   } finally {
-    await browser.close();
+    await context.close();
   }
 };
 
