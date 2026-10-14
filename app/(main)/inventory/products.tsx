@@ -27,6 +27,7 @@ import { logClientActivity } from "../../../utils/activityLog";
 import { printReportHtml } from "../../../utils/printUtils";
 import { pickSquareImageAsync } from "../../../utils/imageUpload";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
+import { formatDateOnly } from "../../../utils/dateFormat";
 
 type Product = {
   id_product: string;
@@ -776,7 +777,7 @@ export default function ProductsScreen() {
           : selectedProductBatches.map(b => ({
               batch_code: b.batch_code,
               batch_qty: b.batch_qty,
-              expired_date: b.expired_date ? new Date(b.expired_date).toISOString().slice(0, 10) : "-",
+              expired_date: formatDateOnly(b.expired_date),
             })),
       };
 
@@ -1081,7 +1082,7 @@ export default function ProductsScreen() {
         weight: 36,
         render: (row) => (
           <Text style={styles.batchCell}>
-            {row.expired_date ? new Date(row.expired_date).toISOString().slice(0, 10) : "-"}
+            {formatDateOnly(row.expired_date)}
           </Text>
         ),
       },

@@ -1,5 +1,6 @@
 const pool = require("../../config/db");
 const { getShuPeriodBounds } = require("../../utils/shuPeriodUtils");
+const { toLocalIsoDate } = require("../../utils/dateUtils");
 
 const getMemberProfileByUserId = async (client, idUser) => {
   const result = await client.query(
@@ -114,14 +115,7 @@ const parseRange = (query) => {
   }
 
   const now = new Date();
-  // Get local ISO date (YYYY-MM-DD) by adjusting for timezone offset
-  const getLocalIsoDate = (date) => {
-    const tzOffset = date.getTimezoneOffset() * 60000; // offset in milliseconds
-    const localDate = new Date(date.getTime() - tzOffset);
-    return localDate.toISOString().slice(0, 10);
-  };
-
-  const todayIso = getLocalIsoDate(now);
+  const todayIso = toLocalIsoDate(now);
 
   if (range === "DAILY") {
     return { startDate: todayIso, endDate: todayIso };
@@ -130,12 +124,12 @@ const parseRange = (query) => {
   if (range === "WEEKLY") {
     const start = new Date(now);
     start.setDate(start.getDate() - 6);
-    return { startDate: getLocalIsoDate(start), endDate: todayIso };
+    return { startDate: toLocalIsoDate(start), endDate: todayIso };
   }
 
   if (range === "MONTHLY") {
     const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    return { startDate: getLocalIsoDate(start), endDate: todayIso };
+    return { startDate: toLocalIsoDate(start), endDate: todayIso };
   }
 
   return { startDate: null, endDate: null };

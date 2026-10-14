@@ -4,6 +4,7 @@ const path = require("path");
 const multer = require("multer");
 const pool = require("../../config/db");
 const { logActivity, logActivitySafe } = require("../../utils/activityLogger");
+const { toLocalIsoDate } = require("../../utils/dateUtils");
 
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_POLICY_MESSAGE = `password must be at least ${PASSWORD_MIN_LENGTH} characters and include uppercase letters, lowercase letters, and numbers.`;
@@ -923,7 +924,7 @@ const createMember = async (req, res) => {
   try {
     const idUser = req.body.id_user;
     const actorId = req.user.id_user;
-    const joinDate = toDateOrNull(req.body.join_date) || new Date().toISOString().slice(0, 10);
+    const joinDate = toDateOrNull(req.body.join_date) || toLocalIsoDate();
     if (!idUser) throw new Error("id_user is required.");
 
     await client.query("BEGIN");
@@ -1112,7 +1113,7 @@ const createStaff = async (req, res) => {
     const idUser = req.body.id_user;
     const actorId = req.user.id_user;
     const accessRole = String(req.body.access_role || "").trim().toUpperCase();
-    const joinDate = toDateOrNull(req.body.join_date) || new Date().toISOString().slice(0, 10);
+    const joinDate = toDateOrNull(req.body.join_date) || toLocalIsoDate();
     if (!idUser) throw new Error("id_user is required.");
     if (!["ADMIN", "STAFF", "CASHIER"].includes(accessRole)) throw new Error("access_role must be ADMIN, STAFF, or CASHIER.");
 

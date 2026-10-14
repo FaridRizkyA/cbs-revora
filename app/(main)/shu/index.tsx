@@ -30,6 +30,7 @@ import { logClientActivity } from "../../../utils/activityLog";
 import { canManageShu, getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
 import { printReportHtml } from "../../../utils/printUtils";
+import { toLocalDateInput } from "../../../utils/dateFormat";
 
 type ShuYearRow = {
   id_shu_period: string;
@@ -239,7 +240,7 @@ export default function ShuScreen() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to fetch SHU detail.";
       if (message.toLowerCase().includes("not calculated yet")) {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = toLocalDateInput();
         setDetailData({
           period: {
             id_shu_period: row.id_shu_period,
@@ -326,7 +327,7 @@ export default function ShuScreen() {
           body: JSON.stringify({
             id_user: idUser,
             date: selectedRow.start_date,
-            now: new Date().toISOString().slice(0, 10),
+            now: toLocalDateInput(),
           }),
         });
         const payload = await res.json();

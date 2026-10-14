@@ -24,6 +24,7 @@ import { logClientActivity } from "../../../utils/activityLog";
 import { printReportHtml } from "../../../utils/printUtils";
 import { canManageExternalFinancial, getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
+import { toLocalDateInput } from "../../../utils/dateFormat";
 
 type ExternalFinancialEntry = {
   id_external_entry: string;
@@ -49,7 +50,7 @@ type PendingAction =
 
 const emptyForm: FormState = {
   entry_type: "INCOME",
-  entry_date: new Date().toISOString().slice(0, 10),
+  entry_date: toLocalDateInput(),
   entry_source: "",
   amount: "",
   notes: "",

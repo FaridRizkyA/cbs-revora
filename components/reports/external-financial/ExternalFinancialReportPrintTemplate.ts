@@ -6,6 +6,7 @@ import {
   ReportMetaItem,
   ReportTableColumn,
 } from "../shared/ReportPrintTemplate";
+import { formatDateOnly } from "../../../utils/dateFormat";
 
 export type ExternalFinancialReportRow = {
   id_external_entry?: string;
@@ -41,13 +42,6 @@ const formatRupiah = (value: number) =>
   })
     .format(Number(value || 0))
     .replace(/\s/g, " ");
-
-const formatDateOnly = (value?: string | Date | null) => {
-  if (!value) return "-";
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toISOString().slice(0, 10);
-};
 
 const statusText = (value?: string | null) => (value === "Y" ? "Active" : "Inactive");
 const displayText = (value?: string | null) => String(value || "-").replaceAll("_", " ");

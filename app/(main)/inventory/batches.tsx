@@ -25,6 +25,7 @@ import { logClientActivity } from "../../../utils/activityLog";
 import { printReportHtml } from "../../../utils/printUtils";
 import { getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
+import { formatDateOnly } from "../../../utils/dateFormat";
 
 type BatchRow = {
   id_product_batch: string;
@@ -336,12 +337,6 @@ export default function BatchesScreen() {
     }
   };
 
-  const formatDateOnly = (value?: string | null) => {
-    if (!value) return "-";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toISOString().slice(0, 10);
-  };
   const formatDateTime = (value?: string | null) => {
     if (!value) return "-";
     const date = new Date(value);

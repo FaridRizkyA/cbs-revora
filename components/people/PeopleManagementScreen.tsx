@@ -23,6 +23,7 @@ import { logClientActivity } from "../../utils/activityLog";
 import { canManagePeople, getAuthSession, normalizeRole } from "../../utils/authSession";
 import { pickSquareImageAsync } from "../../utils/imageUpload";
 import { isValidPasswordPolicy, PASSWORD_POLICY_MESSAGE } from "../../utils/passwordPolicy";
+import { toLocalDateInput } from "../../utils/dateFormat";
 
 type ScreenType = "users" | "members" | "staffs";
 
@@ -129,7 +130,7 @@ const emptyForm: FormState = {
   member_code: "",
   staff_code: "",
   id_staff_grade: "",
-  join_date: new Date().toISOString().slice(0, 10),
+  join_date: toLocalDateInput(),
   exit_date: "",
 };
 
@@ -537,7 +538,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
       member_code: row.member_code || "",
       staff_code: row.staff_code || "",
       id_staff_grade: row.id_staff_grade || "",
-      join_date: String(row.join_date || new Date().toISOString()).slice(0, 10),
+      join_date: row.join_date ? String(row.join_date).slice(0, 10) : toLocalDateInput(),
       exit_date: row.exit_date ? String(row.exit_date).slice(0, 10) : "",
     });
     setSelectedImage(null);

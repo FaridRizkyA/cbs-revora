@@ -9,6 +9,7 @@ import {
   buildReportDetailPrintHtml,
 } from "../shared/ReportPrintTemplate";
 import { downloadExcelSectionWorkbook, flattenExcelSections, ExcelSection } from "../../../utils/excelExport";
+import { formatDateOnly } from "../../../utils/dateFormat";
 
 export type MemberShuHistoryRow = {
   id_shu_distribution: string;
@@ -36,13 +37,6 @@ const escapeHtml = (value: string | number | null | undefined) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
-
-const formatDateOnly = (value?: string | Date | null) => {
-  if (!value) return "-";
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toISOString().slice(0, 10);
-};
 
 const percentText = (value: number) => `${(Number(value || 0) * 100).toFixed(2)}%`;
 

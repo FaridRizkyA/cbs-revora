@@ -9,6 +9,7 @@ import {
   REPORT_ROW_HIGHLIGHT_KEY,
 } from "../shared/ReportPrintTemplate";
 import { downloadExcelSectionWorkbook, flattenExcelSections, ExcelSection, ExcelValue } from "../../../utils/excelExport";
+import { formatDateOnly } from "../../../utils/dateFormat";
 
 export type ShuYearReportRow = {
   id_shu_period: string;
@@ -100,13 +101,6 @@ const formatRupiah = (value: number) =>
   })
     .format(Number(value || 0))
     .replace(/\s/g, " ");
-
-const formatDateOnly = (value?: string | Date | null) => {
-  if (!value) return "-";
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toISOString().slice(0, 10);
-};
 
 const percentText = (value: number) => `${(Number(value || 0) * 100).toFixed(2)}%`;
 const displayText = (value?: string | null) => String(value || "-").replaceAll("_", " ");

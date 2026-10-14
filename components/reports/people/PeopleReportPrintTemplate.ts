@@ -5,6 +5,7 @@ import {
   ReportMetaItem,
   ReportTableColumn,
 } from "../shared/ReportPrintTemplate";
+import { formatDateOnly } from "../../../utils/dateFormat";
 
 export type PeopleReportType = "users" | "members" | "staffs";
 
@@ -78,13 +79,6 @@ const roleNames = (row: PeopleReportRow) => (row.roles || []).map((role) => role
 
 const fullName = (row: PeopleReportRow) =>
   row.full_name || [row.first_name, row.last_name].filter(Boolean).join(" ") || "-";
-
-const formatDateOnly = (value?: string | Date | null) => {
-  if (!value) return "-";
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toISOString().slice(0, 10);
-};
 
 const formatDateTime = (value?: string | Date | null) => {
   if (!value) return "-";

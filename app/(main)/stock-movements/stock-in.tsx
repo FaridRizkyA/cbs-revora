@@ -80,6 +80,7 @@ type DraftItem = {
 };
 
 import { downloadReportPdf } from "../../../utils/pdfExport";
+import { toLocalDateInput } from "../../../utils/dateFormat";
 
 export default function StockInScreen() {
   const [rows, setRows] = useState<StockInDocument[]>([]);
@@ -130,7 +131,7 @@ export default function StockInScreen() {
   const [emailTarget, setEmailTarget] = useState<"table" | "detail">("table");
 
   const tomorrowDate = useMemo(() => new Date(Date.now() + 24 * 60 * 60 * 1000), []);
-  const todayDayNumber = useMemo(() => Number(new Date().toISOString().slice(0, 10).replaceAll("-", "")), []);  
+  const todayDayNumber = useMemo(() => Number(toLocalDateInput().replaceAll("-", "")), []);  
 
   const canInsert = canInsertStockMovement(roleName, staffGradeName);
   const formatDateTime = useCallback((value?: string | null) => {
