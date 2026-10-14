@@ -23,6 +23,8 @@ import { buildReportPdfFileName } from "../../../components/reports/shared/Repor
 import { logClientActivity } from "../../../utils/activityLog";
 import { printReportHtml } from "../../../utils/printUtils";
 import { canInsertStockMovement, getAuthSession, normalizeRole } from "../../../utils/authSession";
+import { formatDisplayDateTime, formatDisplayDate } from "../../../utils/dateFormat";
+import RequiredMark from "../../../components/forms/RequiredMark";
 
 type StockOutDocument = {
   id_stock_out: string;
@@ -330,7 +332,7 @@ export default function StockOutScreen() {
         meta: isTable ? buildCurrentStockOutReportMeta() : [
           { label: "Code", value: selectedDoc?.stock_out_code },
           { label: "Type", value: displayText(selectedDoc?.stock_out_type) },
-          { label: "Date", value: selectedDoc?.stock_out_date ? new Date(selectedDoc.stock_out_date).toLocaleString("id-ID") : "-" },        
+          { label: "Date", value: selectedDoc?.stock_out_date ? formatDisplayDateTime(selectedDoc.stock_out_date) : "-" },        
         ],
         columns: isTable 
           ? stockOutTableColumns.map(c => ({ key: c.key, title: c.title, align: c.align }))
@@ -443,7 +445,7 @@ export default function StockOutScreen() {
     { key: "stock_out_type", title: "Type", weight: 16, sortable: true, sortValue: (row) => row.stock_out_type || "SALE", render: (row) => <Text style={styles.rowCell}>{displayText(row.stock_out_type || "SALE")}</Text> },   
     { key: "item_count", title: "Items", weight: 10, align: "center", sortable: true, sortValue: (row) => Number(row.item_count || 0), render: (row) => <Text style={styles.rowCell}>{row.item_count}</Text> },
     { key: "total_qty", title: "Total Qty", weight: 12, align: "center", sortable: true, sortValue: (row) => Number(row.total_qty || 0), render: (row) => <Text style={styles.rowCell}>{row.total_qty}</Text> },
-    { key: "stock_out_date", title: "Date", weight: 18, sortable: true, sortValue: (row) => new Date(row.stock_out_date).getTime(), render: (row) => <Text style={styles.rowCell}>{new Date(row.stock_out_date).toLocaleString("id-ID")}</Text> },
+    { key: "stock_out_date", title: "Date", weight: 18, sortable: true, sortValue: (row) => new Date(row.stock_out_date).getTime(), render: (row) => <Text style={styles.rowCell}>{formatDisplayDateTime(row.stock_out_date)}</Text> },
     { key: "action", title: "Action", weight: 14, align: "center", render: (row, meta) => (
       <View style={[styles.actionWrap, openActionStockOutId === row.id_stock_out ? styles.actionWrapOpen : null]}>
         <InventoryRowActionsMenu open={openActionStockOutId === row.id_stock_out} onToggle={() => setOpenActionStockOutId((prev) => (prev === row.id_stock_out ? null : row.id_stock_out))} direction={meta.rowIndex >= meta.totalRows - 2 ? "up" : "down"}>
@@ -734,16 +736,17 @@ export default function StockOutScreen() {
       <ResponsiveModal visible={formOpen} onClose={() => (saving ? null : setFormOpen(false))} maxWidthDesktop={640} cardStyle={styles.modalCard}>
             <Text style={styles.modalTitle}>Add Non-Sales Stock Out</Text>
             <ScrollView contentContainerStyle={styles.formBody}>
-              <FilterSelectField label="Reason" value={manualReason} options={MANUAL_REASONS.map((x) => ({ label: x, value: x }))} onChange={(value) => { setManualReason(value); if (value !== "RETURN_TO_SUPPLIER") setManualReturnRefund(""); }} />
-              {manualReason === "RETURN_TO_SUPPLIER" ? <FilterSelectField label="Refund From Supplier" value={manualReturnRefund} options={[{ label: "Select refund status", value: "" }, { label: "Yes", value: "YES" }, { label: "No", value: "NO" }]} onChange={(value) => setManualReturnRefund(value as "" | "YES" | "NO")} /> : null}     
+              <FilterSelectField label="Reason" required value={manualReason} options={MANUAL_REASONS.map((x) => ({ label: x, value: x }))} onChange={(value) => { setManualReason(value); if (value !== "RETURN_TO_SUPPLIER") setManualReturnRefund(""); }} />
+              {manualReason === "RETURN_TO_SUPPLIER" ? <FilterSelectField label="Refund From Supplier" required value={manualReturnRefund} options={[{ label: "Select refund status", value: "" }, { label: "Yes", value: "YES" }, { label: "No", value: "NO" }]} onChange={(value) => setManualReturnRefund(value as "" | "YES" | "NO")} /> : null}     
               <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>Notes</Text>
+                <Text style={styles.fieldLabel}>Notes<RequiredMark /></Text>
                 <TextInput value={manualNotes} onChangeText={setManualNotes} placeholder="Required notes" placeholderTextColor="#94a3b8" style={styles.fieldInput} />
               </View>
               {manualItems.map((item, index) => (
                 <View key={`${index}-${item.id_product}`} style={styles.itemCard}>
                   <FilterSelectField
                     label={`Product #${index + 1}`}
+                    required
                     value={item.id_product}
                     options={formProductOptions.filter((op) => op.value === item.id_product || !manualItems.some((x, i) => i !== index && x.id_product === op.value))}
                     onChange={(value) => setManualItems((prev) => prev.map((row, i) => {
@@ -761,7 +764,7 @@ export default function StockOutScreen() {
                   <FilterSelectField
                     label="Batch (Optional)"
                     value={item.id_product_batch || ""}
-                    options={[{ label: "Auto Allocation (FIFO/EXP)", value: "" }, ...((batchesByProduct[item.id_product] || []).filter((batch) => Number(batch.batch_qty || 0) > 0).map((batch) => ({ label: `${batch.batch_code} - Qty ${batch.batch_qty}${batch.expired_date ? ` - Exp ${new Date(batch.expired_date).toLocaleDateString("id-ID")}` : ""}`, value: batch.id_product_batch })))]}
+                    options={[{ label: "Auto Allocation (FIFO/EXP)", value: "" }, ...((batchesByProduct[item.id_product] || []).filter((batch) => Number(batch.batch_qty || 0) > 0).map((batch) => ({ label: `${batch.batch_code} - Qty ${batch.batch_qty}${batch.expired_date ? ` - Exp ${formatDisplayDate(batch.expired_date)}` : ""}`, value: batch.id_product_batch })))]}
                     onChange={(value) => setManualItems((prev) => prev.map((row, i) => {
                       if (i !== index) return row;
                       const nextMax = getSelectedBatchAvailableQty(row.id_product, value || undefined);
@@ -772,7 +775,7 @@ export default function StockOutScreen() {
                       };
                     }))}
                   />
-                  <View style={styles.fieldWrap}><Text style={styles.fieldLabel}>Qty</Text><TextInput value={item.quantity} onChangeText={(v) => setManualItems((prev) => prev.map((row, i) => { if (i !== index) return row; return { ...row, quantity: clampManualItemQuantity(row.id_product, row.id_product_batch, v) }; }))} keyboardType="numeric" placeholder={item.id_product ? `Max ${getSelectedBatchAvailableQty(item.id_product, item.id_product_batch)}` : "0"} placeholderTextColor="#94a3b8" style={styles.fieldInput} /></View>
+                  <View style={styles.fieldWrap}><Text style={styles.fieldLabel}>Qty<RequiredMark /></Text><TextInput value={item.quantity} onChangeText={(v) => setManualItems((prev) => prev.map((row, i) => { if (i !== index) return row; return { ...row, quantity: clampManualItemQuantity(row.id_product, row.id_product_batch, v) }; }))} keyboardType="numeric" placeholder={item.id_product ? `Max ${getSelectedBatchAvailableQty(item.id_product, item.id_product_batch)}` : "0"} placeholderTextColor="#94a3b8" style={styles.fieldInput} /></View>
                   {manualItems.length > 1 ? <Pressable style={styles.removeBtn} onPress={() => setManualItems((prev) => prev.filter((_, i) => i !== index))}><Text style={styles.removeBtnText}>Remove Row</Text></Pressable> : null}
                 </View>
               ))}
@@ -813,7 +816,7 @@ export default function StockOutScreen() {
               <View style={styles.metaItem}><Text style={styles.metaLabel}>Stock Out Code</Text><Text style={styles.metaValue}>{selectedDoc?.stock_out_code || "-"}</Text></View>
               <View style={styles.metaItem}><Text style={styles.metaLabel}>Type</Text><Text style={styles.metaValue}>{displayText(selectedDoc?.stock_out_type || "-")}</Text></View>
               {String(selectedDoc?.stock_out_type || "SALE").toUpperCase() === "SALE" ? <View style={styles.metaItem}><Text style={styles.metaLabel}>Cashier</Text><Text style={styles.metaValue}>{selectedDoc?.cashier_name || "-"}</Text></View> : <View style={styles.metaItem}><Text style={styles.metaLabel}>Operator</Text><Text style={styles.metaValue}>{selectedDoc?.operator_name || "-"}</Text></View>}
-              <View style={styles.metaItem}><Text style={styles.metaLabel}>Date</Text><Text style={styles.metaValue}>{selectedDoc ? new Date(selectedDoc.stock_out_date).toLocaleString("id-ID") : "-"}</Text></View>
+              <View style={styles.metaItem}><Text style={styles.metaLabel}>Date</Text><Text style={styles.metaValue}>{selectedDoc ? formatDisplayDateTime(selectedDoc.stock_out_date) : "-"}</Text></View>
               <View style={styles.metaItem}><Text style={styles.metaLabel}>Item Count</Text><Text style={styles.metaValue}>{selectedDoc?.items?.length || 0}</Text></View>
               <View style={styles.metaItem}><Text style={styles.metaLabel}>Total Qty</Text><Text style={styles.metaValue}>{selectedDoc?.total_qty || 0}</Text></View>
               {String(selectedDoc?.stock_out_type || "SALE").toUpperCase() !== "SALE" ? <View style={styles.metaItem}><Text style={styles.metaLabel}>Financial Impact</Text><Text style={styles.metaValue}>{isRefundStockOutType(selectedDoc?.stock_out_type) ? "Refund / No Loss" : "Loss"}</Text></View> : null}

@@ -28,6 +28,7 @@ import { printReportHtml } from "../../../utils/printUtils";
 import { pickSquareImageAsync } from "../../../utils/imageUpload";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
 import { formatDateOnly } from "../../../utils/dateFormat";
+import RequiredMark from "../../../components/forms/RequiredMark";
 
 type Product = {
   id_product: string;
@@ -1283,6 +1284,7 @@ export default function ProductsScreen() {
             <ScrollView contentContainerStyle={styles.formBody}>
               <FilterSelectField
                 label="Supplier"
+                required
                 value={productForm.id_supplier}
                 options={supplierOptions}
                 onChange={(value) => setProductForm((prev) => ({ ...prev, id_supplier: value }))}
@@ -1301,7 +1303,7 @@ export default function ProductsScreen() {
                 </View>
               </View>
               <View style={styles.formField}>
-                <Text style={styles.formLabel}>Product Name</Text>
+                <Text style={styles.formLabel}>Product Name<RequiredMark /></Text>
                 <TextInput
                   value={productForm.product_name}
                   onChangeText={(value) => setProductForm((prev) => ({ ...prev, product_name: value }))}        
@@ -1323,7 +1325,7 @@ export default function ProductsScreen() {
               </View>
               <View style={styles.formGrid}>
                 <View style={styles.formFieldHalf}>
-                  <Text style={styles.formLabel}>Selling Price</Text>
+                  <Text style={styles.formLabel}>Selling Price<RequiredMark /></Text>
                   <TextInput
                     value={productForm.selling_price}
                     onChangeText={(value) =>
@@ -1336,7 +1338,7 @@ export default function ProductsScreen() {
                   />
                 </View>
                 <View style={styles.formFieldHalf}>
-                  <Text style={styles.formLabel}>Minimum Stock</Text>
+                  <Text style={styles.formLabel}>Minimum Stock<RequiredMark /></Text>
                   <TextInput
                     value={productForm.minimum_stock}
                     onChangeText={(value) =>

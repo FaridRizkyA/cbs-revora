@@ -25,6 +25,7 @@ import { canManageInventoryMaster, getAuthSession, normalizeRole } from "../../.
 import { logClientActivity } from "../../../utils/activityLog";
 import { printReportHtml } from "../../../utils/printUtils";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
+import RequiredMark from "../../../components/forms/RequiredMark";
 
 type Supplier = {
   id_supplier: string;
@@ -817,7 +818,7 @@ export default function SuppliersScreen() {
             </View>
           ) : null}
           <View style={styles.formGroup}>
-            <Text style={styles.metaLabel}>Supplier Name</Text>
+            <Text style={styles.metaLabel}>Supplier Name<RequiredMark /></Text>
             <TextInput
               value={formSupplierName}
               onChangeText={setFormSupplierName}

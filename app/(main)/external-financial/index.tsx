@@ -25,6 +25,7 @@ import { printReportHtml } from "../../../utils/printUtils";
 import { canManageExternalFinancial, getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
 import { toLocalDateInput } from "../../../utils/dateFormat";
+import RequiredMark from "../../../components/forms/RequiredMark";
 
 type ExternalFinancialEntry = {
   id_external_entry: string;
@@ -694,17 +695,18 @@ export default function ExternalFinancialScreen() {
         <ScrollView contentContainerStyle={styles.formBody} showsVerticalScrollIndicator={false}>
           <FilterSelectField
             label="Type"
+            required
             value={form.entry_type}
             options={["INCOME", "OUTCOME"].map((item) => ({ label: item, value: item }))}
             onChange={(value) => setForm((prev) => ({ ...prev, entry_type: value as "INCOME" | "OUTCOME" }))}   
           />
-          <DatePickerField label="Date" value={form.entry_date} onChange={(value) => setForm((prev) => ({ ...prev, entry_date: value }))} />
+          <DatePickerField label="Date" required value={form.entry_date} onChange={(value) => setForm((prev) => ({ ...prev, entry_date: value }))} />
           <View style={styles.fieldWrap}>
-            <Text style={styles.label}>Source</Text>
+            <Text style={styles.label}>Source<RequiredMark /></Text>
             <TextInput value={form.entry_source} onChangeText={(value) => setForm((prev) => ({ ...prev, entry_source: value }))} style={styles.input} placeholder="Source" placeholderTextColor="#94a3b8" />
           </View>
           <View style={styles.fieldWrap}>
-            <Text style={styles.label}>Amount</Text>
+            <Text style={styles.label}>Amount<RequiredMark /></Text>
             <TextInput value={form.amount} onChangeText={(value) => setForm((prev) => ({ ...prev, amount: value.replace(/[^0-9]/g, "") }))} style={styles.input} keyboardType="numeric" placeholder="0" placeholderTextColor="#94a3b8" />
           </View>
           <View style={styles.fieldWrap}>

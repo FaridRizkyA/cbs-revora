@@ -2,6 +2,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDim
 import FilterSelectField from "./FilterSelectField";
 import DatePickerField from "./DatePickerField";
 import PrimaryActionButton from "./PrimaryActionButton";
+import RequiredMark from "../forms/RequiredMark";
 
 type SupplierOption = {
   id_supplier: string;
@@ -83,6 +84,7 @@ export default function StockInFormModal(props: StockInFormModalProps) {
           <ScrollView contentContainerStyle={styles.body}>
             <FilterSelectField
               label="Supplier"
+              required
               value={selectedSupplierId}
               options={supplierOptions}
               onChange={onSupplierChange}
@@ -114,12 +116,13 @@ export default function StockInFormModal(props: StockInFormModalProps) {
                 <View key={`item-${index}`} style={styles.itemCard}>
                   <FilterSelectField
                     label={`Product #${index + 1}`}
+                    required
                     value={item.id_product}
                     options={productOptions}
                     onChange={(value) => onItemChange(index, { id_product: value })}
                   />
                   <View style={styles.fieldWrap}>
-                    <Text style={styles.label}>Qty</Text>
+                    <Text style={styles.label}>Qty<RequiredMark /></Text>
                     <TextInput
                       value={item.quantity}
                       onChangeText={(value) => onItemChange(index, { quantity: value.replace(/[^0-9]/g, "") })}
@@ -130,7 +133,7 @@ export default function StockInFormModal(props: StockInFormModalProps) {
                     />
                   </View>
                   <View style={styles.fieldWrap}>
-                    <Text style={styles.label}>Purchase Price</Text>
+                    <Text style={styles.label}>Purchase Price<RequiredMark /></Text>
                     <TextInput
                       value={item.purchase_price}
                       onChangeText={(value) => onItemChange(index, { purchase_price: value.replace(/[^0-9]/g, "") })}
@@ -142,6 +145,7 @@ export default function StockInFormModal(props: StockInFormModalProps) {
                   </View>
                   <DatePickerField
                     label="Expired Date"
+                    required
                     value={item.expired_date}
                     placeholder="Select expired date"
                     onChange={(value) => onItemChange(index, { expired_date: value })}

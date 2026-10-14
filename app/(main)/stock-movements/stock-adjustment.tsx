@@ -25,6 +25,8 @@ import { logClientActivity } from "../../../utils/activityLog";
 import { printReportHtml } from "../../../utils/printUtils";
 import { canInsertStockMovement, getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
+import { formatDisplayDateTime, formatDisplayDate } from "../../../utils/dateFormat";
+import RequiredMark from "../../../components/forms/RequiredMark";
 
 type Movement = {
   id_stock_movement: string;
@@ -162,7 +164,7 @@ export default function StockAdjustmentScreen() {
         .filter((item) => Number(item.batch_qty || 0) > 0)
         .map((item) => ({
           value: item.id_product_batch,
-          label: `${item.batch_code} - Qty ${item.batch_qty}${item.expired_date ? ` - Exp ${new Date(item.expired_date).toLocaleDateString("id-ID")}` : ""}`,
+          label: `${item.batch_code} - Qty ${item.batch_qty}${item.expired_date ? ` - Exp ${formatDisplayDate(item.expired_date)}` : ""}`,
         })),
     [productBatches]
   );
@@ -691,6 +693,7 @@ export default function StockAdjustmentScreen() {
             <ScrollView contentContainerStyle={styles.formBody}>
               <FilterSelectField
                 label="Product"
+                required
                 value={selectedProductId}
                 options={productOptions}
                 onChange={(value) => {
@@ -700,6 +703,7 @@ export default function StockAdjustmentScreen() {
               />
               <FilterSelectField
                 label="Batch"
+                required
                 value={selectedBatchId}
                 options={batchOptions}
                 onChange={setSelectedBatchId}
@@ -709,6 +713,7 @@ export default function StockAdjustmentScreen() {
               ) : null}
               <FilterSelectField
                 label="Adjustment Type"
+                required
                 value={adjustmentType}
                 options={[
                   { label: "INCREASE", value: "INCREASE" },
@@ -720,7 +725,7 @@ export default function StockAdjustmentScreen() {
                 }}
               />
               <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>Quantity</Text>
+                <Text style={styles.fieldLabel}>Quantity<RequiredMark /></Text>
                 <TextInput
                   value={quantity}
                   onChangeText={(value) => setQuantity(value.replace(/[^0-9]/g, ""))}
@@ -731,7 +736,7 @@ export default function StockAdjustmentScreen() {
                 />
               </View>
               <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>Notes</Text>
+                <Text style={styles.fieldLabel}>Notes<RequiredMark /></Text>
                 <TextInput
                   value={notes}
                   onChangeText={setNotes}
@@ -807,7 +812,7 @@ export default function StockAdjustmentScreen() {
                     .replace("ADJUSTMENT:", "")
                 )}</Text></View>
                 <View style={styles.detailItem}><Text style={styles.detailLabel}>Operator</Text><Text style={styles.detailValue}>{selectedRow?.operator_name || "-"}</Text></View>
-                <View style={styles.detailItem}><Text style={styles.detailLabel}>Date</Text><Text style={styles.detailValue}>{selectedRow ? new Date(selectedRow.movement_date).toLocaleString("id-ID") : "-"}</Text></View>    
+                <View style={styles.detailItem}><Text style={styles.detailLabel}>Date</Text><Text style={styles.detailValue}>{selectedRow ? formatDisplayDateTime(selectedRow.movement_date) : "-"}</Text></View>    
                 <View style={[styles.detailItem, styles.detailItemFull]}><Text style={styles.detailLabel}>Notes</Text><Text style={styles.detailValue}>{selectedRow?.notes || "-"}</Text></View>
               </View>
               <Pressable style={styles.closePrimaryBtn} onPress={() => setSelectedRow(null)}>

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Modal, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import type { CSSProperties } from "react";
+import RequiredMark from "../forms/RequiredMark";
 
 type DatePickerFieldProps = {
   label: string;
@@ -11,6 +12,7 @@ type DatePickerFieldProps = {
   minimumDate?: Date;
   maximumDate?: Date;
   disabled?: boolean;
+  required?: boolean;
 };
 
 const formatDate = (date: Date) => {
@@ -34,6 +36,7 @@ export default function DatePickerField({
   minimumDate,
   maximumDate,
   disabled = false,
+  required = false,
 }: DatePickerFieldProps) {
   const { width, height } = useWindowDimensions();
   const shortSide = Math.min(width, height);
@@ -72,7 +75,7 @@ export default function DatePickerField({
 
   return (
     <View style={[styles.wrap, disabled && styles.wrapDisabled]}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>{label}{required ? <RequiredMark /> : null}</Text>
       {Platform.OS === "web" ? (
         <input
           type="date"

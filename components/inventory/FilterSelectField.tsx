@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import RequiredMark from "../forms/RequiredMark";
 
 type Option = {
   label: string;
@@ -13,6 +14,7 @@ type FilterSelectFieldProps = {
   options: Option[];
   onChange: (value: string) => void;
   disabled?: boolean;
+  required?: boolean;
 };
 
 export default function FilterSelectField({
@@ -21,6 +23,7 @@ export default function FilterSelectField({
   options,
   onChange,
   disabled = false,
+  required = false,
 }: FilterSelectFieldProps) {
   const { width, height } = useWindowDimensions();
   const shortSide = Math.min(width, height);
@@ -36,7 +39,7 @@ export default function FilterSelectField({
 
   return (
     <View style={[styles.wrap, disabled && styles.wrapDisabled]}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>{label}{required ? <RequiredMark /> : null}</Text>
       <Pressable
         style={[styles.field, disabled && styles.fieldDisabled]}
         onPress={() => {

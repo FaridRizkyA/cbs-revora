@@ -24,6 +24,7 @@ import { canManagePeople, getAuthSession, normalizeRole } from "../../utils/auth
 import { pickSquareImageAsync } from "../../utils/imageUpload";
 import { isValidPasswordPolicy, PASSWORD_POLICY_MESSAGE } from "../../utils/passwordPolicy";
 import { toLocalDateInput } from "../../utils/dateFormat";
+import RequiredMark from "../forms/RequiredMark";
 
 type ScreenType = "users" | "members" | "staffs";
 
@@ -1321,11 +1322,13 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
             {editingGrade ? <Meta label="Grade Code" value={editingGrade.grade_code} cardStyle={styles.profileMetaCardFull} /> : null}
             <Input
               label="Grade Name"
+              required
               value={gradeForm.grade_name}
               onChangeText={(value) => setGradeForm((prev) => ({ ...prev, grade_name: value }))}
             />
             <Input
               label="Order"
+              required
               value={gradeForm.grade_order}
               onChangeText={(value) => setGradeForm((prev) => ({ ...prev, grade_order: value.replace(/[^0-9]/g, "") }))}
             />
@@ -1425,10 +1428,11 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
           <ScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false}>
             {type === "users" ? (
               <>
-                <Input label="Email" value={form.email} onChangeText={(value) => setForm((prev) => ({ ...prev, email: value.trim() }))} keyboardType="email-address" />
-                <Input label={editingRow ? "New Password (optional)" : "Password"} value={form.password} onChangeText={(value) => setForm((prev) => ({ ...prev, password: value }))} secure />
+                <Input label="Email" required value={form.email} onChangeText={(value) => setForm((prev) => ({ ...prev, email: value.trim() }))} keyboardType="email-address" />
+                <Input label={editingRow ? "New Password (optional)" : "Password"} required={!editingRow} value={form.password} onChangeText={(value) => setForm((prev) => ({ ...prev, password: value }))} secure />
                 <Input
                   label="Confirm Password"
+                  required={!editingRow}
                   value={form.password_confirmation}
                   onChangeText={(value) => setForm((prev) => ({ ...prev, password_confirmation: value }))}        
                   secure
@@ -1437,6 +1441,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
             ) : (
               <FilterSelectField
                 label="Linked User"
+                required
                 value={form.id_user}
                 options={[
                   { label: "Select user", value: "" },
@@ -1486,7 +1491,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
                   <Text style={styles.filePickerHint}>{isProfileLocked ? "Profile photo is linked to existing record." : selectedImage?.name || (form.profile_image ? "Current photo will be kept." : "No photo selected (optional).")}</Text>
                 </View>
                 <View style={styles.twoCol}>
-                  <Input label="First Name" value={form.first_name} onChangeText={(value) => setForm((prev) => ({ ...prev, first_name: sanitizePersonNameInput(value) }))} wrapStyle={styles.twoColField} editable={!isProfileLocked} />
+                  <Input label="First Name" required value={form.first_name} onChangeText={(value) => setForm((prev) => ({ ...prev, first_name: sanitizePersonNameInput(value) }))} wrapStyle={styles.twoColField} editable={!isProfileLocked} />
                   <Input label="Last Name" value={form.last_name} onChangeText={(value) => setForm((prev) => ({ ...prev, last_name: sanitizePersonNameInput(value) }))} wrapStyle={styles.twoColField} editable={!isProfileLocked} />
                 </View>
                 <Input label="Phone" value={form.phone_number} onChangeText={(value) => setForm((prev) => ({ ...prev, phone_number: sanitizePhoneInput(value) }))} editable={!isProfileLocked} keyboardType="phone-pad" />
@@ -1669,10 +1674,12 @@ function Input({
   wrapStyle,
   editable = true,
   keyboardType = "default",
+  required = false,
 }: {
   label: string;
   value: string;
   onChangeText: (value: string) => void;
+  required?: boolean;
   secure?: boolean;
   wrapStyle?: object;
   editable?: boolean;
@@ -1680,7 +1687,7 @@ function Input({
 }) {
   return (
     <View style={[styles.fieldWrap, wrapStyle]}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>{label}{required ? <RequiredMark /> : null}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
