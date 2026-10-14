@@ -94,8 +94,13 @@ const createClientActivityLog = async (req, res) => {
   return res.status(201).json({ message: "Activity logged successfully." });
 };
 
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 const listActivityLogs = async (req, res) => {
-  const limit = Math.min(Math.max(Number(req.query.limit || 100), 1), 500);
+  const limit = Math.min(Math.max(Number(req.query.limit || 100), 1), 1000);
+  // Optional local date range so older logs stay reachable.
+  const startDate = DATE_ONLY_PATTERN.test(String(req.query.start_date || "")) ? req.query.start_date : null;
+  const endDate = DATE_ONLY_PATTERN.test(String(req.query.end_date || "")) ? req.query.end_date : null;
 
   try {
     const result = await pool.query(
@@ -149,10 +154,12 @@ const listActivityLogs = async (req, res) => {
         LIMIT 1
       ) tsm ON TRUE
       WHERE l.is_active = 'Y'
+        AND ($2::date IS NULL OR l.activity_date::date >= $2::date)
+        AND ($3::date IS NULL OR l.activity_date::date <= $3::date)
       ORDER BY l.activity_date DESC, l.created_date DESC
       LIMIT $1;
       `,
-      [limit]
+      [limit, startDate, endDate]
     );
     return res.json({
       data: result.rows.map((row) => ({
