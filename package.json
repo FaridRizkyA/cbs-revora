@@ -11,9 +11,12 @@
     "lint": "expo lint",
     "db:migrate": "node database/scripts/migrate.js",
     "db:seed": "node database/scripts/seed.js",
+    "db:seed:setup": "node database/scripts/seed.js setup",
     "db:fresh": "node database/scripts/fresh.js",
     "db:reset": "npm run db:fresh && npm run db:migrate",
-    "db:setup": "npm run db:fresh && npm run db:migrate && npm run db:seed",
+    "db:setup": "npm run db:fresh && npm run db:migrate && npm run db:seed:setup",
+    "db:setup:demo": "npm run db:fresh && npm run db:migrate && npm run db:seed",
+    "db:testSHU": "node database/scripts/testShu.js",
     "db:backfill:stockin": "node database/scripts/backfill_stock_in_documents.js",
     "queue:clear": "node backend/scripts/clearQueue.js"
   },

@@ -16,7 +16,8 @@ const runSeeders = async () => {
   const client = await pool.connect();
 
   try {
-    const seedsDir = path.join(__dirname, "../seeds");
+    // Optional subfolder argument, e.g. `node seed.js setup` runs database/seeds/setup
+    const seedsDir = path.join(__dirname, "../seeds", process.argv[2] || "");
 
     const files = fs
       .readdirSync(seedsDir)
