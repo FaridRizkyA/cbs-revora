@@ -23,9 +23,17 @@ export function ShuOfficerCard({ rows }: Props) {
         render: (row) => <Text style={styles.rowCell}>{displayText(row.officer_role_code)}</Text>,
       },
       {
+        key: "name",
+        title: "Name",
+        weight: 30,
+        sortable: true,
+        sortValue: (row) => row.full_name || "",
+        render: (row) => <Text style={styles.rowCell}>{row.full_name || "-"}</Text>,
+      },
+      {
         key: "amount",
         title: "SHU Amount",
-        weight: 60,
+        weight: 30,
         align: "right",
         sortable: true,
         sortValue: (row) => Number(row.shu_amount || 0),
@@ -49,6 +57,7 @@ export function ShuOfficerCard({ rows }: Props) {
           enablePagination={false}
           footerValues={[
             <Text style={[styles.rowCell, { fontWeight: "700" }]}>Total</Text>,
+            <Text style={styles.rowCell} />,
             <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(rows.reduce((sum, r) => sum + (r.shu_amount || 0), 0))}</Text>,
           ]}
         />

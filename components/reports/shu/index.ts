@@ -60,6 +60,7 @@ export type ShuDetailReportData = {
   }[];
   officer_distributions: {
     officer_role_code: string;
+    full_name?: string | null;
     shu_amount: number;
   }[];
   remaining_shu: {
@@ -425,17 +426,19 @@ const buildDetailTables = (detail: ShuDetailReportData, signatures: ShuSignature
       columns: [
         { key: "row_number", title: "No.", align: "center", width: "42px" },
         { key: "officer_role_code", title: "Officer Role" },
+        { key: "full_name", title: "Name" },
         { key: "shu_amount", title: "SHU Amount", align: "right", width: "22%" },
       ],
       rows: detail.officer_distributions.map((row, index) => ({
         row_number: index + 1,
         officer_role_code: displayText(row.officer_role_code),
+        full_name: row.full_name || "-",
         shu_amount: formatRupiah(row.shu_amount),
       })),
       footerRows: [
         {
           cells: [
-            { value: "Total Distributed Amount", colspan: 2, align: "right" },
+            { value: "Total Distributed Amount", colspan: 3, align: "right" },
             { value: formatRupiah(totalOfficerShu), align: "right" },
           ],
         },

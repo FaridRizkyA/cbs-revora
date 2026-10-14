@@ -199,10 +199,13 @@ const calculateShuData = async (client, period) => {
     `
     SELECT
       s.id_staff,
-      sor.officer_role_code
+      sor.officer_role_code,
+      COALESCE(NULLIF(TRIM(CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, ''))), ''), s.staff_code) AS full_name
     FROM tbl_staff_officer_roles sor
     JOIN tbl_staff s
       ON s.id_staff = sor.id_staff
+    LEFT JOIN tbl_profiles p
+      ON p.id_user = s.id_user
     WHERE sor.is_active = 'Y'
       AND sor.is_shu_eligible = 'Y'
       AND s.is_active = 'Y'
@@ -300,6 +303,7 @@ const calculateShuData = async (client, period) => {
   const officerDistributions = officerRows.map((row) => ({
     id_staff: row.id_staff,
     officer_role_code: row.officer_role_code,
+    full_name: row.full_name,
     shu_amount: perOfficerAmount,
   }));
 
@@ -733,9 +737,14 @@ const getCurrentShuResult = async (req, res) => {
           od.id_shu_officer_distribution,
           od.id_staff,
           od.officer_role_code,
+          COALESCE(NULLIF(TRIM(CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, ''))), ''), s.staff_code) AS full_name,
           od.shu_amount::float AS shu_amount,
           od.distribution_status
         FROM tbl_shu_officer_distributions od
+        LEFT JOIN tbl_staff s
+          ON s.id_staff = od.id_staff
+        LEFT JOIN tbl_profiles p
+          ON p.id_user = s.id_user
         WHERE od.id_shu_period = $1
           AND od.is_active = 'Y'
         ORDER BY ${OFFICER_ROLE_ORDER_SQL} ASC, od.created_date ASC;
@@ -891,9 +900,14 @@ const getCurrentShuDetail = async (req, res) => {
           od.id_shu_officer_distribution,
           od.id_staff,
           od.officer_role_code,
+          COALESCE(NULLIF(TRIM(CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, ''))), ''), s.staff_code) AS full_name,
           od.shu_amount::float AS shu_amount,
           od.distribution_status
         FROM tbl_shu_officer_distributions od
+        LEFT JOIN tbl_staff s
+          ON s.id_staff = od.id_staff
+        LEFT JOIN tbl_profiles p
+          ON p.id_user = s.id_user
         WHERE od.id_shu_period = $1
           AND od.is_active = 'Y'
         ORDER BY ${OFFICER_ROLE_ORDER_SQL} ASC, od.created_date ASC;

@@ -36,5 +36,6 @@ export type MemberDistribution = {
 export type OfficerDistribution = {
   id_staff: string;
   officer_role_code: string;
+  full_name?: string | null;
   shu_amount: number;
 };
