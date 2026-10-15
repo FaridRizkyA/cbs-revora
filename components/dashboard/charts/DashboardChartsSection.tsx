@@ -76,7 +76,6 @@ export default function DashboardChartsSection({ graphs, width }: Props) {
       fontSize: 11,
     },
   } as const;
-  const stockShareData = topStockProducts.map((item) => Math.max(0, item.percentage / 100));
   const effectiveWidth = width;
   const stackedCharts = effectiveWidth < 860;
   const chartCardWidth = stackedCharts ? effectiveWidth - 32 : (effectiveWidth - 12) / 2 - 32;

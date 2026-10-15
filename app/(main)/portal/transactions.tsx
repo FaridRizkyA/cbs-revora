@@ -8,14 +8,11 @@ import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu";
 import { buildReceiptPrintHtml } from "../../../components/cashier/ReceiptPrintTemplate";
 import InventoryFilterSection from "../../../components/inventory/InventoryFilterSection";
-import { 
-  buildMemberTransactionsReportPrintHtml, 
+import {
   buildMemberTransactionsTableReportPrintHtml,
   downloadMemberTransactionsTableReportExcel,
   MemberTransactionItemFlatRow,
   MemberTransactionReportRow,
-  memberTransactionTableColumns,
-  memberTransactionItemTableColumns,
 } from "../../../components/reports/member/MemberTransactionsReportPrintTemplate";
 import { buildReportPdfFileName } from "../../../components/reports/shared/ReportPrintTemplate";
 import { formatDateTime, formatRupiah } from "../../../components/shu/formatters";
@@ -23,7 +20,6 @@ import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import { AuthSession, getAuthSession } from "../../../utils/authSession";
 import { logClientActivity } from "../../../utils/activityLog";
 import { printReportHtml } from "../../../utils/printUtils";
-import { useRouter } from "expo-router";
 import PageContainer from "../../../components/layout/PageContainer";
 
 type MemberOverview = {
@@ -82,7 +78,6 @@ const printHtml = async (html: string, activityType: "PRINT_REPORT" | "PRINT_REC
 };
 
 export default function MemberTransactionsScreen() {
-  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [printing, setPrinting] = useState(false);
   const [range, setRange] = useState<RangeKey>("ALL");

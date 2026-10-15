@@ -1,6 +1,5 @@
 import {
   buildReportDetailPrintHtml,
-  buildReportPdfFileName,
   buildReportTablePrintHtml,
   downloadReportTableExcel,
   ReportMetaItem,
@@ -113,24 +112,6 @@ export const batchTableColumns: ReportTableColumn<BatchReportRow>[] = [
     getValue: (row) => formatDateOnly(row.expired_date),
   },
 ];
-
-export const buildBatchTableReportPdfFileName = (date?: string | Date | null) =>
-  buildReportPdfFileName({
-    reportKey: REPORT_KEY,
-    variant: "table",
-    date,
-  });
-
-export const buildBatchDetailReportPdfFileName = (
-  batch: Pick<BatchReportRow, "batch_code">,
-  date?: string | Date | null
-) =>
-  buildReportPdfFileName({
-    reportKey: REPORT_KEY,
-    variant: "detail",
-    documentNumber: batch.batch_code,
-    date,
-  });
 
 export const buildBatchTableReportPrintHtml = ({
   rows,

@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import ResponsiveModal from "../common/ResponsiveModal";
 import FilterSelectField from "../inventory/FilterSelectField";
-import { API_BASE_URL } from "../../utils/api";
 import { fetchWithAuth } from "../../utils/fetchWithAuth";
 
 type UserOption = {

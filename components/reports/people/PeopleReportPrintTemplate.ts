@@ -1,6 +1,5 @@
 import {
   buildReportDetailPrintHtml,
-  buildReportPdfFileName,
   buildReportTablePrintHtml,
   ReportMetaItem,
   ReportTableColumn,
@@ -198,25 +197,6 @@ const buildPeopleTableColumns = (type: PeopleReportType): ReportTableColumn<Peop
 
   return columns;
 };
-
-export const buildPeopleTableReportPdfFileName = (type: PeopleReportType, date?: string | Date | null) =>
-  buildReportPdfFileName({
-    reportKey: reportKeyByType[type],
-    variant: "table",
-    date,
-  });
-
-export const buildPeopleDetailReportPdfFileName = (
-  type: PeopleReportType,
-  person: PeopleReportRow,
-  date?: string | Date | null
-) =>
-  buildReportPdfFileName({
-    reportKey: reportKeyByType[type],
-    variant: "detail",
-    documentNumber: type === "members" ? person.member_code : type === "staffs" ? person.staff_code : person.email,
-    date,
-  });
 
 export const buildPeopleTableReportPrintHtml = ({
   type,

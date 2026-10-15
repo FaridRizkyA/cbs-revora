@@ -1,5 +1,4 @@
 import {
-  buildReportPdfFileName,
   buildReportTablePrintHtml,
   downloadReportTableExcel,
   ReportMetaItem,
@@ -105,13 +104,6 @@ export const salesCostTableColumns: ReportTableColumn<SalesCostReportRow>[] = [
     getValue: (row) => formatDateTime(row.stock_in_date),
   },
 ];
-
-export const buildSalesCostTableReportPdfFileName = (date?: string | Date | null) =>
-  buildReportPdfFileName({
-    reportKey: REPORT_KEY,
-    variant: "table",
-    date,
-  });
 
 export const buildSalesCostTableReportPrintHtml = ({
   rows,

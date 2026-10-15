@@ -1,6 +1,5 @@
-import * as Print from "expo-print";
 import { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import IconFilterButton from "../../../components/inventory/IconFilterButton";
@@ -20,7 +19,6 @@ import {
 } from "../../../components/reports/batches/BatchReportPrintTemplate";
 import { buildReportPdfFileName } from "../../../components/reports/shared/ReportPrintTemplate";
 import { fetchWithAuth } from "../../../utils/fetchWithAuth";
-import { API_BASE_URL } from "../../../utils/api";
 import { logClientActivity } from "../../../utils/activityLog";
 import { printReportHtml } from "../../../utils/printUtils";
 import { getAuthSession, normalizeRole } from "../../../utils/authSession";

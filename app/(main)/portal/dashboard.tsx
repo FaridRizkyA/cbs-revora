@@ -86,13 +86,6 @@ const chartConfig = {
   },
 };
 
-const formatChartDate = (value?: string | null) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
-};
-
 const formatShortDateTime = (value?: string | null) => formatDisplayDateTime(value);
 
 export default function MemberDashboardScreen() {

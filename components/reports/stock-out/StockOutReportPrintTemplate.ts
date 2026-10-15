@@ -1,6 +1,5 @@
 import {
   buildReportDetailPrintHtml,
-  buildReportPdfFileName,
   buildReportTablePrintHtml,
   downloadReportTableExcel,
   ReportMetaItem,
@@ -180,24 +179,6 @@ export const stockOutTableColumns: ReportTableColumn<StockOutReportRow>[] = [
     getValue: (row) => formatDateTime(row.stock_out_date),
   },
 ];
-
-export const buildStockOutTableReportPdfFileName = (date?: string | Date | null) =>
-  buildReportPdfFileName({
-    reportKey: REPORT_KEY,
-    variant: "table",
-    date,
-  });
-
-export const buildStockOutDetailReportPdfFileName = (
-  document: Pick<StockOutDetailReportRow, "stock_out_code">,
-  date?: string | Date | null
-) =>
-  buildReportPdfFileName({
-    reportKey: REPORT_KEY,
-    variant: "detail",
-    documentNumber: document.stock_out_code,
-    date,
-  });
 
 export const buildStockOutTableReportPrintHtml = ({
   rows,

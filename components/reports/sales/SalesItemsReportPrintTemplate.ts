@@ -1,10 +1,9 @@
 import {
-  buildReportPdfFileName,
   buildReportTablePrintHtml,
   ReportMetaItem,
   ReportTableColumn,
 } from "../shared/ReportPrintTemplate";
-import { buildExcelFileName, buildExcelTableHtmlWithEmbeddedLogos, ExcelColumn } from "../../../utils/excelExport";
+import { buildExcelFileName, ExcelColumn } from "../../../utils/excelExport";
 
 export type SalesItemReportRow = {
   id_sale_item?: string;
@@ -159,32 +158,8 @@ export const salesItemsExcelColumns: ExcelColumn<SalesItemReportRow>[] = [
   },
 ];
 
-export const buildSalesItemsTableReportPdfFileName = (date?: string | Date | null) =>
-  buildReportPdfFileName({
-    reportKey: REPORT_KEY,
-    variant: "table",
-    date,
-  });
-
 export const buildSalesItemsTableExcelFileName = (date?: string | Date | null) =>
   buildExcelFileName(REPORT_KEY, date);
-
-export const buildSalesItemsTableExcelHtml = ({
-  rows,
-  generatedAt = new Date(),
-  generatedBy,
-  meta = [],
-}: SalesItemsReportOptions) =>
-  buildExcelTableHtmlWithEmbeddedLogos({
-    title: "Sales Items Report",
-    subtitle: "Sold products from sales transactions",
-    reportKey: REPORT_KEY,
-    generatedAt,
-    generatedBy,
-    meta,
-    rows,
-    columns: salesItemsExcelColumns,
-  });
 
 export const buildSalesItemsTableReportPrintHtml = ({
   rows,

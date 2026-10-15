@@ -1,6 +1,5 @@
 import {
   buildReportDetailPrintHtml,
-  buildReportPdfFileName,
   buildReportTablePrintHtml,
   downloadReportTableExcel,
   ReportMetaItem,
@@ -152,34 +151,6 @@ export const shuYearlyColumns: ReportTableColumn<ShuYearReportRow>[] = [
   },
 ];
 
-export const distributionTableColumns: ReportTableColumn<ShuDetailReportData["member_distributions"][number]>[] = [
-  { key: "row_number", title: "No.", align: "center", width: "42px", getValue: (_row, index) => index + 1 },
-  { key: "full_name", title: "Member", width: "22%", getValue: (row) => row.full_name },
-  { key: "member_total_spending", title: "Spending", align: "right", width: "15%", getValue: (row) => formatRupiah(row.member_total_spending) },
-  { key: "sales_shu_amount", title: "Sales SHU", align: "right", width: "15%", getValue: (row) => formatRupiah(row.sales_shu_amount) },
-  { key: "spending_percentage", title: "Ratio (%)", align: "center", width: "10%", getValue: (row) => percentText(row.spending_percentage) },
-  { key: "business_shu_amount", title: "Business SHU", align: "right", width: "15%", getValue: (row) => formatRupiah(row.business_shu_amount) },
-  { key: "shu_amount", title: "Total SHU", align: "right", width: "15%", getValue: (row) => formatRupiah(row.shu_amount) },
-];
-
-export const buildShuYearlyReportPdfFileName = (date?: string | Date | null) =>
-  buildReportPdfFileName({
-    reportKey: REPORT_KEY,
-    variant: "table",
-    date,
-  });
-
-export const buildShuDetailReportPdfFileName = (
-  detail: Pick<ShuDetailReportData, "period">,
-  date?: string | Date | null
-) =>
-  buildReportPdfFileName({
-    reportKey: REPORT_KEY,
-    variant: "detail",
-    documentNumber: detail.period.period_name,
-    date,
-  });
-
 export const buildShuYearlyReportPrintHtml = ({
   rows,
   generatedAt = new Date(),
@@ -237,7 +208,7 @@ const detailTableFooterRowsToExcelRows = (table: ReportNestedTable) => {
 
 const detailTablesToExcelSections = (tables: ReportNestedTable[]): ExcelSection[] =>
   tables.map((table) => ({
-    title: table.title,
+    title: table.title || "",
     columns: table.columns.map((column) => ({
       key: column.key,
       title: column.title,

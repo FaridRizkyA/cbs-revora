@@ -1,5 +1,4 @@
 import {
-  buildReportPdfFileName,
   buildReportTablePrintHtml,
   downloadReportTableExcel,
   ReportMetaItem,
@@ -27,13 +26,6 @@ type GenericReportPrintOptions = {
   generatedBy?: string | null;
   meta?: ReportMetaItem[];
 };
-
-export const buildGenericReportPdfFileName = (reportKey: string, date?: string | Date | null) =>
-  buildReportPdfFileName({
-    reportKey,
-    variant: "table",
-    date,
-  });
 
 export const buildColumns = (columns: GenericReportColumn[]): ReportTableColumn<GenericReportRow>[] => [
   {

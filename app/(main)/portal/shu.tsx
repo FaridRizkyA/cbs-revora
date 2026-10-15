@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useRouter } from "expo-router";
-import * as Print from "expo-print";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { InventoryResultModal } from "../../../components/inventory/ActionModals";
 import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
 import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu";
@@ -41,7 +39,6 @@ type OverviewResponse = {
 };
 
 export default function MemberShuScreen() {
-  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [roleName, setRoleName] = useState("MEMBER");

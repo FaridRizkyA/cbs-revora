@@ -74,8 +74,6 @@ export const clearAuthSession = async () => {
   sessionListeners.forEach((listener) => listener(null));
 };
 
-export const clearAuthSessionLocal = clearAuthSession;
-
 export const logoutAuthSession = async () => {
   const session = await getAuthSession();
   if (session?.token) {
@@ -143,11 +141,6 @@ export const getRouteByRole = (roleNameRaw: string | null | undefined) => {
   return "/(main)/dashboard";
 };
 
-export const canAccessCashierMode = (roleNameRaw: string | null | undefined) => {
-  const roleName = normalizeRole(roleNameRaw);
-  return roleName === "CASHIER";
-};
-
 export const canAccessCashierModeWithGrade = (
   roleNameRaw: string | null | undefined,
   staffGradeNameRaw: string | null | undefined
@@ -197,11 +190,6 @@ export const canViewExternalFinancial = (roleNameRaw: string | null | undefined)
   return roleName === "STAFF" || roleName === "ADMIN";
 };
 
-export const canManageShu = (roleNameRaw: string | null | undefined) => {
-  const roleName = normalizeRole(roleNameRaw);
-  return roleName === "ADMIN";
-};
-
 export const canViewShu = (roleNameRaw: string | null | undefined) => {
   const roleName = normalizeRole(roleNameRaw);
   return roleName === "STAFF" || roleName === "ADMIN";
@@ -222,11 +210,6 @@ export const canInsertStockMovement = (roleNameRaw: string | null | undefined, s
   if (roleName === "ADMIN" || roleName === "CASHIER") return true;
   const gradeName = String(staffGradeNameRaw || "").trim().toUpperCase();
   return roleName === "STAFF" && gradeName.includes("OPERATIONAL STAFF");
-};
-
-export const canManageStockMovementRecord = (roleNameRaw: string | null | undefined) => {
-  const roleName = normalizeRole(roleNameRaw);
-  return roleName === "ADMIN";
 };
 
 const CASHIER_MAIN_ALLOWED_PATHS = new Set([

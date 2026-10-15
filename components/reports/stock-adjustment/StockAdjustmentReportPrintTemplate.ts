@@ -1,6 +1,5 @@
 import {
   buildReportDetailPrintHtml,
-  buildReportPdfFileName,
   buildReportTablePrintHtml,
   downloadReportTableExcel,
   ReportMetaItem,
@@ -125,24 +124,6 @@ export const stockAdjustmentTableColumns: ReportTableColumn<StockAdjustmentRepor
     getValue: (row) => formatDateTime(row.movement_date),
   },
 ];
-
-export const buildStockAdjustmentTableReportPdfFileName = (date?: string | Date | null) =>
-  buildReportPdfFileName({
-    reportKey: REPORT_KEY,
-    variant: "table",
-    date,
-  });
-
-export const buildStockAdjustmentDetailReportPdfFileName = (
-  adjustment: Pick<StockAdjustmentReportRow, "adjustment_code">,
-  date?: string | Date | null
-) =>
-  buildReportPdfFileName({
-    reportKey: REPORT_KEY,
-    variant: "detail",
-    documentNumber: adjustment.adjustment_code,
-    date,
-  });
 
 export const buildStockAdjustmentTableReportPrintHtml = ({
   rows,

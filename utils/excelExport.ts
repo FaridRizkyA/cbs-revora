@@ -273,28 +273,6 @@ export const buildExcelFileName = (reportKey: string, date?: string | Date | nul
     extension: "xlsx",
   });
 
-export const downloadExcelHtml = (html: string, fileName: string) => {
-  if (Platform.OS !== "web") {
-    throw new Error("Excel export is currently available on web only.");
-  }
-
-  if (typeof document === "undefined" || typeof URL === "undefined") {
-    throw new Error("Excel export is not available in this environment.");
-  }
-
-  const blob = new Blob([html], {
-    type: "application/vnd.ms-excel;charset=utf-8",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
-
 const downloadWorkbookBuffer = (buffer: BlobPart, fileName: string) => {
   if (Platform.OS !== "web") {
     throw new Error("Excel export is currently available on web only.");

@@ -1,6 +1,5 @@
-import { formatDateTime, formatRupiah } from "../../shu/formatters";
+import { formatRupiah } from "../../shu/formatters";
 import {
-  buildReportPdfFileName,
   buildReportTablePrintHtml,
   downloadReportTableExcel,
   ReportMetaItem,
@@ -8,7 +7,7 @@ import {
   ReportNestedTable,
   buildReportDetailPrintHtml,
 } from "../shared/ReportPrintTemplate";
-import { downloadExcelSectionWorkbook, flattenExcelSections, ExcelSection } from "../../../utils/excelExport";
+import { downloadExcelSectionWorkbook } from "../../../utils/excelExport";
 import { formatDateOnly } from "../../../utils/dateFormat";
 
 export type MemberShuHistoryRow = {
@@ -29,14 +28,6 @@ export type MemberShuHistoryRow = {
 
 const REPORT_KEY = "member-shu-history";
 const DETAIL_REPORT_KEY = "member-shu-slip";
-
-const escapeHtml = (value: string | number | null | undefined) =>
-  String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
 
 const percentText = (value: number) => `${(Number(value || 0) * 100).toFixed(2)}%`;
 
@@ -224,36 +215,6 @@ export const buildMemberShuDetailReportPrintHtml = ({
 };
 
 
-export const buildMemberShuDetailExcelFlattenedRows = (row: MemberShuDistributionData) => {
-  const tables = buildMemberShuDetailTables(row);
-  const sections = [
-    {
-      title: "Period Information",
-      columns: [
-        { key: "label", title: "Field", width: 22 },
-        { key: "value", title: "Value", width: 32 },
-      ],
-      rows: [
-        { label: "Period", value: row.period_name },
-        { label: "Start Date", value: formatDateOnly(row.start_date) },
-        { label: "End Date", value: formatDateOnly(row.end_date) },
-        { label: "Distribution Status", value: row.distribution_status },
-      ],
-    },
-    ...tables.map((table) => ({
-      title: table.title,
-      columns: table.columns.map((column) => ({
-        key: column.key,
-        title: column.title,
-        align: column.align,
-        width: typeof column.width === "number" ? column.width : undefined,
-      })),
-      rows: table.rows,
-    })),
-  ];
-  return flattenExcelSections(sections as any);
-};
-
 export const downloadMemberShuDetailReportExcel = async ({
   row,
   memberName,
@@ -295,7 +256,7 @@ export const downloadMemberShuDetailReportExcel = async ({
         ],
       },
       ...tables.map((table) => ({
-        title: table.title,
+        title: table.title || "",
         columns: table.columns.map((column) => ({
           key: column.key,
           title: column.title,

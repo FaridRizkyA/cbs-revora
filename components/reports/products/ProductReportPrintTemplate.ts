@@ -1,6 +1,5 @@
 import {
   buildReportDetailPrintHtml,
-  buildReportPdfFileName,
   buildReportTablePrintHtml,
   downloadReportTableExcel,
   ReportMetaItem,
@@ -111,24 +110,6 @@ export const productTableColumns: ReportTableColumn<ProductReportRow>[] = [
     getValue: (row) => row.available_stock,
   },
 ];
-
-export const buildProductTableReportPdfFileName = (date?: string | Date | null) =>
-  buildReportPdfFileName({
-    reportKey: REPORT_KEY,
-    variant: "table",
-    date,
-  });
-
-export const buildProductDetailReportPdfFileName = (
-  product: Pick<ProductReportRow, "product_code">,
-  date?: string | Date | null
-) =>
-  buildReportPdfFileName({
-    reportKey: REPORT_KEY,
-    variant: "detail",
-    documentNumber: product.product_code,
-    date,
-  });
 
 export const buildProductTableReportPrintHtml = ({
   rows,

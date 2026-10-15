@@ -1,6 +1,5 @@
 import {
   buildReportDetailPrintHtml,
-  buildReportPdfFileName,
   buildReportTablePrintHtml,
   downloadReportTableExcel,
   ReportMetaItem,
@@ -100,24 +99,6 @@ export const externalFinancialTableColumns: ReportTableColumn<ExternalFinancialR
     getValue: (row) => formatRupiah(Number(row.amount || 0)),
   },
 ];
-
-export const buildExternalFinancialTableReportPdfFileName = (date?: string | Date | null) =>
-  buildReportPdfFileName({
-    reportKey: REPORT_KEY,
-    variant: "table",
-    date,
-  });
-
-export const buildExternalFinancialDetailReportPdfFileName = (
-  entry: Pick<ExternalFinancialReportRow, "entry_type" | "entry_date">,
-  date?: string | Date | null
-) =>
-  buildReportPdfFileName({
-    reportKey: REPORT_KEY,
-    variant: "detail",
-    documentNumber: `${entry.entry_type}-${formatDateOnly(entry.entry_date)}`,
-    date,
-  });
 
 export const buildExternalFinancialTableReportPrintHtml = ({
   rows,

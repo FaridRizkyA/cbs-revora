@@ -1,6 +1,6 @@
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator } from "react-native";
 import DatePickerField from "../../../components/inventory/DatePickerField";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import InventoryDataTable, { InventoryDataTableColumn } from "../../../components/inventory/InventoryDataTable";
@@ -340,7 +340,7 @@ export default function ReportsScreen() {
                 value={sourceKey}
                 options={sourceOptions}
                 onChange={setSourceKey}
-                loading={loadingSources}
+                disabled={loadingSources}
               />
             </View>
             <View style={styles.formField}>

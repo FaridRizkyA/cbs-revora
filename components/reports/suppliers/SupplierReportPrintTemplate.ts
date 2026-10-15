@@ -1,6 +1,5 @@
 import {
   buildReportDetailPrintHtml,
-  buildReportPdfFileName,
   buildReportTablePrintHtml,
   downloadReportTableExcel,
   ReportMetaItem,
@@ -74,24 +73,6 @@ export const supplierTableColumns: ReportTableColumn<SupplierReportRow>[] = [
     getValue: (row) => row.phone_number,
   },
 ];
-
-export const buildSupplierTableReportPdfFileName = (date?: string | Date | null) =>
-  buildReportPdfFileName({
-    reportKey: REPORT_KEY,
-    variant: "table",
-    date,
-  });
-
-export const buildSupplierDetailReportPdfFileName = (
-  supplier: Pick<SupplierReportRow, "supplier_code">,
-  date?: string | Date | null
-) =>
-  buildReportPdfFileName({
-    reportKey: REPORT_KEY,
-    variant: "detail",
-    documentNumber: supplier.supplier_code,
-    date,
-  });
 
 export const buildSupplierTableReportPrintHtml = ({
   rows,

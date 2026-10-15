@@ -8,7 +8,7 @@ import SendEmailModal from "../../../components/modals/SendEmailModal";
 import { getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { printReportHtml } from "../../../utils/printUtils";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
-import { buildReportPdfFileName, buildReportTablePrintHtml, downloadReportTableExcel, ReportTableColumn } from "../../../components/reports/shared/ReportPrintTemplate";
+import { buildReportTablePrintHtml, downloadReportTableExcel, ReportTableColumn } from "../../../components/reports/shared/ReportPrintTemplate";
 import { formatDisplayDateTime, toLocalDateInput } from "../../../utils/dateFormat";
 
 type PeriodFilter = "LAST_7_DAYS" | "LAST_30_DAYS" | "ALL_TIME";
@@ -100,7 +100,7 @@ export default function LogsScreen() {
     try {
       const html = buildReportTablePrintHtml(getReportData());
       await printReportHtml(html, { tableName: "tbl_activity_logs", description: "Printed activity logs." });
-    } catch (error) {
+    } catch {
       setErrorMessage("Failed to print logs.");
     }
   };
@@ -108,7 +108,7 @@ export default function LogsScreen() {
   const handleExportExcel = async () => {
     try {
       await downloadReportTableExcel(getReportData());
-    } catch (error) {
+    } catch {
       setErrorMessage("Failed to export Excel.");
     }
   };

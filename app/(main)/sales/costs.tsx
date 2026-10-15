@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import DatePickerField from "../../../components/inventory/DatePickerField";
 import ExportDropdownMenu from "../../../components/inventory/ExportDropdownMenu";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
