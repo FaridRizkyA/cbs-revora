@@ -4,9 +4,9 @@ const multer = require("multer");
 const pool = require("../../config/db");
 const { logActivity } = require("../../utils/activityLogger");
 
-const { getActiveUserRole, assertInventoryMasterRole } = require("../sales/shared/auth");
 const { validatePhoneNumber } = require("../sales/shared/validators");
 const { generateNextSupplierCode, generateNextProductCode } = require("../sales/shared/codes");
+const { SIGNED_QUANTITY_SQL } = require("../../utils/stockSql");
 
 const SUPPLIER_OPERATION_LOCK_KEY = 820001;
 const PRODUCT_OPERATION_LOCK_KEY = 820002;
@@ -169,10 +169,7 @@ const getProducts = async (req, res) => {
         SELECT
           sm.id_product,
           SUM(
-            CASE
-              WHEN sm.movement_type = 'OUT' THEN -sm.quantity
-              ELSE sm.quantity
-            END
+            ${SIGNED_QUANTITY_SQL}
           )::int AS available_stock
         FROM tbl_stock_movements sm
         LEFT JOIN tbl_product_batches pb
@@ -253,8 +250,6 @@ const createSupplier = async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const user = await getActiveUserRole(client, id_user);
-    assertInventoryMasterRole(user.role_name);
     phoneValue = validatePhoneNumber(phone_number);
 
     await acquireAdvisoryLock(client, SUPPLIER_OPERATION_LOCK_KEY);
@@ -310,8 +305,6 @@ const updateSupplier = async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const user = await getActiveUserRole(client, id_user);
-    assertInventoryMasterRole(user.role_name);
     phoneValue = validatePhoneNumber(phone_number);
 
     await acquireAdvisoryLock(client, SUPPLIER_OPERATION_LOCK_KEY);
@@ -363,8 +356,6 @@ const setSupplierActiveState = async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const user = await getActiveUserRole(client, id_user);
-    assertInventoryMasterRole(user.role_name);
 
     const result = await client.query(
       `
@@ -419,10 +410,7 @@ const getBatches = async (req, res) => {
           GREATEST(
             COALESCE(
               SUM(
-                CASE
-                  WHEN sm.movement_type = 'OUT' THEN -sm.quantity
-                  ELSE sm.quantity
-                END
+                ${SIGNED_QUANTITY_SQL}
               ),
               0
             ),
@@ -609,8 +597,6 @@ const createProduct = async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const user = await getActiveUserRole(client, id_user);
-    assertInventoryMasterRole(user.role_name);
 
     await acquireAdvisoryLock(client, PRODUCT_OPERATION_LOCK_KEY);
     const supplierResult = await client.query(
@@ -691,8 +677,6 @@ const updateProduct = async (req, res) => {
   let nextProductImage = null;
   try {
     await client.query("BEGIN");
-    const user = await getActiveUserRole(client, id_user);
-    assertInventoryMasterRole(user.role_name);
 
     await acquireAdvisoryLock(client, PRODUCT_OPERATION_LOCK_KEY);
     const supplierResult = await client.query(
@@ -778,8 +762,6 @@ const setProductActiveState = async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const user = await getActiveUserRole(client, id_user);
-    assertInventoryMasterRole(user.role_name);
 
     const result = await client.query(
       `
@@ -830,10 +812,7 @@ const getProductBatchesByProduct = async (req, res) => {
         GREATEST(
           COALESCE(
             SUM(
-              CASE
-                WHEN sm.movement_type = 'OUT' THEN -sm.quantity
-                ELSE sm.quantity
-              END
+              ${SIGNED_QUANTITY_SQL}
             ),
             0
           ),
@@ -848,10 +827,7 @@ const getProductBatchesByProduct = async (req, res) => {
       HAVING GREATEST(
         COALESCE(
           SUM(
-            CASE
-              WHEN sm.movement_type = 'OUT' THEN -sm.quantity
-              ELSE sm.quantity
-            END
+            ${SIGNED_QUANTITY_SQL}
           ),
           0
         ),

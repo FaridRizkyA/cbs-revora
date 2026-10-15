@@ -1,4 +1,5 @@
 const pool = require("../../config/db");
+const { SIGNED_QUANTITY_SQL } = require("../../utils/stockSql");
 
 const summaryCard = async (req, res) => {
   try {
@@ -21,7 +22,7 @@ const summaryCard = async (req, res) => {
             pb.id_product_batch,
             pb.expired_date,
             COALESCE(SUM(
-              CASE WHEN sm.movement_type = 'OUT' THEN -sm.quantity ELSE sm.quantity END
+              ${SIGNED_QUANTITY_SQL}
             ), 0) AS remaining_qty
           FROM tbl_product_batches pb
           LEFT JOIN tbl_stock_movements sm
@@ -104,10 +105,7 @@ const graphs = async (req, res) => {
             GREATEST(
               COALESCE(
                 SUM(
-                  CASE
-                    WHEN sm.movement_type = 'OUT' THEN -sm.quantity
-                    ELSE sm.quantity
-                  END
+                  ${SIGNED_QUANTITY_SQL}
                 ),
                 0
               ),
@@ -166,10 +164,7 @@ const graphs = async (req, res) => {
             GREATEST(
               COALESCE(
                 SUM(
-                  CASE
-                    WHEN sm.movement_type = 'OUT' THEN -sm.quantity
-                    ELSE sm.quantity
-                  END
+                  ${SIGNED_QUANTITY_SQL}
                 ),
                 0
               ),

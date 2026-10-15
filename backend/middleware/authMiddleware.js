@@ -119,21 +119,6 @@ const authenticateToken = async (req, res, next) => {
   });
 };
 
-const authorizeRoles = (...allowedRoles) => {
-  return (req, res, next) => {
-    if (!req.user || !req.user.role_name) {
-      return res.status(403).json({ message: "Access denied. Role not found." });
-    }
-
-    if (!allowedRoles.includes(req.user.role_name)) {
-      return res.status(403).json({ message: "Access denied. Insufficient permissions." });
-    }
-
-    next();
-  };
-};
-
 module.exports = {
   authenticateToken,
-  authorizeRoles,
 };

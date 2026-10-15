@@ -1,6 +1,5 @@
 const express = require("express");
 const {
-  listRoles,
   uploadProfileImage,
   getUserProfile,
   updateUserProfile,
@@ -27,7 +26,6 @@ const { requireAccess, requireSelfOrAdmin } = require("../utils/accessPolicy");
 
 const router = express.Router();
 
-router.get("/people/roles", requireAccess("viewPeople"), listRoles);
 router.post("/people/profile-image", requireAccess("authenticated"), uploadProfileImage);
 router.get("/people/staff-grades", requireAccess("viewPeople"), listStaffGrades);
 router.post("/people/staff-grades", requireAccess("managePeople"), createStaffGrade);

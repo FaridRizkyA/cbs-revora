@@ -4,7 +4,6 @@ const {
   getMemberOverview,
   listMemberTransactions,
   getMemberTransactionDetail,
-  listMemberSavings,
   listMemberShuHistory,
 } = require("../modules/memberPortal/memberPortalController");
 

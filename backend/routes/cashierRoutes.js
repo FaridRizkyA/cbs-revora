@@ -15,7 +15,6 @@ const {
 } = require("../modules/inventory");
 
 const {
-  getStockMovements,
   getStockAdjustments,
   createStockAdjustment,
   getStockOutManualDocuments,
@@ -33,7 +32,6 @@ const {
 const {
   checkoutSale,
   getMembers,
-  getReceiptEmailStatus,
 } = require("../modules/sales");
 
 const { requireAccess } = require("../utils/accessPolicy");
@@ -47,7 +45,6 @@ router.put("/products/:idProduct", requireAccess("manageInventoryMaster"), updat
 router.patch("/products/:idProduct/status", requireAccess("manageInventoryMaster"), setProductActiveState);
 router.get("/products/:idProduct/batches", requireAccess("backOffice"), getProductBatchesByProduct);
 router.get("/batches", requireAccess("backOffice"), getBatches);
-router.get("/stock-movements", requireAccess("backOffice"), getStockMovements);
 router.get("/stock-adjustments", requireAccess("backOffice"), getStockAdjustments);
 router.post("/stock-adjustments", requireAccess("insertStockMovement"), createStockAdjustment);
 router.get("/stock-out-manual-documents", requireAccess("backOffice"), getStockOutManualDocuments);
@@ -67,7 +64,6 @@ router.patch("/suppliers/:idSupplier/status", requireAccess("manageInventoryMast
 router.get("/suppliers/:idSupplier/products", requireAccess("backOffice"), getProductsBySupplier);
 router.get("/members", requireAccess("backOffice"), getMembers);
 router.post("/sales/checkout", requireAccess("cashierMode"), checkoutSale);
-router.get("/sales/:idSale/receipt-email-status", requireAccess("backOffice"), getReceiptEmailStatus);
 
 module.exports = router;
 

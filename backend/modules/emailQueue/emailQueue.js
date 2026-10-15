@@ -1,5 +1,4 @@
 const pool = require("../../config/db");
-const { logActivity } = require("../../utils/activityLogger");
 const { sendReceiptEmail } = require("../../utils/receiptEmail");
 const { 
   buildReportPdfFromHtml, 
@@ -726,12 +725,6 @@ const processShuNotificationJob = async (job) => {
     TOTAL_SPENDING: row.type === "MEMBER" ? formatRupiah(row.member_total_spending) : "-",
     SHU_AMOUNT: formatRupiah(row.shu_amount),
   });
-
-  const meta = [
-    { label: "Name", value: row.full_name },
-    { label: row.type === "MEMBER" ? "Member Code" : "Staff Code", value: row.type === "MEMBER" ? row.member_code : row.staff_code },
-    { label: "Period", value: row.period_name },
-  ];
 
   const reportRows = [];
   if (row.type === "MEMBER") {

@@ -27,7 +27,8 @@ const policies = {
   viewExternalFinancial: (user) => isAdmin(user) || isStaff(user),
   manageExternalFinancial: (user) => isAdmin(user) || (isStaff(user) && isTreasurer(user)),
   viewShu: (user) => isAdmin(user) || isStaff(user),
-  calculateShu: isAdmin,
+  // Same people who may finalize may (re)calculate; the SHU page shows both actions together.
+  calculateShu: (user) => isAdmin(user) || isTreasurer(user),
   finalizeShu: (user) => isAdmin(user) || isTreasurer(user),
   viewLogs: isAdmin,
   authenticated: (user) => Boolean(user?.id_user),

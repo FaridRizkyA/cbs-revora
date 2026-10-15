@@ -1,1 +1,6 @@
-module.exports = require('./stockMovementController');
+module.exports = {
+  ...require("./stockAdjustmentController"),
+  ...require("./stockInController"),
+  ...require("./stockOutController"),
+  ...require("./salesLedgerController"),
+};

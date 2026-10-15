@@ -1,10 +1,10 @@
 const pool = require("../../config/db");
 
-const { canAccessCashierModeRole, getActiveUserRole } = require("./shared/auth");
 const { logActivity } = require("../../utils/activityLogger");
 const { enqueueReceiptEmailJob } = require("../emailQueue/emailQueue");
 const { toNumber, validatePositiveInteger } = require("./shared/validators");
 const { createSaleNumber } = require("./shared/numbering");
+const { SIGNED_QUANTITY_SQL } = require("../../utils/stockSql");
 
 const getMembers = async (req, res) => {
   const search = String(req.query.search || "").trim();
@@ -90,10 +90,7 @@ const getAvailableBatches = async (client, idProduct) => {
       GREATEST(
         COALESCE(
           SUM(
-            CASE
-              WHEN sm.movement_type = 'OUT' THEN -sm.quantity
-              ELSE sm.quantity
-            END
+            ${SIGNED_QUANTITY_SQL}
           ),
           0
         ),
@@ -109,10 +106,7 @@ const getAvailableBatches = async (client, idProduct) => {
     HAVING GREATEST(
       COALESCE(
         SUM(
-          CASE
-            WHEN sm.movement_type = 'OUT' THEN -sm.quantity
-            ELSE sm.quantity
-          END
+          ${SIGNED_QUANTITY_SQL}
         ),
         0
       ),
@@ -155,41 +149,7 @@ const checkoutSale = async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    const cashier = await getActiveUserRole(client, id_cashier);
-    if (!canAccessCashierModeRole(cashier.role_name, cashier.staff_grade_name)) {
-      throw new Error("User role is not allowed to perform checkout.");
-    }
-
     let member = null;
-    let cashierProfile = null;
-
-    const cashierProfileResult = await client.query(
-      `
-      SELECT
-        u.id_user,
-        u.email,
-        COALESCE(
-          NULLIF(TRIM(CONCAT(COALESCE(p.first_name, ''), ' ', COALESCE(p.last_name, ''))), ''),
-          u.email,
-          '-'
-        ) AS full_name
-      FROM tbl_users u
-      LEFT JOIN tbl_profiles p
-        ON p.id_user = u.id_user
-       AND p.is_active = 'Y'
-      WHERE u.id_user = $1
-        AND u.is_active = 'Y'
-      LIMIT 1;
-      `,
-      [id_cashier]
-    );
-
-    if (cashierProfileResult.rowCount === 0) {
-      throw new Error("Cashier account not found or inactive.");
-    }
-
-    cashierProfile = cashierProfileResult.rows[0];
-
     if (id_member) {
       const memberResult = await client.query(
         `
@@ -471,75 +431,9 @@ const checkoutSale = async (req, res) => {
   }
 };
 
-const getReceiptEmailStatus = async (req, res) => {
-  const saleId = String(req.params.idSale || "").trim();
-
-  if (!saleId) {
-    return res.status(400).json({
-      message: "Sale ID is required.",
-    });
-  }
-
-  try {
-    const result = await pool.query(
-      `
-      SELECT
-        el.id_email_log,
-        el.email_status,
-        el.failed_reason,
-        el.sent_date,
-        el.created_date,
-        el.attempt_count,
-        s.sale_number,
-        s.sale_date,
-        el.email_to
-      FROM tbl_email_logs el
-      JOIN tbl_sales s
-        ON s.id_sale = el.reference_id
-      WHERE el.reference_table = 'tbl_sales'
-        AND el.reference_id = $1
-        AND el.email_type = 'SALE_RECEIPT'
-      ORDER BY el.created_date DESC
-      LIMIT 1;
-      `,
-      [saleId]
-    );
-
-    if (result.rowCount === 0) {
-      return res.json({
-        data: {
-          found: false,
-          status: "SKIPPED",
-        },
-      });
-    }
-
-    const row = result.rows[0];
-    return res.json({
-      data: {
-        found: true,
-        status: String(row.email_status || "PENDING").toUpperCase(),
-        failed_reason: row.failed_reason || null,
-        sent_date: row.sent_date || null,
-        created_date: row.created_date || null,
-        attempt_count: Number(row.attempt_count || 0),
-        sale_number: row.sale_number || null,
-        sale_date: row.sale_date || null,
-        email_to: row.email_to || null,
-      },
-    });
-  } catch (error) {
-    return res.status(500).json({
-      message: "Failed to fetch receipt email status.",
-      error: error.message,
-    });
-  }
-};
-
 module.exports = {
   getMembers,
   checkoutSale,
-  getReceiptEmailStatus,
 };
 
 
