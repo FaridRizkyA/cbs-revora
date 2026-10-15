@@ -56,9 +56,9 @@ export function ShuOfficerCard({ rows }: Props) {
           emptyText="No officer distribution available yet."
           enablePagination={false}
           footerValues={[
-            <Text style={[styles.rowCell, { fontWeight: "700" }]}>Total</Text>,
-            <Text style={styles.rowCell} />,
-            <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(rows.reduce((sum, r) => sum + (r.shu_amount || 0), 0))}</Text>,
+            <Text key="footer-0" style={[styles.rowCell, { fontWeight: "700" }]}>Total</Text>,
+            <Text key="footer-1" style={styles.rowCell} />,
+            <Text key="footer-2" style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(rows.reduce((sum, r) => sum + (r.shu_amount || 0), 0))}</Text>,
           ]}
         />
       )}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import ResponsiveModal from "../../../components/common/ResponsiveModal";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
@@ -11,7 +11,6 @@ import SendEmailModal from "../../../components/modals/SendEmailModal";
 import {
   buildShuDetailReportPrintHtml,
   buildShuYearlyReportPrintHtml,
-  distributionTableColumns,
   buildShuDetailExcelFlattenedRows,
   downloadShuDetailReportExcel,
   downloadShuYearlyReportExcel,
@@ -27,7 +26,7 @@ import { styles } from "../../../components/shu/styles";
 import { MemberDistribution, OfficerDistribution, ShuPeriod } from "../../../components/shu/types";
 import { fetchWithAuth } from "../../../utils/fetchWithAuth";
 import { logClientActivity } from "../../../utils/activityLog";
-import { canManageShu, getAuthSession, normalizeRole } from "../../../utils/authSession";
+import { getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
 import { printReportHtml } from "../../../utils/printUtils";
 import { toLocalDateInput } from "../../../utils/dateFormat";
@@ -209,8 +208,6 @@ export default function ShuScreen() {
     setResultModalOpen(true);
   };
 
-  const canManage = canManageShu(roleName);
-
   const loadYearlySummary = useCallback(async () => {
     setLoading(true);
     setErrorMessage(null);
@@ -296,11 +293,13 @@ export default function ShuScreen() {
         const res = await fetchWithAuth("/api/people/staffs");
         const payload = await res.json();
         if (!res.ok) throw new Error(payload.message || "Failed to fetch staff access.");
-        const staff = (Array.isArray(payload.data) ? payload.data : []).find((item) => item.id_user === idUser);
+        const staffRows: { id_user: string; grade_name?: string | null; access_role?: string | null; officer_roles?: { officer_role_code: string }[] }[] =
+          Array.isArray(payload.data) ? payload.data : [];
+        const staff = staffRows.find((item) => item.id_user === idUser);
         const gradeName = String(staff?.grade_name || "").trim().toUpperCase();
         const accessRole = String(staff?.access_role || "").trim().toUpperCase();
         const officerRoles = Array.isArray(staff?.officer_roles) ? staff.officer_roles : [];
-        const hasTreasurerOfficerRole = officerRoles.some((role: any) => String(role.officer_role_code).toUpperCase() === "TREASURER");
+        const hasTreasurerOfficerRole = officerRoles.some((role) => String(role.officer_role_code).toUpperCase() === "TREASURER");
         
         setCanFinalizeShu(gradeName.includes("TREASURER") || hasTreasurerOfficerRole || accessRole === "ADMIN");
       })
@@ -917,10 +916,10 @@ export default function ShuScreen() {
                 enablePagination={false}
                 footerValues={
                   !detailData?.monthly_income?.length ? undefined : [
-                    <Text style={[styles.rowCell, { fontWeight: "700" }]}>Total</Text>,
-                    <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(detailData.monthly_income.reduce((sum, r) => sum + r.sales_turnover_amount, 0))}</Text>,
-                    <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(detailData.monthly_income.reduce((sum, r) => sum + r.external_income_amount, 0))}</Text>,
-                    <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(detailData.monthly_income.reduce((sum, r) => sum + r.total_income_amount, 0))}</Text>,
+                    <Text key="footer-0" style={[styles.rowCell, { fontWeight: "700" }]}>Total</Text>,
+                    <Text key="footer-1" style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(detailData.monthly_income.reduce((sum, r) => sum + r.sales_turnover_amount, 0))}</Text>,
+                    <Text key="footer-2" style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(detailData.monthly_income.reduce((sum, r) => sum + r.external_income_amount, 0))}</Text>,
+                    <Text key="footer-3" style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(detailData.monthly_income.reduce((sum, r) => sum + r.total_income_amount, 0))}</Text>,
                   ]
                 }
               />
@@ -940,8 +939,8 @@ export default function ShuScreen() {
                     undefined,
                     undefined,
                     undefined,
-                    <Text style={[styles.rowCell, { fontWeight: "700", textAlign: "right", width: "100%" }]}>Total Expenses</Text>,
-                    <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(detailData.yearly_expenses.reduce((sum, r) => sum + r.amount, 0))}</Text>,
+                    <Text key="footer-0" style={[styles.rowCell, { fontWeight: "700", textAlign: "right", width: "100%" }]}>Total Expenses</Text>,
+                    <Text key="footer-1" style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(detailData.yearly_expenses.reduce((sum, r) => sum + r.amount, 0))}</Text>,
                   ]
                 }
               />

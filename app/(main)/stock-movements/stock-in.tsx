@@ -1,6 +1,5 @@
-import * as Print from "expo-print";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import StockInFormModal from "../../../components/inventory/StockInFormModal";
@@ -26,6 +25,7 @@ import { logClientActivity } from "../../../utils/activityLog";
 import { printReportHtml } from "../../../utils/printUtils";
 import { canInsertStockMovement, getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { withEmailPdfAttachment } from "../../../utils/reportEmail";
+import { toLocalDateInput, formatDisplayDateTime } from "../../../utils/dateFormat";
 
 type StockInDocument = {
   id_stock_in: string;
@@ -78,9 +78,6 @@ type DraftItem = {
   expired_date: string;
   purchase_price: string;
 };
-
-import { downloadReportPdf } from "../../../utils/pdfExport";
-import { toLocalDateInput, formatDisplayDateTime } from "../../../utils/dateFormat";
 
 export default function StockInScreen() {
   const [rows, setRows] = useState<StockInDocument[]>([]);
@@ -149,7 +146,7 @@ export default function StockInScreen() {
   const loadSuppliers = async () => {
     const response = await fetchWithAuth("/api/suppliers");
     const payload = await response.json();
-    const safeRows = Array.isArray(payload?.data) ? payload.data : [];
+    const safeRows: Supplier[] = Array.isArray(payload?.data) ? payload.data : [];
     setSuppliers(safeRows.filter((item) => item?.is_active === "Y"));
   };
 
@@ -161,7 +158,7 @@ export default function StockInScreen() {
 
     const response = await fetchWithAuth(`/api/suppliers/${idSupplier}/products`);
     const payload = await response.json();
-    const safeRows = Array.isArray(payload?.data) ? payload.data : [];
+    const safeRows: SupplierProduct[] = Array.isArray(payload?.data) ? payload.data : [];
     setProducts(safeRows.filter((item) => item?.is_active === "Y"));
   };
 
@@ -182,6 +179,7 @@ export default function StockInScreen() {
     getAuthSession()
       .then((session) => {
         setRoleName(normalizeRole(session?.user?.role_name) || "CASHIER");
+        setStaffGradeName(session?.user?.staff_grade_name || "");
         setUserId(session?.user?.id_user || "");
       })
       .catch(() => setRoleName("CASHIER"));

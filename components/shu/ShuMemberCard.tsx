@@ -117,12 +117,12 @@ export function ShuMemberCard({ rows }: Props) {
             initialPageSize={10}
             pageSizeOptions={[10, 25, 50]}
             footerValues={[
-              <Text style={[styles.rowCell, { fontWeight: "700" }]}>Total</Text>,
-              <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(totals.totalSpending)}</Text>,
-              <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(rows.reduce((s, r) => s + (r.sales_shu_amount || 0), 0))}</Text>,
-              <Text style={[styles.rowCell, { fontWeight: "700", textAlign: "center" }]}>100%</Text>,
-              <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(rows.reduce((s, r) => s + (r.business_shu_amount || 0), 0))}</Text>,
-              <Text style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(totals.totalShu)}</Text>,
+              <Text key="footer-0" style={[styles.rowCell, { fontWeight: "700" }]}>Total</Text>,
+              <Text key="footer-1" style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(totals.totalSpending)}</Text>,
+              <Text key="footer-2" style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(rows.reduce((s, r) => s + (r.sales_shu_amount || 0), 0))}</Text>,
+              <Text key="footer-3" style={[styles.rowCell, { fontWeight: "700", textAlign: "center" }]}>100%</Text>,
+              <Text key="footer-4" style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(rows.reduce((s, r) => s + (r.business_shu_amount || 0), 0))}</Text>,
+              <Text key="footer-5" style={[styles.rowCell, { fontWeight: "700" }]}>{formatRupiah(totals.totalShu)}</Text>,
             ]}
           />
         </>

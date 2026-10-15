@@ -1,7 +1,6 @@
 import { Feather } from "@expo/vector-icons";
-import * as Print from "expo-print";
 import { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import IconFilterButton from "../../../components/inventory/IconFilterButton";
@@ -103,6 +102,7 @@ export default function SuppliersScreen() {
     getAuthSession()
       .then((session) => {
         setRoleName(normalizeRole(session?.user?.role_name) || "CASHIER");
+        setStaffGradeName(session?.user?.staff_grade_name || "");
         setUserId(session?.user?.id_user || "");
       })
       .catch(() => setRoleName("CASHIER"));

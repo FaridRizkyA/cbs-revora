@@ -105,7 +105,7 @@ export default function StockOutManualScreen() {
   const loadProducts = async () => {
     const response = await fetchWithAuth("/api/products");
     const payload = await response.json();
-    const safeRows = Array.isArray(payload?.data) ? payload.data : [];
+    const safeRows: Product[] = Array.isArray(payload?.data) ? payload.data : [];
     setProducts(safeRows.filter((item) => item?.is_active !== "N"));
   };
 
@@ -113,6 +113,7 @@ export default function StockOutManualScreen() {
     getAuthSession()
       .then((session) => {
         setRoleName(normalizeRole(session?.user?.role_name) || "CASHIER");
+        setStaffGradeName(session?.user?.staff_grade_name || "");
         setUserId(session?.user?.id_user || "");
       })
       .catch(() => setRoleName("CASHIER"));

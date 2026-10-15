@@ -1,15 +1,17 @@
 import { ReactNode, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { DimensionValue, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 type SortDirection = "asc" | "desc";
 
 export type InventoryDataTableColumn<T> = {
   key: string;
   title: string;
-  width?: string | number;
+  width?: DimensionValue;
   weight?: number;
   align?: "left" | "center" | "right";
   sortable?: boolean;
+  // Sort applied when the table first renders.
+  defaultSort?: SortDirection;
   sortValue?: (row: T) => string | number;
   render: (row: T, meta: { rowIndex: number; totalRows: number }) => ReactNode;
 };
@@ -49,7 +51,11 @@ export default function InventoryDataTable<T>({
   footerValues,
 }: InventoryDataTableProps<T>) {
   const [containerWidth, setContainerWidth] = useState(0);
-  const [sortRules, setSortRules] = useState<SortRule[]>([]);
+  const [sortRules, setSortRules] = useState<SortRule[]>(() =>
+    columns
+      .filter((column) => column.sortable && column.defaultSort)
+      .map((column) => ({ key: column.key, direction: column.defaultSort as SortDirection }))
+  );
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(initialPageSize);
 
@@ -100,7 +106,7 @@ export default function InventoryDataTable<T>({
     return sum > 0 ? sum : columns.length || 1;
   }, [columns]);
 
-  const resolveColumnWidth = (column: InventoryDataTableColumn<T>) => {
+  const resolveColumnWidth = (column: InventoryDataTableColumn<T>): DimensionValue => {
     if (column.width !== undefined) return column.width;
     const weight = Math.max(0, Number(column.weight || 1));
     return `${(weight / totalWeight) * 100}%`;

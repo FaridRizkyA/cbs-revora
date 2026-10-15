@@ -1,6 +1,5 @@
-import * as Print from "expo-print";
 import { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import DatePickerField from "../../../components/inventory/DatePickerField";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
@@ -129,7 +128,7 @@ export default function StockAdjustmentScreen() {
   const loadProducts = async () => {
     const response = await fetchWithAuth("/api/products");
     const payload = await response.json();
-    const safeRows = Array.isArray(payload?.data) ? payload.data : [];
+    const safeRows: Product[] = Array.isArray(payload?.data) ? payload.data : [];
     setProducts(safeRows.filter((item) => item?.is_active !== "N"));
   };
 
@@ -137,6 +136,7 @@ export default function StockAdjustmentScreen() {
     getAuthSession()
       .then((session) => {
         setRoleName(normalizeRole(session?.user?.role_name) || "CASHIER");
+        setStaffGradeName(session?.user?.staff_grade_name || "");
         setUserId(session?.user?.id_user || "");
       })
       .catch(() => setRoleName("CASHIER"));

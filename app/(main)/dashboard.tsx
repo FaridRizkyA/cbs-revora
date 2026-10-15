@@ -207,6 +207,7 @@ const styles = StyleSheet.create({
   summaryValue: { color: "#0f2852", fontSize: 22, fontWeight: "800", lineHeight: 28 },
   summaryCaption: { color: "#64748b", fontSize: 12 },
   tableCard: { backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#dbe3ee", padding: 16, gap: 8, marginTop: 4 },
+  cardTitle: { color: "#0f2852", fontSize: 17, fontWeight: "700" },
   tableHeader: { height: 42, borderRadius: 8, backgroundColor: "#f1f5fb", flexDirection: "row", alignItems: "center", paddingHorizontal: 8 },
   tableRow: { minHeight: 44, borderBottomWidth: 1, borderBottomColor: "#eef2f7", flexDirection: "row", alignItems: "center", paddingHorizontal: 8 },
   headCell: { color: "#3c5477", fontWeight: "700", fontSize: 15, textAlign: "left" },
