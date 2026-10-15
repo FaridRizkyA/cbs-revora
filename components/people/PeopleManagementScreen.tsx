@@ -1,8 +1,8 @@
 import { printReportHtml } from "../../utils/printUtils";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import * as Print from "expo-print";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Image } from "expo-image";
+import { Modal, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import ResponsiveModal from "../common/ResponsiveModal";
 import DatePickerField from "../inventory/DatePickerField";
 import FilterSelectField from "../inventory/FilterSelectField";
@@ -19,96 +19,15 @@ import {
 } from "../reports/people/PeopleReportPrintTemplate";
 import { formatDate } from "../shu/formatters";
 import { fetchWithAuth } from "../../utils/fetchWithAuth";
-import { logClientActivity } from "../../utils/activityLog";
 import { canManagePeople, getAuthSession, normalizeRole } from "../../utils/authSession";
 import { pickSquareImageAsync } from "../../utils/imageUpload";
 import { isValidPasswordPolicy, PASSWORD_POLICY_MESSAGE } from "../../utils/passwordPolicy";
-import { toLocalDateInput } from "../../utils/dateFormat";
-import RequiredMark from "../forms/RequiredMark";
-
-type ScreenType = "users" | "members" | "staffs";
-
-type RoleOption = {
-  id_role: string;
-  role_name: string;
-};
-
-type StaffGrade = {
-  id_staff_grade: string;
-  grade_code: string;
-  grade_name: string;
-  grade_order: number;
-  description?: string | null;
-  is_active?: string;
-};
-
-type StaffGradeFormState = {
-  grade_name: string;
-  grade_order: string;
-  description: string;
-};
-
-type StaffsTab = "staffs" | "grades";
-
-type PersonRow = {
-  id_user: string;
-  id_profile?: string | null;
-  id_member?: string;
-  id_staff?: string;
-  id_staff_grade?: string | null;
-  created_at?: string | null;
-  email: string;
-  first_name?: string | null;
-  last_name?: string | null;
-  full_name?: string | null;
-  phone_number?: string | null;
-  address?: string | null;
-  profile_image?: string | null;
-  is_active: "Y" | "N";
-  roles?: RoleOption[];
-  access_role?: string | null;
-  member_code?: string;
-  staff_code?: string;
-  grade_name?: string | null;
-  join_date?: string | null;
-  exit_date?: string | null;
-  total_spending?: number;
-};
-
-type FormState = {
-  id_user: string;
-  email: string;
-  password: string;
-  password_confirmation: string;
-  first_name: string;
-  last_name: string;
-  phone_number: string;
-  address: string;
-  profile_image: string;
-  role_ids: string[];
-  access_role: string;
-  member_code: string;
-  staff_code: string;
-  id_staff_grade: string;
-  join_date: string;
-  exit_date: string;
-};
-
-type SelectedImage = {
-  uri: string;
-  name: string;
-  mimeType?: string | null;
-  file?: File;
-};
-
-type WebCropState = {
-  sourceUri: string;
-  fileName: string;
-  mimeType: string;
-  objectUrl?: string;
-  naturalWidth: number;
-  naturalHeight: number;
-};
+import { formatDisplayDateTime as formatDateTime, toLocalDateInput } from "../../utils/dateFormat";
+import { styles } from "./peopleScreen.styles";
+import { useSquareImageCrop } from "../../utils/useSquareImageCrop";
+import { Input, Meta } from "./PeopleFields";
+import { isValidPersonName, isValidPhone, roleNames, sanitizePersonNameInput, sanitizePhoneInput } from "./peopleScreen.helpers";
+import type { ScreenType, StaffGrade, StaffGradeFormState, StaffsTab, PersonRow, FormState, SelectedImage } from "./peopleScreen.types";
 
 type PendingAction =
   | { type: "save-person" }
@@ -169,41 +88,6 @@ const config = {
 } satisfies Record<ScreenType, Record<string, string>>;
 
 const getRowId = (type: ScreenType, row: PersonRow) => String(row[config[type].idKey as keyof PersonRow] || "");
-const roleNames = (row: PersonRow) => (row.roles || []).map((role) => role.role_name).join(", ") || "-";
-const formatDateTime = (value?: string | null) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("id-ID", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  })
-    .format(date)
-    .replace(/\./g, ":");
-};
-
-const sanitizePersonNameInput = (value: string) => value.replace(/[^\p{L}\s]/gu, "").replace(/\s+/g, " ");
-const sanitizePhoneInput = (value: string) => value.replace(/[^0-9+\-\s]/g, "").replace(/\s+/g, " ");
-const countPhoneDigits = (value: string) => value.replace(/\D/g, "").length;
-const isValidPersonName = (value: string, required = false) => {
-  const text = value.trim();
-  if (!text) return !required;
-  return /^[\p{L}\s]+$/u.test(text);
-};
-const isValidPhone = (value: string) => {
-  const text = value.trim();
-  if (!text) return true;
-  if (!/^[0-9+\-\s]{1,25}$/.test(text)) return false;
-  if ((text.match(/\+/g) || []).length > 1 || (text.includes("+") && !text.startsWith("+"))) return false;
-  const digitCount = countPhoneDigits(text);
-  return digitCount >= 3 && digitCount <= 20;
-};
-
 export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
   const { width, height } = useWindowDimensions();
   const isPhone = width < 768;
@@ -256,20 +140,22 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
 
   // Cropper States
   const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(null);
-  const [webCrop, setWebCrop] = useState<WebCropState | null>(null);
-  const [cropViewportSize, setCropViewportSize] = useState(320);
-  const [cropTransform, setCropTransform] = useState({ scale: 1, translateX: 0, translateY: 0 });
-  const cropTransformRef = useRef(cropTransform);
-  const cropGestureRef = useRef({ startScale: 1, startTranslateX: 0, startTranslateY: 0, startClientX: 0, startClientY: 0 });
-  const cropDragRef = useRef({ active: false, lastX: 0, lastY: 0 });
-  const [isCropDragging, setIsCropDragging] = useState(false);
-  const cropBoxRatio = 0.82;
-  const cropBoxSize = Math.max(1, Math.floor(cropViewportSize * cropBoxRatio));
+  const {
+    webCrop,
+    setWebCrop,
+    cropViewportSize,
+    setCropViewportSize,
+    cropTransform,
+    setCropTransform,
+    cropTransformRef,
+    cropBoxSize,
+    clampCropTransform,
+    setCropScale,
+    beginCropDrag,
+    closeWebCropper,
+    renderCropToCanvas,
+  } = useSquareImageCrop();
   const cropModalWidth = Math.min(440, Math.max(320, Math.floor(Math.min(width - 32, height - 300))));
-
-  useEffect(() => {
-    cropTransformRef.current = cropTransform;
-  }, [cropTransform]);
 
   const loadRows = useCallback(() => {
     fetchWithAuth(screenConfig.endpoint)
@@ -351,109 +237,6 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
     setProfileImageFailed(false);
   }, [profileOpen]);
 
-  const closeWebCropper = useCallback(() => {
-    if (webCrop?.objectUrl?.startsWith("blob:")) {
-      URL.revokeObjectURL(webCrop.objectUrl);
-    }
-    setWebCrop(null);
-    setCropTransform({ scale: 1, translateX: 0, translateY: 0 });
-  }, [webCrop]);
-
-  const clampCropTransform = useCallback(
-    (nextScale: number, nextTranslateX: number, nextTranslateY: number, sourceWidth: number, sourceHeight: number) => {
-      const fitScale = Math.min(
-        cropViewportSize / Math.max(1, sourceWidth),
-        cropViewportSize / Math.max(1, sourceHeight)
-      );
-      const minCoverScale = Math.max(
-        cropBoxSize / Math.max(1, sourceWidth * fitScale),
-        cropBoxSize / Math.max(1, sourceHeight * fitScale)
-      );
-      const safeScale = Math.max(minCoverScale, nextScale);
-      const displayWidth = Math.max(1, sourceWidth * fitScale * safeScale);
-      const displayHeight = Math.max(1, sourceHeight * fitScale * safeScale);
-      const overflowX = Math.max(0, (displayWidth - cropBoxSize) / 2);
-      const overflowY = Math.max(0, (displayHeight - cropBoxSize) / 2);
-      return {
-        scale: safeScale,
-        translateX: Math.min(overflowX, Math.max(-overflowX, nextTranslateX)),
-        translateY: Math.min(overflowY, Math.max(-overflowY, nextTranslateY)),
-      };
-    },
-    [cropBoxSize, cropViewportSize]
-  );
-
-  const setCropScale = useCallback(
-    (nextScale: number) => {
-      if (!webCrop) return;
-      setCropTransform((current) =>
-        clampCropTransform(
-          nextScale,
-          current.translateX,
-          current.translateY,
-          webCrop.naturalWidth || cropViewportSize,
-          webCrop.naturalHeight || cropViewportSize
-        )
-      );
-    },
-    [clampCropTransform, cropViewportSize, webCrop]
-  );
-
-  const updateCropTranslation = useCallback(
-    (nextTranslateX: number, nextTranslateY: number) => {
-      if (!webCrop) return;
-      setCropTransform((current) =>
-        clampCropTransform(
-          current.scale,
-          nextTranslateX,
-          nextTranslateY,
-          webCrop.naturalWidth || cropViewportSize,
-          webCrop.naturalHeight || cropViewportSize
-        )
-      );
-    },
-    [clampCropTransform, cropViewportSize, webCrop]
-  );
-
-  const beginCropDrag = useCallback(
-    (clientX: number, clientY: number) => {
-      cropDragRef.current = { active: true, lastX: clientX, lastY: clientY };
-      cropGestureRef.current = {
-        startScale: cropTransformRef.current.scale,
-        startTranslateX: cropTransformRef.current.translateX,
-        startTranslateY: cropTransformRef.current.translateY,
-        startClientX: clientX,
-        startClientY: clientY,
-      };
-      setIsCropDragging(true);
-    },
-    []
-  );
-
-  useEffect(() => {
-    if (Platform.OS !== "web" || !isCropDragging || !webCrop) return;
-    const handleMouseMove = (event: MouseEvent) => {
-      if (!cropDragRef.current.active) return;
-      const nextX = event.clientX;
-      const nextY = event.clientY;
-      updateCropTranslation(
-        cropGestureRef.current.startTranslateX + (nextX - cropGestureRef.current.startClientX),
-        cropGestureRef.current.startTranslateY + (nextY - cropGestureRef.current.startClientY)
-      );
-      event.preventDefault();
-    };
-    const handleMouseUp = () => {
-      cropDragRef.current.active = false;
-      setIsCropDragging(false);
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [isCropDragging, updateCropTranslation, webCrop]);
-
   useEffect(() => {
     if (Platform.OS !== "web" || !webCrop) return;
     let cancelled = false;
@@ -470,31 +253,12 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
     image.onerror = () => { if (!cancelled) { showResult("error", "Error", "Failed to load image for cropping."); closeWebCropper(); } };
     image.src = webCrop.sourceUri;
     return () => { cancelled = true; };
-  }, [webCrop, closeWebCropper, clampCropTransform, cropBoxSize, cropViewportSize, showResult]);
+  }, [webCrop, closeWebCropper, clampCropTransform, cropBoxSize, cropViewportSize, setCropTransform, setWebCrop, showResult]);
 
   const applyWebCrop = async () => {
     if (!webCrop || Platform.OS !== "web") return;
-    const img = new window.Image();
-    img.src = webCrop.sourceUri;
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error("Failed to load image for cropping."));
-    });
-    const cropSize = 512;
-    const exportScale = cropSize / Math.max(1, cropBoxSize);
-    const naturalWidth = img.naturalWidth || webCrop.naturalWidth || 1;
-    const naturalHeight = img.naturalHeight || webCrop.naturalHeight || 1;
-    const fitScale = Math.min(cropViewportSize / naturalWidth, cropViewportSize / naturalHeight);
-    const renderScale = fitScale * cropTransform.scale * exportScale;
-    const canvas = document.createElement("canvas");
-    canvas.width = cropSize; canvas.height = cropSize;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas is not supported in this browser.");
-    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, cropSize, cropSize);
-    ctx.translate(cropSize / 2 + cropTransform.translateX * exportScale, cropSize / 2 + cropTransform.translateY * exportScale);
-    ctx.scale(renderScale, renderScale);
-    ctx.translate(-naturalWidth / 2, -naturalHeight / 2);
-    ctx.drawImage(img, 0, 0);
+    const canvas = await renderCropToCanvas(512);
+    if (!canvas) throw new Error("Canvas is not supported in this browser.");
     const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
     setSelectedImage({ uri: dataUrl, name: webCrop.fileName, mimeType: "image/jpeg" });
     closeWebCropper();
@@ -735,7 +499,7 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
 
     setSaving(true);
     try {
-      let uploadedImageUrl = form.profile_image;
+      let uploadedImageUrl: string | null = form.profile_image;
       if (selectedImage) {
         const formData = new FormData();
         formData.append("id_user", actorId);
@@ -1531,7 +1295,6 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
                     // @ts-expect-error web
                     onMouseDown={(e: any) => { if (Platform.OS === 'web') beginCropDrag(e.clientX, e.clientY); }} 
                     onTouchStart={(e) => { const t = e.nativeEvent.touches?.[0] as any; if (t) beginCropDrag(t.clientX, t.clientY); }}
-                    // @ts-expect-error web
                     onWheel={(e: any) => {
                       const delta = e.nativeEvent?.deltaY ?? 0;
                       const next = delta > 0 ? Math.max(0.2, cropTransformRef.current.scale - 0.1) : Math.min(3, cropTransformRef.current.scale + 0.1);
@@ -1665,157 +1428,3 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
     </View>
   );
 }
-
-function Input({
-  label,
-  value,
-  onChangeText,
-  secure,
-  wrapStyle,
-  editable = true,
-  keyboardType = "default",
-  required = false,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (value: string) => void;
-  required?: boolean;
-  secure?: boolean;
-  wrapStyle?: object;
-  editable?: boolean;
-  keyboardType?: "default" | "email-address" | "numeric" | "phone-pad";
-}) {
-  return (
-    <View style={[styles.fieldWrap, wrapStyle]}>
-      <Text style={styles.label}>{label}{required ? <RequiredMark /> : null}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        secureTextEntry={secure}
-        placeholder={label}
-        placeholderTextColor="#94a3b8"
-        keyboardType={keyboardType}
-        style={[styles.input, !editable && { backgroundColor: "#f1f5f9", color: "#64748b" }]}
-        editable={editable}
-      />
-    </View>
-  );
-}
-
-function Meta({
-  label,
-  value,
-  textarea,
-  cardStyle,
-}: {
-  label: string;
-  value?: string | number | null;
-  textarea?: boolean;
-  cardStyle?: object;
-}) {
-  return (
-    <View style={[styles.metaItem, textarea && styles.metaItemTextarea, cardStyle]}>
-      <Text style={styles.metaLabel}>{label}</Text>
-      <Text style={styles.metaValue}>{value || "-"}</Text>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f3f6fb" },
-  content: { padding: 14, gap: 12 },
-  headerActionRow: { flexDirection: "row", gap: 8, alignItems: "center" },
-  exportIconButton: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", alignItems: "center", justifyContent: "center" },
-  tabRow: { flexDirection: "row", gap: 8, alignItems: "center" },
-  tabButton: {
-    minHeight: 36,
-    minWidth: 88,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    backgroundColor: "#fff",
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tabButtonActive: { borderColor: "#1d4ed8", backgroundColor: "#eff6ff" },
-  tabButtonText: { color: "#334155", fontSize: 12, fontWeight: "700" },
-  tabButtonTextActive: { color: "#1d4ed8" },
-  secondaryButton: { height: 40, borderRadius: 10, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" },
-  secondaryButtonText: { color: "#1d4ed8", fontWeight: "700", fontSize: 12 },
-  rowCell: { color: "#0f172a", fontSize: 12 },
-  rowCellRight: { textAlign: "right" },
-  actionCellWrap: { alignItems: "center", justifyContent: "center" },
-  actionCellWrapOpen: { position: "relative", zIndex: 4000 },
-  actionOutlineBtn: { minHeight: 30, borderRadius: 7, borderWidth: 1, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
-  actionOutlineBtnText: { fontSize: 11, fontWeight: "700" },
-  actionOutlineInfo: { borderColor: "#93c5fd", backgroundColor: "#eff6ff" },
-  actionOutlineInfoText: { color: "#1d4ed8" },
-  actionOutlineEdit: { borderColor: "#fdba74", backgroundColor: "#fff7ed" },
-  actionOutlineEditText: { color: "#c2410c" },
-  actionOutlineDanger: { borderColor: "#fca5a5", backgroundColor: "#fef2f2" },
-  actionOutlineDangerText: { color: "#b91c1c" },
-  activateButton: { alignSelf: "center", minHeight: 30, borderRadius: 8, borderWidth: 1, borderColor: "#bbf7d0", backgroundColor: "#f0fdf4", paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
-  activateButtonText: { color: "#166534", fontSize: 11, fontWeight: "700" },
-  modalCard: { width: "100%", backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 10 },
-  modalTitle: { color: "#0f172a", fontSize: 18, fontWeight: "800" },
-  detailModalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },  
-  detailPrintButton: { minHeight: 36, borderRadius: 10, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
-  detailPrintButtonText: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
-  modalBody: { gap: 10, paddingBottom: 6 },
-  fieldWrap: { gap: 6 },
-  label: { color: "#334155", fontSize: 12, fontWeight: "700" },
-  input: { height: 38, borderRadius: 10, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff", paddingHorizontal: 12, color: "#0f172a" },
-  twoCol: { flexDirection: "row", gap: 8 },
-  twoColField: { flex: 1 },
-  profileDetailWrap: { gap: 10 },
-  profileTopGrid: { width: "100%", gap: 12 },
-  profileTopGridDesktop: { flexDirection: "row", alignItems: "stretch" },
-  profileTopGridPhone: { flexDirection: "column" },
-  profileImageCard: {
-    width: "100%",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#f8fafc",
-    overflow: "hidden",
-  },
-  profileImageCardDesktop: { width: "30%", aspectRatio: 1, flexShrink: 0 },
-  profileImageCardPhone: { width: "100%", aspectRatio: 1 },
-  profileImage: { width: "100%", height: "100%" },
-  profileMetaStack: { flex: 1, gap: 10, width: "100%" },
-  profileMetaRow: { flexDirection: "row", gap: 10, width: "100%", flexWrap: "wrap" },
-  metaItem: { flex: 1, borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#f8fafc", padding: 10, gap: 3 },
-  metaItemTextarea: { flex: 0, width: "100%", minHeight: 124, alignItems: "stretch" },
-  profileMetaCardHalf: { flexBasis: "48%", minWidth: 0 },
-  profileMetaCardFull: { flexBasis: "100%", minWidth: 0 },
-  metaLabel: { color: "#64748b", fontSize: 11, fontWeight: "700" },
-  metaValue: { color: "#0f172a", fontSize: 13, fontWeight: "700" },
-  filterLabel: { color: "#334155", fontSize: 12, fontWeight: "700", marginTop: 8 },
-  rangeRow: { flexDirection: "row", gap: 8, marginTop: 4 },
-  rangeField: { flex: 1 },
-  footer: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
-  cancelButton: { minHeight: 36, borderRadius: 10, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" },
-  cancelButtonText: { color: "#334155", fontSize: 12, fontWeight: "700" },
-  submitButton: { minHeight: 36, borderRadius: 10, backgroundColor: "#1d4ed8", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" },
-  submitButtonText: { color: "#fff", fontSize: 12, fontWeight: "700" },
-  closeButton: { marginTop: 8, height: 38, borderRadius: 10, backgroundColor: "#1d4ed8", alignItems: "center", justifyContent: "center" },
-  closeButtonText: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  formField: { gap: 6 },
-  photoActionRow: { flexDirection: "row", gap: 8, alignItems: "center" },
-  removePhotoBtn: { width: 38, height: 38, borderRadius: 10, borderWidth: 1, borderColor: "#dc2626", backgroundColor: "#fef2f2", alignItems: "center", justifyContent: "center" },
-  filePickerBtn: { minHeight: 38, borderRadius: 10, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", alignItems: "center", justifyContent: "center" },
-  filePickerBtnText: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
-  filePickerHint: { color: "#64748b", fontSize: 11, marginTop: -2 },
-  cropOverlayRoot: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000, alignItems: "center", justifyContent: "center" },
-  cropOverlayBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(15,23,42,0.85)" },
-  cropOverlayCard: { backgroundColor: "#fff", borderRadius: 16, overflow: "hidden" },
-  cropModalHeader: { padding: 16, borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
-  cropModalSubtitle: { color: "#64748b", fontSize: 12, marginTop: 4 },
-  cropViewport: { width: "100%", aspectRatio: 1, backgroundColor: "#0f172a" },
-  cropCanvas: { flex: 1, position: "relative" },
-  cropImage: { position: "absolute" },
-  cropShade: { position: "absolute", backgroundColor: "rgba(0,0,0,0.5)" },
-  cropBoxFrame: { position: "absolute", borderWidth: 2, borderColor: "#fff" },
-  cropModalFooter: { padding: 16, flexDirection: "row", justifyContent: "flex-end", gap: 10, borderTopWidth: 1, borderTopColor: "#e2e8f0" },
-});

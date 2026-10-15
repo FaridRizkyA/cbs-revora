@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import FilterSheetModal from "../../../components/inventory/FilterSheetModal";
 import DatePickerField from "../../../components/inventory/DatePickerField";
 import FilterSelectField from "../../../components/inventory/FilterSelectField";
@@ -25,69 +25,8 @@ import { printReportHtml } from "../../../utils/printUtils";
 import { canInsertStockMovement, getAuthSession, normalizeRole } from "../../../utils/authSession";
 import { formatDisplayDateTime, formatDisplayDate } from "../../../utils/dateFormat";
 import RequiredMark from "../../../components/forms/RequiredMark";
-
-type StockOutDocument = {
-  id_stock_out: string;
-  stock_out_code: string;
-  stock_out_type?: string;
-  cashier_name?: string;
-  operator_name?: string;
-  product_names?: string[];
-  reason?: string | null;
-  stock_out_date: string;
-  notes: string | null;
-  item_count: number;
-  total_qty: number;
-  total_buy?: number;
-  total_sell?: number;
-  total_profit?: number;
-};
-
-type StockOutItem = {
-  id_stock_movement: string;
-  product_code: string;
-  product_name: string;
-  batch_code: string | null;
-  quantity: number;
-  reason?: string | null;
-  buy_per_pcs?: number | null;
-  sell_per_pcs?: number | null;
-  total_buy?: number;
-  total_sell?: number;
-  profit?: number;
-};
-
-type StockOutDetail = {
-  id_stock_out: string;
-  stock_out_code: string;
-  stock_out_type?: string;
-  cashier_name?: string;
-  operator_name?: string;
-  stock_out_date: string;
-  notes: string | null;
-  total_qty: number;
-  total_buy?: number;
-  total_sell?: number;
-  total_profit?: number;
-  items: StockOutItem[];
-};
-
-type Product = {
-  id_product: string;
-  product_code: string;
-  product_name: string;
-  available_stock: number;
-  is_active?: string;
-};
-
-type ProductBatch = {
-  id_product_batch: string;
-  batch_code: string;
-  expired_date?: string | null;
-  batch_qty: number;
-};
-
-type DraftItem = { id_product: string; id_product_batch?: string; quantity: string };
+import { styles } from "../../../components/stock-movements/stockOutScreen.styles";
+import type { StockOutDocument, StockOutItem, StockOutDetail, Product, ProductBatch, DraftItem } from "../../../components/stock-movements/stockOutScreen.types";
 
 const MANUAL_REASONS = ["DAMAGED", "EXPIRED", "RETURN_TO_SUPPLIER", "LOST", "DONATION", "OTHER"];
 const formatCurrency = (value: number) => `Rp ${Math.round(value || 0).toLocaleString("id-ID")}`;
@@ -226,6 +165,7 @@ export default function StockOutScreen() {
     getAuthSession()
       .then((session) => {
         setRoleName(normalizeRole(session?.user?.role_name) || "CASHIER");
+        setStaffGradeName(session?.user?.staff_grade_name || "");
         setUserId(session?.user?.id_user || "");
       })
       .catch(() => setRoleName("CASHIER"));
@@ -989,55 +929,3 @@ export default function StockOutScreen() {
 );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f3f6fb" },
-  content: { padding: 14, gap: 12 },
-  headerActionRow: { flexDirection: "row", gap: 8, alignItems: "center" },
-  exportIconButton: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", alignItems: "center", justifyContent: "center" },
-  filterLabel: { color: "#334155", fontSize: 12, fontWeight: "700" },
-  rangeRow: { flexDirection: "row", gap: 8 },
-  dateFieldWrap: { flex: 1 },
-  rangeInput: { flex: 1, height: 38, borderRadius: 10, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff", paddingHorizontal: 10, color: "#0f172a" },
-  rowCell: { fontSize: 12, color: "#0f172a", paddingHorizontal: 10, textAlign: "left" },
-  colCode: { width: "34%" }, colType: { width: "18%" }, colQty: { width: "12%" }, colDate: { width: "20%" }, colAction: { width: "16%", textAlign: "center" },
-  actionWrap: { alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
-  actionWrapOpen: { position: "relative", zIndex: 4000 },
-  actionOutlineBtn: { minHeight: 30, borderRadius: 7, borderWidth: 1, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
-  actionOutlineBtnText: { fontSize: 11, fontWeight: "700" },
-  actionOutlineInfo: { borderColor: "#93c5fd", backgroundColor: "#eff6ff" },
-  actionOutlineInfoText: { color: "#1d4ed8" },
-  actionOutlineEdit: { borderColor: "#fdba74", backgroundColor: "#fff7ed" },
-  actionOutlineEditText: { color: "#c2410c" },
-  actionOutlineDanger: { borderColor: "#fca5a5", backgroundColor: "#fef2f2" },
-  actionOutlineDangerText: { color: "#b91c1c" },
-  modalCard: { backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 10 },
-  detailModalCard: { backgroundColor: "#fff", borderRadius: 14, padding: 16, gap: 10 },
-  modalTitle: { color: "#0f172a", fontSize: 18, fontWeight: "800", marginBottom: 4 },
-  detailModalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },  
-  formBody: { gap: 10 },
-  fieldWrap: { gap: 6 },
-  fieldLabel: { color: "#334155", fontSize: 12, fontWeight: "700" },
-  fieldInput: { height: 38, borderRadius: 10, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff", paddingHorizontal: 12, color: "#0f172a" },
-  itemCard: { borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, padding: 10, gap: 8, backgroundColor: "#f8fafc" },
-  removeBtn: { minHeight: 34, borderRadius: 9, borderWidth: 1, borderColor: "#fecaca", backgroundColor: "#fef2f2", alignItems: "center", justifyContent: "center" },
-  removeBtnText: { color: "#b91c1c", fontSize: 12, fontWeight: "700" },
-  modalActions: { borderTopWidth: 1, borderTopColor: "#eef2f7", padding: 12, flexDirection: "row", justifyContent: "flex-end", gap: 8 },
-  cancelBtn: { minHeight: 36, borderRadius: 10, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" },
-  cancelBtnText: { color: "#334155", fontSize: 12, fontWeight: "700" },
-  submitBtn: { minHeight: 36, borderRadius: 10, backgroundColor: "#1d4ed8", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" },
-  submitBtnText: { color: "#fff", fontSize: 12, fontWeight: "700" },
-  metaGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 10 },
-  metaItem: { width: "49%", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#f8fafc", padding: 10, gap: 3 },
-  metaItemFull: { width: "100%" },
-  metaLabel: { color: "#64748b", fontSize: 11, fontWeight: "700" },
-  metaValue: { color: "#0f172a", fontSize: 13, fontWeight: "700" },
-  detailHeadCell: { fontSize: 11, fontWeight: "700", color: "#334155", paddingHorizontal: 8 },
-  detailRowCell: { fontSize: 11, color: "#0f172a", paddingHorizontal: 8 },
-  summaryCard: { borderRadius: 10, borderWidth: 1, borderColor: "#dbe3ee", backgroundColor: "#f8fafc", padding: 10, gap: 4 },
-  summaryLabel: { color: "#334155", fontSize: 12, fontWeight: "600" },
-  summaryValue: { color: "#0f172a", fontWeight: "800" },
-  detailScroll: { maxHeight: "84%" },
-  detailScrollContent: { gap: 10, paddingBottom: 6 },
-  closePrimaryBtn: { marginTop: 6, minHeight: 38, borderRadius: 10, backgroundColor: "#1d4ed8", alignItems: "center", justifyContent: "center" },
-  closePrimaryBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
-});
