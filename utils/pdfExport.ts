@@ -84,14 +84,19 @@ export const downloadReportPdf = async (payload: PdfExportPayload) => {
   try {
     const response = await fetchWithAuth("/api/reports/export-pdf", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, as_base64: true }),
     });
 
     if (!response.ok) {
       throw new Error("Failed to generate PDF for download.");
     }
 
-    const blob = await response.blob();
+    // JSON/base64 transport so download managers (IDM) don't intercept the request.
+    const result = await response.json();
+    const binary = atob(result.content_base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: "application/pdf" });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -99,7 +104,8 @@ export const downloadReportPdf = async (payload: PdfExportPayload) => {
     document.body.appendChild(link);
     link.click();
     link.remove();
-    window.URL.revokeObjectURL(url);
+    // Delay revoke so download managers (e.g. IDM) can still fetch the blob URL.
+    setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     
     return true;
   } catch (error) {

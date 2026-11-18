@@ -292,7 +292,8 @@ const downloadWorkbookBuffer = (buffer: BlobPart, fileName: string) => {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  // Delay revoke so download managers (e.g. IDM) can still fetch the blob URL.
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 };
 
 const assertWebExcelExport = () => {

@@ -64,7 +64,7 @@ const exportExcelReport = async (req, res) => {
     const buffer = await buildExcelBuffer(title || "Report", subtitle, columns, rows, meta);
     const filename = sanitizeAttachmentFileName(file_name, `${(title || "report").toLowerCase().replace(/\s+/g, "_")}_${Date.now()}.xlsx`);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    // No "attachment" Content-Disposition: download managers (IDM) would hijack this fetch request.
     res.send(Buffer.from(buffer));
   } catch (error) {
     console.error("Excel export error:", error);
@@ -94,8 +94,12 @@ const exportPdfReport = async (req, res) => {
 
     const filename = sanitizeAttachmentFileName(file_name, `${(title || "report").toLowerCase().replace(/\s+/g, "_")}_${Date.now()}.pdf`);
     
+    if (req.body.as_base64) {
+      // JSON response is ignored by download managers (they sniff application/pdf).
+      return res.json({ file_name: filename, content_base64: Buffer.from(pdfBuffer).toString("base64") });
+    }
+
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.send(Buffer.from(pdfBuffer));
   } catch (error) {
     console.error("PDF export error:", error);
