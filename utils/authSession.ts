@@ -275,7 +275,7 @@ export const canAccessMainPath = (roleNameRaw: string | null | undefined, pathna
   if (roleName === "CASHIER") return canCashierAccessMainPath(pathname);
   if (roleName === "MEMBER") return canAccessMemberPath(pathname);
 
-  if (pathname.startsWith("/(main)/users") || pathname.startsWith("/(main)/members") || pathname.startsWith("/(main)/staffs")) {
+  if (pathname.includes("/people/")) {
     return canViewPeople(roleName);
   }
   if (pathname.startsWith("/(main)/external-financial")) return canViewExternalFinancial(roleName);

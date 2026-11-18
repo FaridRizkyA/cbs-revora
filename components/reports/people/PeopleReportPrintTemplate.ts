@@ -1,6 +1,7 @@
 import {
   buildReportDetailPrintHtml,
   buildReportTablePrintHtml,
+  downloadReportTableExcel,
   ReportMetaItem,
   ReportTableColumn,
 } from "../shared/ReportPrintTemplate";
@@ -96,7 +97,7 @@ const formatDateTime = (value?: string | Date | null) => {
     .replace(/\./g, ":");
 };
 
-const buildPeopleTableColumns = (type: PeopleReportType): ReportTableColumn<PeopleReportRow>[] => {
+export const buildPeopleTableColumns = (type: PeopleReportType): ReportTableColumn<PeopleReportRow>[] => {
   const columns: ReportTableColumn<PeopleReportRow>[] = [
     {
       key: "row_number",
@@ -206,6 +207,25 @@ export const buildPeopleTableReportPrintHtml = ({
   meta = [],
 }: PeopleReportOptions) =>
   buildReportTablePrintHtml({
+    title: titleByType[type],
+    subtitle: subtitleByType[type],
+    reportKey: reportKeyByType[type],
+    generatedAt,
+    generatedBy,
+    meta: [{ label: "Total Rows", value: rows.length }, ...meta],
+    rows,
+    columns: buildPeopleTableColumns(type),
+    emptyText: `No ${type} data found.`,
+  });
+
+export const downloadPeopleTableReportExcel = ({
+  type,
+  rows,
+  generatedAt = new Date(),
+  generatedBy,
+  meta = [],
+}: PeopleReportOptions) =>
+  downloadReportTableExcel({
     title: titleByType[type],
     subtitle: subtitleByType[type],
     reportKey: reportKeyByType[type],

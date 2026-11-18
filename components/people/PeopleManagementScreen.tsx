@@ -1,4 +1,8 @@
 import { printReportHtml } from "../../utils/printUtils";
+import { withEmailPdfAttachment } from "../../utils/reportEmail";
+import { logClientActivity } from "../../utils/activityLog";
+import ExportDropdownMenu from "../inventory/ExportDropdownMenu";
+import SendEmailModal from "../modals/SendEmailModal";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Image } from "expo-image";
@@ -15,7 +19,9 @@ import InventoryRowActionsMenu from "../inventory/InventoryRowActionsMenu";
 import PrimaryActionButton from "../inventory/PrimaryActionButton";
 import {
   buildPeopleDetailReportPrintHtml,
+  buildPeopleTableColumns,
   buildPeopleTableReportPrintHtml,
+  downloadPeopleTableReportExcel,
 } from "../reports/people/PeopleReportPrintTemplate";
 import { formatDate } from "../shu/formatters";
 import { fetchWithAuth } from "../../utils/fetchWithAuth";
@@ -112,6 +118,8 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [isProfileLocked, setIsProfileLocked] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailTarget, setEmailTarget] = useState<"table" | "detail">("table");
   const [resultModalOpen, setResultModalOpen] = useState(false);
   const [resultStatus, setResultStatus] = useState<"success" | "error">("success");
   const [resultTitle, setResultTitle] = useState("");
@@ -456,6 +464,79 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
       });
     } catch (error) {
       showResult("error", "Print Failed", error instanceof Error ? error.message : "Failed to print profile detail.");
+    }
+  };
+
+  const handleExportPeopleExcel = async () => {
+    if (type === "staffs" && staffsTab === "grades") return;
+
+    try {
+      await downloadPeopleTableReportExcel({
+        type,
+        rows: activeRows,
+        generatedAt: new Date(),
+        generatedBy: roleName,
+        meta: buildCurrentPeopleReportMeta(),
+      });
+      await logClientActivity({
+        activityType: "EXPORT_EXCEL",
+        tableName: "tbl_users",
+        description: `Exported ${screenConfig.title.toLowerCase()} report as Excel.`,
+      });
+    } catch (error) {
+      showResult("error", "Export Failed", error instanceof Error ? error.message : `Failed to export ${screenConfig.title.toLowerCase()} report.`);
+    }
+  };
+
+  const handleSendEmailReport = async (recipientEmail: string, message: string, fullName: string, includeExcel: boolean) => {
+    try {
+      const isTable = emailTarget === "table";
+      if (!isTable && !profileOpen) return;
+      const generatedAt = new Date();
+      const printHtml = isTable
+        ? buildPeopleTableReportPrintHtml({ type, rows: activeRows, generatedAt, generatedBy: roleName, meta: buildCurrentPeopleReportMeta() })
+        : buildPeopleDetailReportPrintHtml({ type, person: profileOpen as PersonRow, generatedAt, generatedBy: roleName });
+      const columns = buildPeopleTableColumns(type);
+      const detailName = profileOpen ? ([profileOpen.first_name, profileOpen.last_name].filter(Boolean).join(" ") || profileOpen.email) : "";
+      const payload = {
+        recipient_email: recipientEmail,
+        recipient_name: fullName,
+        subject: isTable ? `${screenConfig.title} List Report` : `${screenConfig.title} Detail - ${detailName}`,
+        message,
+        format: "PDF",
+        include_excel: includeExcel,
+        title: isTable ? `${screenConfig.title} Report` : `${screenConfig.title} Detail`,
+        subtitle: isTable ? screenConfig.subtitle : "",
+        generated_by: roleName,
+        print_html: printHtml,
+        meta: isTable ? buildCurrentPeopleReportMeta() : [{ label: "Name", value: detailName }, { label: "Email", value: profileOpen?.email }],
+        columns: isTable
+          ? columns.map((c) => ({ key: c.key, title: c.title, align: c.align }))
+          : [{ key: "name", title: "Name" }, { key: "email", title: "Email" }],
+        rows: isTable
+          ? activeRows.map((row, idx) => {
+              const rowData: Record<string, unknown> = {};
+              columns.forEach((c) => { rowData[c.key] = c.getValue(row as any, idx); });
+              return rowData;
+            })
+          : [{ name: detailName, email: profileOpen?.email || "-" }],
+      };
+
+      const response = await fetchWithAuth("/api/reports/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(await withEmailPdfAttachment(payload)),
+      });
+      if (!response.ok) throw new Error("Failed to send email.");
+
+      await logClientActivity({
+        activityType: "SEND_REPORT_EMAIL",
+        tableName: "tbl_users",
+        description: `Sent ${screenConfig.title.toLowerCase()} report via email.`,
+      });
+      showResult("success", "Email Sent", "Report has been sent successfully.");
+    } catch (error) {
+      showResult("error", "Send Failed", error instanceof Error ? error.message : "An error occurred.");
     }
   };
 
@@ -958,13 +1039,14 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
           action={
             <View style={styles.headerActionRow}>
               {showExportButton ? (
-                <Pressable
-                  style={styles.exportIconButton}
-                  onPress={handlePrintPeopleTable}
-                  accessibilityLabel={`Print ${screenConfig.title.toLowerCase()} table report`}
-                >
-                  <MaterialCommunityIcons name="file-upload-outline" size={20} color="#1d4ed8" />
-                </Pressable>
+                <ExportDropdownMenu
+                  onExportPdf={handlePrintPeopleTable}
+                  onExportExcel={handleExportPeopleExcel}
+                  onSendEmail={() => {
+                    setEmailTarget("table");
+                    setEmailModalOpen(true);
+                  }}
+                />
               ) : null}
               {canManage ? (
                 <>
@@ -1123,10 +1205,14 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
         >
           <View style={styles.detailModalHeader}>
             <Text style={styles.modalTitle}>{type === "users" ? "User Detail" : "Profile Detail"}</Text>
-            <Pressable style={styles.detailPrintButton} onPress={handlePrintPeopleDetail}>
-              <MaterialCommunityIcons name="file-upload-outline" size={18} color="#1d4ed8" />
-              <Text style={styles.detailPrintButtonText}>Print Detail</Text>
-            </Pressable>
+            <ExportDropdownMenu
+              variant="detail"
+              onExportPdf={handlePrintPeopleDetail}
+              onSendEmail={() => {
+                setEmailTarget("detail");
+                setEmailModalOpen(true);
+              }}
+            />
           </View>
           <ScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false}>
             {type === "users" ? (
@@ -1417,6 +1503,12 @@ export default function PeopleManagementScreen({ type }: { type: ScreenType }) {
         loading={saving}
         onCancel={() => (saving ? null : setPendingAction(null))}
         onConfirm={executePendingAction}
+      />
+      <SendEmailModal
+        visible={emailModalOpen}
+        onClose={() => setEmailModalOpen(false)}
+        reportTitle={emailTarget === "table" ? `${screenConfig.title} List` : `${screenConfig.title} Detail`}
+        onSend={handleSendEmailReport}
       />
       <InventoryResultModal
         visible={resultModalOpen}

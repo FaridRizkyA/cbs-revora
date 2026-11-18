@@ -94,9 +94,9 @@ const routeBySubmenu = (child: string) => {
   if (child === "Sales Items") return "/(main)/sales/items";
   if (child === "Sales Cost") return "/(main)/sales/costs";
   if (child === "Stock Adjustment") return "/(main)/stock-movements/stock-adjustment";
-  if (child === "Users") return "/(main)/users";
-  if (child === "Members") return "/(main)/members";
-  if (child === "Staffs") return "/(main)/staffs";
+  if (child === "Users") return "/(main)/people/users";
+  if (child === "Members") return "/(main)/people/members";
+  if (child === "Staffs") return "/(main)/people/staffs";
   return "/(main)/dashboard";
 };
 
@@ -104,7 +104,7 @@ const getMenuGroupForPath = (pathname: string) => {
   if (pathname.includes("/inventory/")) return "inventory";
   if (pathname.includes("/stock-movements/")) return "stock-movements";
   if (pathname.includes("/sales/")) return "sales";
-  if (pathname.includes("/users") || pathname.includes("/members") || pathname.includes("/staffs")) return "people";
+  if (pathname.includes("/people/")) return "people";
   return null;
 };
 
@@ -292,9 +292,9 @@ export default function MainLayout() {
     if (pathname === "/(main)/stock-movements/stock-adjustment") return "stock-movements:Stock Adjustment";
     if (pathname === "/(main)/sales/items" || pathname === "/(main)/stock-movements/sales") return "sales:Sales Items";
     if (pathname === "/(main)/sales/costs") return "sales:Sales Cost";
-    if (pathname.startsWith("/(main)/users")) return "people:Users";
-    if (pathname.startsWith("/(main)/members")) return "people:Members";
-    if (pathname.startsWith("/(main)/staffs")) return "people:Staffs";
+    if (pathname.startsWith("/(main)/people/users")) return "people:Users";
+    if (pathname.startsWith("/(main)/people/members")) return "people:Members";
+    if (pathname.startsWith("/(main)/people/staffs")) return "people:Staffs";
     return null;
   }, [pathname]);
 
@@ -320,7 +320,7 @@ export default function MainLayout() {
   const isInventoryPath = pathname.includes("/inventory/");
   const isStockMovementPath = pathname.includes("/stock-movements/");
   const isSalesPath = pathname.includes("/sales/");
-  const isPeoplePath = pathname.includes("/users") || pathname.includes("/members") || pathname.includes("/staffs");
+  const isPeoplePath = pathname.includes("/people/");
   const isMemberDashboard = pathname === "/(main)/portal/dashboard" || (appMode === "MEMBER" && pathname === "/(main)/dashboard");
 
   return (
