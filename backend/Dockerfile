@@ -7,7 +7,8 @@ WORKDIR /app
 COPY package*.json ./
 # Browsers are preinstalled in the base image; skip the download.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-RUN npm ci --omit=dev
+# No package-lock.json is committed (it is gitignored), so npm ci cannot be used.
+RUN npm install --omit=dev
 
 COPY . .
 
