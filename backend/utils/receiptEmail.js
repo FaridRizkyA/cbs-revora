@@ -288,7 +288,7 @@ const buildReceiptHtml = (data) => {
 };
 
 const renderReceiptPdfBuffer = async (html) => {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, args: process.env.CHROMIUM_NO_SANDBOX === "true" ? ["--no-sandbox"] : [] });
 
   try {
     const page = await browser.newPage({

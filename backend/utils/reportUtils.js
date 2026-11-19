@@ -43,7 +43,7 @@ let pdfBrowserPromise = null;
 
 const getPdfBrowser = async () => {
   if (!pdfBrowserPromise) {
-    pdfBrowserPromise = chromium.launch({ headless: true }).then((browser) => {
+    pdfBrowserPromise = chromium.launch({ headless: true, args: process.env.CHROMIUM_NO_SANDBOX === "true" ? ["--no-sandbox"] : [] }).then((browser) => {
       browser.on("disconnected", () => {
         pdfBrowserPromise = null;
       });
