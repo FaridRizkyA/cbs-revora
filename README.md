@@ -69,8 +69,8 @@ For the Mobile version (Phone/Tablet) to connect with the Backend server on your
    - Opening **Command Prompt (CMD)** in Windows.
    - Typing the command `ipconfig` and pressing Enter.
    - Finding the **IPv4 Address** line and copying the numbers (example: `192.168.1.10`).
-2. Copy **`utils/api.example.ts`** to **`utils/api.ts`** (this file is ignored by Git, so each device keeps its own address).
-3. Open **`utils/api.ts`** and change the *base IP URL* address inside the file with the newly copied IPv4.
+2. Copy **`.env.example`** in the project root to **`.env`** (this file is ignored by Git, so each device keeps its own address).
+3. Open **`.env`** and update `EXPO_PUBLIC_API_URL` with the newly copied IPv4 (e.g. `EXPO_PUBLIC_API_URL=http://192.168.1.10:3000`).
 *(Make sure the Phone and Computer are connected to the exact same WiFi/Hotspot network).*
 
 ### 5. Running the Application (Terminal)

@@ -1,6 +1,6 @@
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
-import { API_BASE_URL } from "./api";
+export const API_BASE_URL = (process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000").replace(/\/$/, "");
 
 export type AuthUser = {
   id_user: string;

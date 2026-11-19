@@ -1,5 +1,4 @@
-import { API_BASE_URL } from "./api";
-import { getAuthSession } from "./authSession";
+import { API_BASE_URL, getAuthSession } from "./authSession";
 
 type FetchWithAuthInit = RequestInit & {
   requireToken?: boolean;
