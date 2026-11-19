@@ -44,6 +44,7 @@ This application has a separated folder system between the interface (Root) and 
 2. Copy or rename the file to **`.env`**.
 3. Open the `.env` file and complete the following configurations:
    - **Database:** Fill in your PostgreSQL credentials (`DB_USER`, `DB_PASSWORD`, etc.).
+     For hosted databases such as Supabase, set `DB_SSL=true`.
    - **SMTP (Email):** Fill in the Nodemailer configuration for sending SHU details via email. If using Gmail, enter your email in `SMTP_USER` and an *App Password* (not a regular email password) in `SMTP_PASS`.
 
 ### 3. Database Setup & Seeding
